@@ -137,7 +137,9 @@ flowchart TD
 ```
 
 The label-level state machines behind these stops are written up in `audit/labels-cpp.md` (the issue and
-PR `status:` machines) and `audit/labels-python.md` (the moderation and review-queue machines).
+PR `status:` machines) and `audit/labels-python.md` (the moderation and review-queue machines). How these
+services depend on each other through shared state (labels, comments, assignees, config, cross-entity
+links, and shared workflow files), and where that coupling sits, is mapped in `audit/coupling-cpp.md`.
 
 ## 4. A normalized view of the labels that exist today
 
