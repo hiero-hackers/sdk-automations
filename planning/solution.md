@@ -7,17 +7,17 @@
 > and the test architecture note (`planning/test-architecture.md`). The vision and the hard limits come from
 > `planning/goals.md`. The coupling this design is trying to avoid is set out in `planning/lessons-learned.md`
 > and `audit/deep-dive-cpp.md`. What this document leaves for later, on purpose, is which services get built,
-> what the config file looks like, and the order the work happens in. Those come after. This document is about
-> the system that holds the services, not the services themselves.
+> what the config file looks like, and the order the work happens in. This document is about the system that
+> holds the services, and not the services themselves.
 
 ## 1. The problem in one paragraph
 
 Today, in the C++ SDK, the automation services are tangled together. The clearest single example is one
 label, `status: ready for dev`. One service produces it, another picks it up, a third resets it, and so on,
-each one handing the label to the next like a baton in a relay. Because of that, you cannot switch one
+each one handing the label to the next like a baton in a relay. Because of that, one cannot switch one
 service off on its own: turn off the service that produces the label and the next one has nothing to do, and
 turn off the one that consumes it and work piles up with no one to move it along. The audit was clear that
-this is not caused by messy code, because the code is clean. The problem is that the services share things,
+this is not caused by messy code.Instaed the problem is that the services share things,
 and the label is only the most visible of four different kinds of sharing.
 
 ## 2. The four ways the services are tangled today
@@ -38,8 +38,8 @@ independently.
 The third is that some services talk to each other through rendered text and exact names rather than through
 a real interface. One service decides what to do by searching another service's comment for an exact phrase,
 and a second pair of workflows hand work between themselves only because they share an exact name string.
-Both of these break silently: change the wording or rename the workflow and nothing reports an error, the
-behaviour just quietly stops.
+Both of these break silently: change the wording or rename the workflow and nothing reports an error but just 
+stops. 
 
 The fourth is that unrelated features are bundled into the same deployment unit. One workflow file holds
 three separate commands behind one block of permissions, another holds two unrelated jobs, and three
@@ -63,7 +63,7 @@ The answer is to stop letting services reach into each other, and instead give t
 middle that they all talk to. That shared thing is the core. The core owns everything the services would
 otherwise pass between themselves, and it is the only part of the system allowed to talk to GitHub.
 
-Read the picture top to bottom. An event comes in from GitHub, the app checks the config to see which
+As in the diagram given below, an event comes in from GitHub, the app checks the config to see which
 services are switched on, those services run, and when they need to read or change anything they ask the core.
 Only the core writes back to GitHub.
 
@@ -102,16 +102,16 @@ service already uses, which today warns after five days of silence and only acts
 destructive action, such as automatically closing a pull request or unassigning an issue, warns first, waits
 out a grace period, and can be undone. Building this once means every service inherits it rather than
 reimplementing it. The comments part keeps a structured record that services read as data, instead of one
-service reading another's rendered wording and hoping it never changes. The taxonomy is listed for
-completeness but is held back until there is a clear goal for what labels are for, so for now it is only a
-placeholder.
+service reading another's rendered wording. The taxonomy is listed for completeness but is held back until
+there is a clear goal for what labels are for, so for now it is only a placeholder.
 
 The GitHub adapter is the single door. Because the core is the only part that writes back, the whole app can
 run on three narrow permissions: it may write to issues, write to pull requests, and read repository
 contents, and it never takes write access to the code itself (`contents:write`). Keeping every write behind
 one door is what makes that small, legible permission set believable, and it means the rules for talking to
-GitHub are written down and tested in one place instead of assumed in many. How each part of the core is
-shaped is the real design work ahead; this section only sets the frame.
+GitHub are written down and tested in one place instead of assumed in many. 
+
+How each part of the core is shaped is the real design work ahead; this section only sets the frame.
 
 ## 5. How the app decides what is switched on
 
@@ -123,8 +123,8 @@ repository has installed the app but written no config at all, it runs on safe d
 The registry then switches on only the services the repository actually declared, and hands each service only
 the permissions and settings it declared it needs. Everything downstream depends on this step being the one
 place that answers "which services are on here, and what is each allowed to do." The exact keys in that config
-file are deferred (see section 9); what matters for the architecture is that this enabling step exists and is
-the only thing that performs the toggle.
+file are deferred ; what matters for the architecture is that this enabling step exists and is the only thing 
+that performs the toggle.
 
 ## 6. What counts as a service
 
@@ -132,16 +132,20 @@ A service is one small unit that can be switched on or off, talks only to the co
 service. What keeps it honest is a short contract it has to declare, and that contract has four parts, one to
 answer each of the four tangles in section 2.
 
-First, it declares the small slice of config it reads. This matters more than it sounds, because today every
+-First, it declares the small slice of config it reads. This matters because today every
 service can read the whole configuration file even though each one really uses only a little of it: the status
 labels and the team names are read almost everywhere, while the skill ladder, the assignment limits, and the
 priority order are each read by only one or two services. A service that asks for only the keys it needs no
-longer shares the entire file with every other service. Second, it declares which statuses it reads and which
-it sets, and it does this only through the core, never by taking a label straight from a named neighbour.
-Third, it declares any read it makes across the issue-to-pull-request link, and performs that read through the
-one shared resolver, so no two services follow the link in ways that disagree. Fourth, it is its own
-deployment unit, with its own trigger and its own permissions, sharing no file and no queue with anything
-unrelated.
+longer shares the entire file with every other service. 
+
+-Second, it declares which statuses it reads and which it sets, and it does this only through the core, 
+never by taking a label straight from a named neighbour.
+
+-Third, it declares any read it makes across the issue-to-pull-request link, and performs that read through the
+one shared resolver, so no two services follow the link in ways that disagree. 
+
+-Fourth, it is its own deployment unit, with its own trigger and its own permissions, sharing no file and no queue 
+with anything unrelated.
 
 Those four declarations line up one for one with the four tangles: the config slice answers the shared file,
 status-through-the-core answers the label baton, the declared cross-entity read answers the problem of two
@@ -156,11 +160,11 @@ The trick that lets a service stand on its own is this: every status a service r
 other way, by a maintainer by hand, by a config default, or by a command. So a service that normally sets a
 status for another service is only ever a shortcut. It is never the only way to get there.
 
-Think of it like a light with both a switch and a motion sensor. The sensor is a convenience. Take it away
+We can imagine it like a light with both a switch and a motion sensor. The sensor is a convenience. Take it away
 and you can still turn the light on by hand. In the same way, enabling one service on its own gives you a
 working feature that you feed by hand. Add the service upstream of it and the feeding becomes automatic.
 Remove that upstream service and you are back to doing it by hand, with nothing broken and no work left
-stranded. Turning a service off dials the automation down. It does not tear a dependency out. Writing this
+stranded. Turning a service off dials the automation down but does not tear a dependency out. Writing this
 idea down as an exact, testable rule is one of the pieces still open.
 
 ## 8. Why we keep labels to a minimum
@@ -172,8 +176,7 @@ state. A few positions follow, all still open to confirm. The core, not any serv
 and knows the full set, so no service can invent one or wipe the whole group the way two services do today. A
 proposed new label has to earn its place against the simpler option of the core just holding that state
 without a label. And the bigger question of a full label scheme waits for its own separate decision about what
-labels are for, so this
-document proposes none and uses placeholders.
+labels are for, so this document proposes none and uses placeholders.
 
 ## 9. How we would test it
 
@@ -194,22 +197,21 @@ work ahead.
 Some decisions are being held back on purpose, so this document stays about the system and not the services
 that run on it. They are written down so that holding them back does not turn into forgetting them. Which
 services actually ship is for later, and the list in the opt-in modules note is only an example of how
-services could be split, not a promise to build those ones. The real config file, its settings and how the
-org defaults fill in, is for later, though section 5 fixes that the enabling step itself exists. The order the
-work is built in is for later, and that build order is a separate thing from the goal that a repository can
-adopt the app in phases and dial it up over time, which is a property of the design in section 7 rather than a
-schedule. The full label scheme waits for its own goal, as section 8 says. And the existing C++ and Python
-bots will need reworking, and probably simplifying, to fit a world where a service is a switchable unit on a
-shared core. That is build phase work, noted here only so the cost is on the record.
+services could be split. The real config file, its settings and how the org defaults fill in, is for later,
+though section 5 fixes that the enabling step itself exists. 
+
+The order the work is built in is for later, and that build order is a separate thing from the goal that a 
+repository can adopt the app in phases and dial it up over time, which is a property of the design in 
+section 7 rather than a schedule. The full label scheme waits for its own goal, as section 8 says. And the 
+existing C++ and Python bots will need reworking, and probably simplifying, to fit a world where a service
+is a switchable unit on a shared core. That is build phase work, noted here only so the cost is on the record.
 
 ## 11. Open questions
 
-A few things I still need to work through before the design settles. I would rather frame them clearly now
-than answer them too early.
+A few things we still need to work through before the design settles. 
 
 - Is the core, as the owner of status, the resolvers, the safety engine, the shared comment records, and the
-  single door to GitHub, the right line to draw between the shared system and a service? (The taxonomy sits in
-  the core too, but I am keeping it deferred behind its own goal, as section 8 explains.)
+  single door to GitHub, the right line to draw between the shared system and a service?
 - What does a service's contract in section 6 have to declare so that no service can ever come to lean on
   another?
 - Should status be kept as labels the core manages, or as state the core owns that a label only reflects,
