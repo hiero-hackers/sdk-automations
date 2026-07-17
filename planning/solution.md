@@ -236,7 +236,7 @@ flowchart LR
 - The operations questions — who hosts, rollout rings, config-error surfacing, and the rate-limit
   arithmetic — are drafted in `planning/operations.md`. The one correction it makes here: the budget
   is **per-organisation**, not per-repo (one installation covers every org repo), enforced entirely
-  at the adapter, with sweep cadence derived from fleet arithmetic rather than configured. Its §9
+  at the adapter, with sweep cadence derived from fleet arithmetic rather than configured. Its §7
   lists the shape-changes it forces on this document's §2 and §4.
 
 Reworking the existing C++ and Python bots into modules on this core is build-phase work, recorded here so
