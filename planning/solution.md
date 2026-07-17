@@ -1,219 +1,243 @@
 # Solution: Architecture Hypothesis (draft, co-authored)
 
-> This is a draft, meant to be developed further. It is not a finished specification.
-> Where a decision still has to be made, the text says so instead of pretending it is settled. This is the
-> central design document that three shorter notes already point toward, and it pulls them together: the
-> solution overview (`planning/solution-overview.md`), the opt-in modules note (`planning/opt-in-modules.md`),
-> and the test architecture note (`planning/test-architecture.md`). The vision and the hard limits come from
-> `planning/goals.md`. The coupling this design is trying to avoid is set out in `planning/lessons-learned.md`
-> and `audit/deep-dive-cpp.md`. What this document leaves for later, on purpose, is which services get built,
-> what the config file looks like, and the order the work happens in. This document is about the system that
-> holds the services, and not the services themselves.
+> A draft, meant to be developed further — not a finished specification. This is the second revision;
+> it supersedes the first hypothesis draft, which is preserved in git history. Where a decision is
+> still open, the text says so (§10), and where the design takes a position early it is marked
+> **proposed**, with the reasoning and with what would overturn it. This is the central design document
+> the shorter notes point toward (the repo `README.md` gives the reading order):
+> `planning/opt-in-modules.md` (the modules), `planning/test-architecture.md` (the tests),
+> `planning/manual-edits.md` (the manual-edit semantics), `planning/operations.md` (hosting, rollout,
+> rate limits, failure loudness), `planning/taxonomy-draft.md` and
+> `planning/config-draft.md` (the drafts awaiting ratification). Vision and hard limits:
+> `planning/goals.md`. The coupling this design avoids: `planning/lessons-learned.md` (classes A–E)
+> and `audit/deep-dive-cpp.md` §3. Left for later, on purpose: which services get built, the full
+> config schema, the label taxonomy, and the build order. This document is about the system that holds
+> the services, not the services themselves.
 
-## 1. The problem in one paragraph
+## 1. The problem, and the idea in one picture
 
-Today, in the C++ SDK, the automation services are tangled together. The clearest single example is one
-label, `status: ready for dev`. One service produces it, another picks it up, a third resets it, and so on,
-each one handing the label to the next like a baton in a relay. Because of that, one cannot switch one
-service off on its own: turn off the service that produces the label and the next one has nothing to do, and
-turn off the one that consumes it and work piles up with no one to move it along. The audit was clear that
-this is not caused by messy code.Instaed the problem is that the services share things,
-and the label is only the most visible of four different kinds of sharing.
+Today the automation services are tangled together — not because the code is messy, but because the
+services *share* things. The audit found four distinct kinds of sharing (`audit/deep-dive-cpp.md` §3):
 
-## 2. The four ways the services are tangled today
+- **Status labels as a baton.** `status: ready for dev` is produced by one service, consumed by another,
+  reset by a third — moving state that no single service owns, so none can be switched off alone.
+- **The issue↔PR link followed two different ways** (a precise query vs body-text scanning), which can
+  disagree about what is linked to what.
+- **Rendered text and exact names as interfaces.** One service searches another's comment for an exact
+  phrase; two workflows connect only through a name string. Change the wording or the name and nothing
+  reports an error — the behaviour just quietly stops.
+- **Unrelated features bundled** into one workflow file, one permissions block, one hidden queue — so
+  turning one off is a code edit, not a setting.
 
-The label baton is the first and deepest of the four, and the design has to answer all four, so it is worth
-naming them plainly before proposing a fix. They are drawn from the deep dive (`audit/deep-dive-cpp.md` §3).
+The answer is one shared thing in the middle: a **core** that owns everything services would otherwise
+pass between themselves, behind one door to GitHub — plus one sentence that holds the design together:
 
-- The first is shared status labels that act as moving state no single service owns. Status is passed from one
-service to the next, so whether an item is available to be worked on is a fact that lives in a label rather
-than in any one feature.
-
-- The second is that services follow the link between an issue and its pull request and write to the far side.
-This would be fine if they all followed the link the same way, but today two of them resolve it differently,
-one with a precise query and one by scanning the text of the issue body, and the two ways can disagree about
-what is linked to what. So the issue side and the pull request side of the lifecycle cannot be moved
-independently.
-
-- The third is that some services talk to each other through rendered text and exact names rather than through
-a real interface. One service decides what to do by searching another service's comment for an exact phrase,
-and a second pair of workflows hand work between themselves only because they share an exact name string.
-Both of these break silently: change the wording or rename the workflow and nothing reports an error but just 
-stops. 
-
-- The fourth is that unrelated features are bundled into the same deployment unit. One workflow file holds
-three separate commands behind one block of permissions, another holds two unrelated jobs, and three
-separate files share a single queue so that runs which look independent actually line up behind one another.
-Because of this, turning one feature off is a code or configuration-file edit rather than a setting.
-
-## 3. The question this document answers
-
-Can one system host many services in a way where each one can be turned on or off by itself? The test is
-simple. Enabling a service should be a config change. Disabling it should be a config change too, and it
-should not break or change any other service. No service should depend on another service. And adding a new
-capability should not add another baton that the next capability has to wait for.
-
-This document proposes the shape of such a system as a hypothesis. It does not pick the services. It designs
-what sits under them, so that whatever services are chosen later are independent because of how the system is
-built, not because each contributor happened to follow a convention.
-
-## 4. The idea: a shared core in the middle
-
-The answer is to stop letting services reach into each other, and instead give them one shared thing in the
-middle that they all talk to. That shared thing is the core. The core owns everything the services would
-otherwise pass between themselves, and it is the only part of the system allowed to talk to GitHub.
-
-As in the diagram given below, an event comes in from GitHub, the app checks the config to see which
-services are switched on, those services run, and when they need to read or change anything they ask the core.
-Only the core writes back to GitHub.
+> **The app is a stateless reducer over GitHub's state:** `(GitHub state, event, config) → transitions`.
+> The app itself stores nothing.
 
 ```mermaid
 flowchart TB
-    GH(["GitHub : events come in, changes go out"])
-    subgraph APP["The app : one install, few permissions"]
-        SHELL["Shell : receive the event, sign in"]
-        CFGREG["Config and registry : work out which services are switched on"]
-        SVCS["Services (opt-in) : many small units, each on or off"]
-        subgraph CORE["The core : owns everything services share"]
-            SM["status"]
-            RES["resolvers"]
-            SAFE["safety"]
-            CMT["comments"]
-            TAX["taxonomy"]
+    MAINT[["maintainer — labels by hand<br/>(the non-module way in)"]]
+    GH[("GitHub — the database<br/>labels = status · comments = projections · timestamps = clocks")]
+    MAINT --> GH
+
+    subgraph APP["hosted app · one install · issues:write · pull-requests:write · contents:read"]
+        direction TB
+        subgraph SHELL["shell"]
+            WH["webhook intake<br/>(push)"]
+            SW["reconciliation sweeper<br/>(pull, scheduled)"]
+            SER["per-item serializer — keyed queue, one worker per issue/PR"]
+            WH --> SER
+            SW --> SER
         end
-        ADP["GitHub adapter : the one door to GitHub"]
+        REG["registry — validate config (_extends) · project per-module slices · activate declared modules"]
+        MODS["modules (opt-in) — intake · assignment · inactivity · pr-quality · …<br/>each declares: config slice · states in/out · resolvers · cross-entity reads"]
+        subgraph CORE["core — domain vocabulary only, no service-shaped methods"]
+            direction LR
+            SM["state machine<br/>labels are the truth<br/>idempotent transitions"]
+            RES["resolvers<br/>linkedIssues · eligibleLevel<br/>isBot · mayPerform"]
+            SAFE["safety<br/>grace periods<br/>per-item cooldowns"]
+            PROJ["projections<br/>single-writer comments<br/>never an input"]
+        end
+        ADP["GitHub adapter — the one door"]
+        SER --> REG --> MODS -->|request transitions · read state| CORE --> ADP
     end
-    GH --> SHELL --> CFGREG --> SVCS
-    SVCS -->|ask for state, read resolvers| CORE
-    CORE --> ADP --> GH
+
+    GH -->|events + observed state| SHELL
+    ADP -->|guarded writes| GH
 ```
 
-The core is drawn as five parts plus that one door, and each part is still to be worked out in detail.
+Each tangle is answered structurally below: the baton by §4's single-writer state machine, the two-way
+link by §4's resolvers, the text-and-names interfaces by §4's projections, and the bundling by §5's
+deployment identity.
 
-Status is the most important of these. The core owns the work item's status, so "is this issue free to pick
-up" becomes a question the core answers, not a label one service leaves lying around for another to find.
-This is what removes the baton. The resolvers are the shared answers that two services must agree on, such as
-a contributor's skill level, which issue a pull request is linked to, and whether an actor is a bot. Because
-both services ask the core the same question, they cannot disagree, and the issue-to-pull-request link in
-particular is followed one way for everyone instead of the two conflicting ways used today.
+## 2. The shell
 
-The safety part is the one place any risky action passes through. It generalises the approach the inactivity
-service already uses, which today warns after five days of silence and only acts after seven, so that every
-destructive action, such as automatically closing a pull request or unassigning an issue, warns first, waits
-out a grace period, and can be undone. Building this once means every service inherits it rather than
-reimplementing it. The comments part keeps a structured record that services read as data, instead of one
-service reading another's rendered wording. The taxonomy is listed for completeness but is held back until
-there is a clear goal for what labels are for, so for now it is only a placeholder.
+Work arrives two ways and is serialised once:
 
-The GitHub adapter is the single door. Because the core is the only part that writes back, the whole app can
-run on three narrow permissions: it may write to issues, write to pull requests, and read repository
-contents, and it never takes write access to the code itself (`contents:write`). Keeping every write behind
-one door is what makes that small, legible permission set believable, and it means the rules for talking to
-GitHub are written down and tested in one place instead of assumed in many. 
+- **Webhook intake** — GitHub pushes an event; the shell authenticates the installation.
+- **Reconciliation sweeper** — scheduled reads of current state, fed through the same path as events.
+  Webhooks are not guaranteed delivered, and §7's rule means states can be entered with no event at all —
+  so modules react to **state observed, not events assumed**, and a missed webhook heals on the next
+  sweep. (The inactivity service already works this way; the pattern is promoted from one service's trick
+  to a first-class delivery mechanism.)
+- **Per-item serializer** — one worker per issue or PR. The audit removed the accidental mutex (the shared
+  concurrency groups, lessons D2); this is its deliberate replacement. GitHub's API has no
+  compare-and-swap on labels, so races are prevented here and absorbed by idempotent transitions (§4).
 
-How each part of the core is shaped is the real design work ahead; this section only sets the frame.
+## 3. Config and registry
 
-## 5. How the app decides what is switched on
+The registry resolves `.github/hiero-automation.json` (+ `_extends` org defaults), validates it **at
+runtime** (the file comes from repositories we do not control), and activates only the declared modules. A
+repository with no config runs on safe defaults — nothing destructive on. Each module receives a
+**projection** of the config: only its declared keys, *cannot see* the rest. That closes the shared-file
+coupling (lessons E1) at runtime, while the contract types (§5) close it at compile time.
 
-The layer between the incoming event and the services is what actually makes "turn a service on or off" work,
-so it deserves more than a box in the diagram. When an event arrives, the shell receives it and signs in as
-the app. The config step then reads the repository's own `.github/hiero-automation.json`, fills in any
-organisation-wide defaults it inherits through `_extends`, and works out the resulting set of choices. If a
-repository has installed the app but written no config at all, it runs on safe defaults rather than nothing.
-The registry then switches on only the services the repository actually declared, and hands each service only
-the permissions and settings it declared it needs. Everything downstream depends on this step being the one
-place that answers "which services are on here, and what is each allowed to do." The exact keys in that config
-file are deferred ; what matters for the architecture is that this enabling step exists and is the only thing 
-that performs the toggle.
+## 4. The core
 
-## 6. What counts as a service
+One rule governs all four parts: **the core speaks domain vocabulary, never service vocabulary.**
+Acceptance test: every public core operation must be describable without naming any module. The moment the
+core grows a `markReadyForAssignment()`, the coupling this design removes has moved inside the core and
+been sanctioned there.
 
-A service is one small unit that can be switched on or off, talks only to the core, and never to another
-service. What keeps it honest is a short contract it has to declare, and that contract has four parts, one to
-answer each of the four tangles in section 2.
+One event's life through the core:
 
-- First, it declares the small slice of config it reads. This matters because today every
-service can read the whole configuration file even though each one really uses only a little of it: the status
-labels and the team names are read almost everywhere, while the skill ladder, the assignment limits, and the
-priority order are each read by only one or two services. A service that asks for only the keys it needs no
-longer shares the entire file with every other service. 
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant SH as shell
+    participant M as module
+    participant C as core
+    participant A as adapter
+    GH->>SH: webhook (or sweep observation)
+    SH->>SH: enqueue on the item's key
+    SH->>M: event + config slice
+    M->>C: mayPerform(actor, action)?
+    C-->>M: yes
+    M->>C: request transition(state → state')
+    C->>C: guard: legal? already done? (idempotent)
+    C->>C: safety: destructive? warn · grace · cooldown
+    C->>A: apply label change + render projection
+    A->>GH: the only write path
+```
 
-- Second, it declares which statuses it reads and which it sets, and it does this only through the core, 
-never by taking a label straight from a named neighbour.
+| Part | Owns | The rule that keeps it safe |
+|---|---|---|
+| **state machine** | states + legal transitions, defined independently of installed modules | single `status:` writer; idempotent guarded transitions; coupled facts (assignee + status) move in one transition (lessons A1, A3) |
+| **resolvers** | `linkedIssues(pr)` · `eligibleLevel(user)` · `isBot(actor)` · `mayPerform(actor, action)` | one mechanism per question (B2) — authorization included, or two modules will answer it differently |
+| **safety** | grace periods, reversibility, **per-item cooldowns** | generalises the inactivity service's proven warn-then-act pattern; timers *derived* from GitHub timestamps in sweeps, never owned |
+| **projections** | every comment the app writes | rendered *from* state, **never read as input** (A2); any comment-borne metadata is core-private and schema-versioned |
 
-- Third, it declares any read it makes across the issue-to-pull-request link, and performs that read through the
-one shared resolver, so no two services follow the link in ways that disagree. 
+### 4.1 Where state lives *(proposed)*
 
-- Fourth, it is its own deployment unit, with its own trigger and its own permissions, sharing no file and no queue 
-with anything unrelated.
+**GitHub is the database.** Labels are the status store — the core is the app-side exclusive writer, and a
+hand-applied label is ingested as a legitimate transition, which is §7's rule working natively with no
+synchronisation machinery. Comments are projections. Timestamps are the safety engine's clocks. The app is
+stateless per event: trivial hosting, crash-safe, state auditable in GitHub's own UI, and the test fake
+for the core is an in-memory label set. The honest costs: label writes are not transactional (mitigated by
+§2's serializer plus idempotency), and any datum that fits no label rides in core-private comment metadata
+or derives from timestamps. **Overturned by:** a concrete invariant that provably needs an owned store —
+which would then live *behind* the core's interface, changing no module.
 
-Those four declarations line up one for one with the four tangles: the config slice answers the shared file,
-status-through-the-core answers the label baton, the declared cross-entity read answers the problem of two
-services following the same link in two ways, and the standalone deployment unit answers the bundled files
-and shared queues.
-Working out the exact form this contract takes is the most important open question in this document, and the
-first thing to settle, because everything else depends on it.
+This answers the first draft's open question "labels the core manages, or state a label only reflects":
+that question was really *does the app have a database*, and the proposal is no.
 
-## 7. How turning a service on and off works
+## 5. What counts as a module
 
-The trick that lets a service stand on its own is this: every status a service reads can also be set some
-other way, by a maintainer by hand, by a config default, or by a command. So a service that normally sets a
-status for another service is only ever a shortcut. It is never the only way to get there.
+One unit, on or off, talks only to the core. Its contract declares four things — one per tangle in §1:
 
-We can imagine it like a light with both a switch and a motion sensor. The sensor is a convenience. Take it away
-and you can still turn the light on by hand. In the same way, enabling one service on its own gives you a
-working feature that you feed by hand. Add the service upstream of it and the feeding becomes automatic.
-Remove that upstream service and you are back to doing it by hand, with nothing broken and no work left
-stranded. Turning a service off dials the automation down but does not tear a dependency out. Writing this
-idea down as an exact, testable rule is one of the pieces still open.
+| Declares | Answers | Enforced by |
+|---|---|---|
+| the config slice it reads | shared config (E) | contract types (compile time) + registry projection (runtime) |
+| states consumed / transitions requested | the label baton (A) | the core is the only `status:` writer |
+| cross-entity reads | the two-way link, baked-in writes (B, C) | one core resolver per question |
+| its own trigger, permissions, queue | bundling (D) | deployment identity; only the shell's *item*-scoped queue is shared |
 
-## 8. Why we keep labels to a minimum
+In TypeScript the contract is a value the type system enforces: the registry hands each module a core
+handle *typed by its declaration* — an undeclared transition is a compile error — and the runtime
+projection (§3) backs the same rule at the boundary. The contract's exact form is the first open item in
+§10; it is what every test layer in `test-architecture.md` mocks against.
 
-The deep dive showed the status labels are the deepest tangle, with `ready for dev` passed between five
-services in turn. The point follows from that: every new label is another baton, another thing
-one service must produce before another can act. So a label is added only when nothing else will carry the
-state. A few positions follow, all still open to confirm. The core, not any service, owns the status labels
-and knows the full set, so no service can invent one or wipe the whole group the way two services do today. A
-proposed new label has to earn its place against the simpler option of the core just holding that state
-without a label. And the bigger question of a full label scheme waits for its own separate decision about what
-labels are for, so this document proposes none and uses placeholders.
+## 6. The config file, sketched
 
-## 9. How we would test it
+Shape now, keys later (§10):
 
-Because the core owns the status, services can be tested against a stand in core that we control, rather than
-against GitHub. This is worth doing because a suite built only on mocks of GitHub drifts out of step with the
-real thing silently, whereas a core we own can be trusted and the one real boundary to GitHub is modelled
-once in the adapter. Owning the core also makes two useful kinds of test possible that mocks alone cannot
-reach. The first is a toggle test: try every combination of services switched on and off, and check the
-system still behaves, with nothing starved and no switched off service getting in the way. The second is a
-set of invariants, the rules that must hold no matter which services are on. For example, every status a
-service reads has another way to be set, no service writes a status label the core does not own, and no risky
-action skips the safety part. Listing those rules exactly, deciding where the stand in core ends and the real
-GitHub adapter begins, and deciding how much to test against a real sandbox repository, are left to the design
-work ahead.
+```jsonc
+// .github/hiero-automation.json — illustrative shape only
+{
+  "_extends": "org-repo",           // org defaults, repo overrides win
+  "modules": {
+    "assignment": { "maxOpenAssignments": 2 },   // presence = enabled
+    "inactivity": { "issue": { "warnAfterDays": 7, "unassignAfterDays": 21 } }
+    // absent module = off · no file at all = safe defaults · keys: config-draft.md
+  }
+}
+```
 
-## 10. What we are leaving for later
+A module's block is the whole config that module can see (§3), and safe defaults switch on nothing
+destructive.
 
-Some decisions are being held back on purpose, so this document stays about the system and not the services
-that run on it. They are written down so that holding them back does not turn into forgetting them. Which
-services actually ship is for later, and the list in the opt-in modules note is only an example of how
-services could be split. The real config file, its settings and how the org defaults fill in, is for later,
-though section 5 fixes that the enabling step itself exists. 
+## 7. Turning a module on and off
 
-The order the work is built in is for later, and that build order is a separate thing from the goal that a 
-repository can adopt the app in phases and dial it up over time, which is a property of the design in 
-section 7 rather than a schedule. The full label scheme waits for its own goal, as section 8 says. And the 
-existing C++ and Python bots will need reworking, and probably simplifying, to fit a world where a service
-is a switchable unit on a shared core. That is build phase work, noted here only so the cost is on the record.
+**Every state a module consumes can also be set another way** — a hand-applied label, a config default, a
+command. An upstream module is only ever a shortcut, never the only way in: the light has both a switch
+and a motion sensor, and removing the sensor leaves the switch working. (The state graph with the manual
+entry point drawn is `opt-in-modules.md` §3; the exact semantics of manual edits — the coherence
+classes, the never-revert rule, the newer-fact rule — are `planning/manual-edits.md`.) Two corollaries,
+made explicit:
 
-## 11. Open questions
+- Because states enter out-of-band, modules react to **state observed, not events assumed** — the sweeper
+  (§2) is architecture, not optimisation.
+- The rule is a CI gate, not philosophy: for every state in any module's contract, the toggle matrix must
+  contain a passing case where that state is produced *manually* and the consuming module still functions.
 
-A few things we still need to work through before the design settles. 
+## 8. Why labels stay minimal
 
-- Is the core, as the owner of status, the resolvers, the safety engine, the shared comment records, and the
-  single door to GitHub, the right line to draw between the shared system and a service?
-- What does a service's contract in section 6 have to declare so that no service can ever come to lean on
-  another?
-- Should status be kept as labels the core manages, or as state the core owns that a label only reflects,
-  since that answer decides how far the label discipline in section 8 can go?
-- Which of the test rules in section 9 are worth building the first test harness around?
+Every label is a potential baton — and under §4.1, also a row in the database. The core owns the full set;
+no module invents one; bulk `status:*` prefix-strips are impossible by construction (A1); and a proposed
+new label must beat the alternative of the core *deriving* the fact from assignees, timestamps, or links
+without storing it at all. The taxonomy itself waits for its own decision (§10).
+
+## 9. How it is tested
+
+The design in `planning/test-architecture.md` stands, with three additions this architecture makes cheap
+or necessary: the **fake core is an in-memory label set** plus the transition table (§4.1); two invariants
+become near-tautological and are asserted anyway — *no state outside GitHub*, *no write outside the
+adapter*; and one is new and load-bearing — **concurrent conflicting transitions resolve to exactly one
+winner**, the executable form of §2 plus §4's idempotency, and the regression test for removing the
+accidental mutex. The manual-edit semantics add their own invariants and an incoherence-injection axis to
+the toggle matrix (`planning/manual-edits.md` §6).
+
+## 10. What we still need to decide
+
+```mermaid
+flowchart LR
+    T["taxonomy + state machine<br/>(gates everything)"] --> ST["state store —<br/>ratify §4.1"]
+    T --> MVP["MVP module set<br/>+ boundaries"]
+    ST --> CONC["serializer + idempotency<br/>semantics (§2, §9)"]
+    ST --> SAFEQ["safety specifics<br/>(grace · reversal · cooldown)"]
+    MVP --> KNOBS["policy knobs reconciled<br/>across the SDKs"]
+    KNOBS --> SCHEMA["config schema (§6)"]
+    T --> SCHEMA
+```
+
+- We need the label taxonomy and the state machine first — nothing downstream starts before it.
+- We need to ratify (or refute) §4.1: is GitHub the database? If we can name an invariant that provably
+  needs an owned store, the store enters behind the core's interface and no module changes.
+- We need the manual-edit semantics ratified — what the core does when a hand-applied label conflicts
+  with the state machine. Drafted as `planning/manual-edits.md`: humans edit state (any position, from
+  any position, never reverted), modules request transitions (edge-bound); incoherent observations get
+  five defined classes; plus the newer-fact rule that stops a sweep re-derivation from fighting a
+  human's edit.
+- We need the exact form of the module contract (§5) — it is what every test layer mocks against.
+- We need the serializer and idempotency semantics written down as the one-winner invariant (§2, §9).
+- We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.
+- We need the safety specifics per destructive action: grace period, reversal path, trigger class.
+- The operations questions — who hosts, rollout rings, config-error surfacing, and the rate-limit
+  arithmetic — are drafted in `planning/operations.md`. The one correction it makes here: the budget
+  is **per-organisation**, not per-repo (one installation covers every org repo), enforced entirely
+  at the adapter, with sweep cadence derived from fleet arithmetic rather than configured. Its §7
+  lists the shape-changes it forces on this document's §2 and §4.
+
+Reworking the existing C++ and Python bots into modules on this core is build-phase work, recorded here so
+the cost stays on the record.

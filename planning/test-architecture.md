@@ -11,7 +11,7 @@
 
 C++ tested each handler against a mock of **GitHub** — a system the project doesn't control, whose drift is
 silent (`lessons-learned.md` B1, mock-fidelity). Here, a module only ever calls **the core**
-(`opt-in-modules.md` §4), so it is tested against a **fake core** — an interface the project *owns*: small,
+(`opt-in-modules.md` §3), so it is tested against a **fake core** — an interface the project *owns*: small,
 stable, ours. GitHub-mocking is pushed down to **one** adapter and contract-tested there. The mock-drift
 surface collapses from "every handler re-models GitHub" to "one adapter, modelled once."
 
@@ -24,9 +24,10 @@ surface collapses from "every handler re-models GitHub" to "one adapter, modelle
 | **Adapter contract** | the one GitHub adapter vs GitHub's published schemas; typed client so a rename is a compile error | GitHub (here only) |
 | **Module↔core contract** | a module only requests transitions / reads keys it *declared* | the registry |
 | **Composition** | a real sequence (intake → assign → inactivity) on a real core | adapter only |
-| **Toggle matrix** | enabling/disabling a module has no side effect on the others | adapter |
-| **Invariants** | item never in two `status:` states; destructive acts always pass the safety engine | — |
-| **E2E (scheduled)** | a real App install on a sandbox repo: real webhooks + API | nothing |
+| **Toggle matrix** | enabling/disabling a module has no side effect on the others; plus the incoherence-injection axis — each `manual-edits.md` §3 class × each module combination | adapter |
+| **Invariants** | item never in two *position* states (`blocked` is an overlay); destructive acts always pass the safety engine; the manual-edit set (`manual-edits.md` §6: never-revert, no-prefix, narrated, blocked-absolute) | — |
+| **Replay gate** | every release replays recent production events and diffs the emitted transitions against what production did; an unexplained diff blocks (`operations.md` §3) | nothing — real recorded traffic |
+| **E2E (scheduled)** | a real App install on a sandbox repo: real webhooks + API; doubles as ring 0 of the rollout (`operations.md` §3) | nothing |
 
 ## The two layers only the decoupling makes possible
 

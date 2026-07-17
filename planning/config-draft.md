@@ -106,7 +106,10 @@ the principles behind every key kept or cut.
 {
   "core": { "labels": { /* the one canonical set, so every repo agrees */ } },
   "modules": {
-    "inactivity": { "warnAfterDays": 7, "actAfterDays": 14 }   // gentler org-wide default
+    "inactivity": {
+      "issue": { "warnAfterDays": 7,  "unassignAfterDays": 28 },  // gentler org-wide defaults,
+      "pr":    { "warnAfterDays": 14, "closeAfterDays": 90 }      // same keys as the repo file
+    }
   }
 }
 ```
