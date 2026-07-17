@@ -11,8 +11,10 @@ directory per component, with each component's design doc beside its code.
 
 1. [`planning/goals.md`](planning/goals.md) — the vision, the problem, and the hard limits.
 2. [`design/architecture.md`](design/architecture.md) — **the central design document**; its §1 is the overview
-   picture.
+   picture. [`design/decisions.md`](design/decisions.md) is the register of every proposed position
+   and open question — the ratification index.
 3. The component docs, each drafted for maintainer ratification:
+   - [`design/core/README.md`](design/core/README.md) — the core's anatomy and the index of its design
    - [`design/core/taxonomy.md`](design/core/taxonomy.md) — the labels, the two state machines (issue and PR), and
      the per-position invariants
    - [`design/core/manual-edits.md`](design/core/manual-edits.md) — what happens when a human edits a status label

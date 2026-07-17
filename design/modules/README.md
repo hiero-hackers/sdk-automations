@@ -3,7 +3,8 @@
 > DRAFT — the module-level companion to `design/architecture.md`, which designs the system these run
 > on. No decision yet on which modules ship: the catalogue is a worked split of the audited
 > capabilities (`audit/services.md`), with placeholder state names pending `design/core/taxonomy.md`.
-> As each module is designed for build, its spec lands in this directory as `<name>.md`.
+> As each module is designed for build, its spec lands in this directory as `<name>.md`. The typed
+> contract every module implements is `contract.md`.
 
 ## 1. The decoupling rule
 
@@ -82,7 +83,27 @@ so does the manual entry point. Cut intake out and the node keeps an inbound edg
 (`maintainer label`), so assignment keeps working. The missing module-to-module edge **is** the
 decoupling.
 
-## 4. Worked example: dialling assignment up and down
+## 4. The module lifecycle: proposal to retirement
+
+- **Proposal.** A candidate service is paper-fitted against the contract's fitness test
+  (`design/modules/contract.md` §6): does it fit the five declaration fields with existing
+  resolvers, or one promoted fact? A service that can't fit is asking for module-to-module
+  coupling — redesigned, not accommodated. Any new core fact it needs passes the gate
+  (`design/core/README.md`) *before* the module is accepted.
+- **Acceptance.** A spec from `TEMPLATE.md`, ratified like any design decision; then built against
+  the conformance kit — passing the kit is the definition of being a module.
+- **Evolution.** Config keys are deprecate-in-place, never removed within a major version (the SDK
+  convention, inherited): an old key keeps working with a health-issue nudge. Declaration changes
+  (new edge, new resolver) re-run the kit derivation — the tests grow with the declaration.
+- **Retirement — safe by the same rule that makes toggling safe.** Removing a module from the
+  system entirely is the light switch surviving the motion sensor's removal, fleet-wide: its
+  consumed states remain enterable by hand (§1.3), its produced states remain consumable by
+  neighbours from manual entry, its labels and past comments stay (projections resolve down), and
+  its config blocks are reported by the registry as unknown-module errors in the health issue —
+  loud, not silent (`design/operations/README.md` §5). No migration is needed to *remove* a module,
+  ever; that property is the toggle matrix's zero-side-effect guarantee applied at the fleet level.
+
+## 5. Worked example: dialling assignment up and down
 
 - **assignment only.** A maintainer labels an issue `ready for dev`; a contributor runs `/assign`;
   the core moves it to `in progress`. Fully functional — maintainers produce and reclaim the pool by

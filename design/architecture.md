@@ -154,8 +154,8 @@ One unit, on or off, talks only to the core. Its contract declares four things �
 
 In TypeScript the contract is a value the type system enforces: the registry hands each module a core
 handle *typed by its declaration* — an undeclared transition is a compile error — and the runtime
-projection (§3) backs the same rule at the boundary. The contract's exact form is the first open item in
-§10; it is what every test layer in `design/testing/README.md` mocks against.
+projection (§3) backs the same rule at the boundary. The contract's exact form is drafted in
+`design/modules/contract.md`; it is what every test layer in `design/testing/README.md` mocks against.
 
 ## 6. The config file, sketched
 
@@ -229,10 +229,17 @@ flowchart LR
   any position, never reverted), modules request transitions (edge-bound); incoherent observations get
   five defined classes; plus the newer-fact rule that stops a sweep re-derivation from fighting a
   human's edit.
-- We need the exact form of the module contract (§5) — it is what every test layer mocks against.
-- We need the serializer and idempotency semantics written down as the one-winner invariant (§2, §9).
+- The module contract (§5) is drafted as `design/modules/contract.md` — five typed declaration
+  fields, a required `cause` enforcing the newer-fact rule, `effects` carrying the A3 coupling.
+- The serializer and idempotency semantics are written down as the one-winner invariant in
+  `design/modules/contract.md` §3 — exactly one `applied` per conflicting set, compare-and-set via
+  `expect`, the app's own echo resolving to `already`.
+- The full register of proposed decisions and open questions is `design/decisions.md` — the
+  ratification memo's skeleton.
 - We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.
-- We need the safety specifics per destructive action: grace period, reversal path, trigger class.
+- We need the safety specifics per destructive action ratified — drafted as `design/core/safety.md`:
+  three destructive actions, warn-then-act mandatory for clock-triggered ones, every warning names its
+  exits, every action reverses in one gesture.
 - The operations questions — who hosts, rollout rings, config-error surfacing, and the rate-limit
   arithmetic — are drafted in `design/operations/README.md`. The one correction it makes here: the budget
   is **per-organisation**, not per-repo (one installation covers every org repo), enforced entirely
