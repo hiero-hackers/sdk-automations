@@ -132,6 +132,6 @@ the same system measured locally versus across its seams.
 
 That is an encouraging diagnosis, because the strong band is the hard part to retrofit and it is already
 there. What the shared app has to add is the weak band: explicit, checked contracts between modules (the
-capability registry, `solution.md` §5), single ownership of the state spine (the core state machine,
-`solution.md` §4), and loud failure when a contract is unmet — none of which require giving up the
+capability registry, `design/architecture.md` §5), single ownership of the state spine (the core state machine,
+`design/architecture.md` §4), and loud failure when a contract is unmet — none of which require giving up the
 single-config, least-privilege, idempotent foundation that already scores an A.

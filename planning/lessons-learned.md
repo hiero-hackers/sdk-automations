@@ -4,10 +4,10 @@
 > to avoid, and why. Every entry is an audit finding, not a new investigation.
 >
 > **Source:** the Phase 1–3 audits (`audit/services-cpp.md`, `audit/labels-cpp.md`,
-> `audit/labels-python.md`, `audit/services-python.md`, `audit/coupling-cpp.md`) and `docs/services.md`.
+> `audit/labels-python.md`, `audit/services-python.md`, `audit/coupling-cpp.md`) and `audit/services.md`.
 > Section references (`§2.1` etc.) point into `audit/coupling-cpp.md` unless noted.
 >
-> **Scope:** this records the anti-patterns only. What to build instead is `planning/solution.md`.
+> **Scope:** this records the anti-patterns only. What to build instead is `design/architecture.md`.
 
 ## The meta-finding: the two SDKs trade one coupling for the other
 
@@ -95,7 +95,7 @@ events. (§2.6, §5.6)
 ## E. Config
 
 **E1. Avoid both config extremes — hand-copied constants and a monolithic shared file.** Python's drift
-(four sets, A–D in `docs/services.md` §4) comes from the same label idea typed by hand in scattered places.
+(four sets, A–D in `audit/services.md` §4) comes from the same label idea typed by hand in scattered places.
 C++ cures that with one `hiero-automation.json` — but that single file is then read by nine of ten
 services, and its schema lets any service read any key, so the config becomes a dependency everything
 shares in full. (§2.4, §5.7)

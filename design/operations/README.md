@@ -11,7 +11,7 @@
 > **Proposed.** The app may be down, slow, or restarted at any moment without loss or corruption.
 > Downtime delays automation; it never breaks state.
 
-This is the stateless reducer (`solution.md` §4.1) plus the sweeper (§2) read as an availability
+This is the stateless reducer (`design/architecture.md` §4.1) plus the sweeper (§2) read as an availability
 story: GitHub holds all state, missed webhooks heal on the next sweep, crashes are absorbed by
 idempotency. Everything follows from it:
 
@@ -20,8 +20,11 @@ idempotency. Everything follows from it:
   instance would reintroduce the race it exists to kill. **Overturned by:** growth past §4's
   arithmetic, at which point the queue moves behind the shell, changing no module.
 - **Restart is the recovery tool.** There is no state to reconcile.
+- **Safe to shed, too:** the shell's queues are bounded — an event storm (a bulk-label import, 500
+  webhooks at once) is shed past the bound and healed by the next sweep. Correctness never depends
+  on processing any particular event (`threat-model.md` §3.4).
 - **Uninstall is graceful.** Labels, comments, assignees all survive; maintainers continue by hand —
-  the light-switch rule (`solution.md` §7) at system level.
+  the light-switch rule (`design/architecture.md` §7) at system level.
 - Deliberately **not** built: HA, clustering, queue infrastructure, per-repo cadence tiers, new
   permission scopes. Each would be state or surface to operate, and §1 makes them unnecessary.
 
@@ -65,10 +68,10 @@ flowchart LR
 - **The replay gate** *(proposed)* is the purity payoff cashed in: the reducer is
   `(state, event, config) → transitions`, so every production decision replays offline from the
   decision log (§6). Regression testing against real traffic, no infrastructure, no risk. It joins
-  `test-architecture.md` as a layer.
+  `design/testing/README.md` as a layer.
 - **Rings** are keyed by installation in the shell — one deployment, no per-repo versions. Promotion
   is soak-time plus zero unexplained alerts. Ring 0 is the E2E sandbox doing double duty.
-- **Rollback safety** is the comment-metadata schema versioning (`solution.md` §4): v(n) must read
+- **Rollback safety** is the comment-metadata schema versioning (`design/architecture.md` §4): v(n) must read
   v(n+1), so schema changes are additive within a soak window.
 
 ## 4. The rate-limit arithmetic
@@ -76,13 +79,13 @@ flowchart LR
 The shaping fact: **an App installation is per-organisation, and the rate budget belongs to the
 installation** — so every participating hiero-ledger repo draws on one shared budget (~5,000 REST
 req/hr and ~5,000 GraphQL points/hr, scaling modestly with repo count). Not per-repo, as
-`solution.md` §10 first guessed.
+`design/architecture.md` §10 first guessed.
 
 To be precise about what "per-organisation" does and does not mean — **budget is org-level; consent
 is repo-level, twice over.** A repo that wants nothing to do with the app is untouched: the org
 installation is scoped to *selected repositories* (a repo outside the selection sends no webhooks
 and grants no access at all), and inside the selection the config file is the real switch — no
-config means safe defaults, and an absent module block means that module is off (`solution.md` §3).
+config means safe defaults, and an absent module block means that module is off (`design/architecture.md` §3).
 What repos *cannot* have is separate budgets: opting in means drawing on the shared installation
 allowance, which is why cadence is fleet arithmetic (below) and not a per-repo knob. (Multiplying
 budget by registering one app per repo is technically possible and rejected: N keys, N webhook
@@ -102,7 +105,7 @@ The decisions this fixes:
    core's resolvers, not declared (a fifth contract line was considered and rejected — it would break
    the four-declarations-for-four-tangles symmetry for something the core can measure itself).
 2. **Sweep cadence is not a config knob** — derived from fleet arithmetic, jittered across repos.
-   Joins `config-draft.md` §3's not-configurable list.
+   Joins `design/config/schema.md` §3's not-configurable list.
 3. **Saturation degrades cadence, never correctness** (§1 makes that safe); sustained saturation is
    an operator alert.
 4. **Overturned by:** the arithmetic failing >2× at build time — escape hatches in order: ETags in
@@ -113,17 +116,17 @@ The decisions this fixes:
 > **Proposed.** Every failure class is assigned one primary audience, on a channel that audience
 > already watches. A failure class with no assigned audience is a design bug.
 
-(The cure for the old system's grade-D silence, `principles-review-cpp.md` §9.)
+(The cure for the old system's grade-D silence, `audit/principles-review-cpp.md` §9.)
 
 | Failure | Audience | Channel |
 |---|---|---|
 | config invalid (parse, schema, unknown module, bad `_extends`) | repo maintainers | PR comment at edit time + the health issue at runtime |
 | slash command failed or refused | the commenter | reaction + reply comment |
-| module refusal loop (contract bug) | developers | telemetry + decision log — never a repo comment (`manual-edits.md` §4) |
-| incoherent manual state | repo maintainers | narration comment (`manual-edits.md` §5) |
+| module refusal loop (contract bug) | developers | telemetry + decision log — never a repo comment (`design/core/manual-edits.md` §4) |
+| incoherent manual state | repo maintainers | narration comment (`design/core/manual-edits.md` §5) |
 | sustained budget saturation | operator (repo only if its cadence visibly degrades) | telemetry; health-issue line |
 | webhook outage | operator | delivery-lag metric; sweeps heal meanwhile |
-| poison item | operator | telemetry + skip; narrated only if a human is visibly waiting |
+| poison item (processing crashes repeatedly) | operator | telemetry + skip; narrated only if a human is visibly waiting |
 | GitHub 5xx | nobody (retry) → operator if sustained | adapter retry + telemetry |
 
 The three repo-facing mechanisms, all inside the existing three scopes:
@@ -143,32 +146,38 @@ The three repo-facing mechanisms, all inside the existing three scopes:
 
 The decision log — `(observed state, event, config slice) → transitions → adapter outcome` per
 decision — is at once the debugging story (replay any behaviour offline), the release gate (§3), and
-the audit trail `goals.md` promises. Dashboard, readable in one glance: webhook lag, sweep staleness,
-budget consumption vs §4, refusal rate per module, ack latency, per-ring deltas. Alerts page nobody
-(§1); they mark the dashboard and, where §5's table says so, the health issue.
+the audit trail `planning/goals.md` promises. Dashboard, readable in one glance: webhook lag, sweep
+staleness, budget consumption vs §4, refusal rate per module, ack latency, per-ring deltas. Alerts
+page nobody (§1); they mark the dashboard and, where §5's table says so, the health issue.
 
 The app stores no repo data at rest; what remains is the two secrets (§2) and logs holding public
 repo metadata, retained for the replay window only *(proposed: 30–90 days)*. Webhook signatures are
-verified at intake before anything runs.
+verified at intake before anything runs. The full adversarial pass — command griefing, content
+injection through the app's voice, config as weapon, compromised accounts and keys — is
+`design/operations/threat-model.md`.
 
 ## 7. The shape-changes this forces
 
-1. **Adapter** (`solution.md` §4): token bucket, write pacer, retry policy — budgets at the one door,
-   nowhere else.
-2. **Shell** (`solution.md` §2): single instance explicit; sweep jitter; command 👀-acks and the
+1. **Adapter** (`design/architecture.md` §4): token bucket, write pacer, retry policy — budgets at the one
+   door, nowhere else.
+2. **Shell** (`design/architecture.md` §2): single instance explicit; sweep jitter; command 👀-acks and the
    un-acked-command scan.
-3. **Projections** (`solution.md` §4): three new kinds — health issue, config PR comment, command
+3. **Projections** (`design/architecture.md` §4): three new kinds — health issue, config PR comment, command
    acks (the reaction-as-marker is the same sanctioned metadata carve-out as the safety engine's).
-4. **Module contract** (`solution.md` §5): *unchanged* — costs metered, not declared (§4).
-5. **Config** (`config-draft.md` §3): cadence joins the not-configurable list.
-6. **Tests** (`test-architecture.md`): replay gate added; ring 0 = the E2E sandbox.
-7. **Corrected:** the rate budget is per-org, not per-repo (`solution.md` §10).
+4. **Module contract** (`design/architecture.md` §5): *unchanged* — costs metered, not declared (§4).
+5. **Config** (`design/config/schema.md` §3): cadence joins the not-configurable list.
+6. **Tests** (`design/testing/README.md`): replay gate added; ring 0 = the E2E sandbox.
+7. **Corrected:** the rate budget is per-org, not per-repo (`design/architecture.md` §10).
 
 ## 8. Open
 
-- Where hosting concretely lands (LFDT infra vs TSC account) — a TSC decision; the ask is §2.
+- Where hosting concretely lands (LFDT infrastructure vs TSC cloud account) — a TSC decision; the
+  ask is §2.
 - The ring-1 volunteer repo and soak durations.
 - Log retention length, set with the infrastructure owner.
 - Whether sweep-path (late) commands warrant an apology line beyond the ack.
 - Secondary-limit pacing numbers — measured at ring 0, not taken from docs.
 - Whether ring membership is visible to repos (a health-issue line?) or stays operator-side.
+- Whether the installation's repo selection stays tight or installs org-wide with the config file
+  doing the consenting — a governance choice for the TSC (selection is org-admin controlled; the
+  config file is the maintainers' own switch).

@@ -271,7 +271,7 @@ Read it as two clusters joined by the config file and the merge:
 
 ## 4. Entangled versus separable
 
-Grouped by the seven service groups from `docs/services.md`, here is how independent each C++ service is
+Grouped by the seven service groups from `audit/services.md`, here is how independent each C++ service is
 today. "Separable" means it runs on its own with only the shared config; "soft-coupled" means it shares
 read-or-write state but does not strictly need another service to function; "hard-coupled" means it cannot
 run, move, or switch off without another service or a file edit.
@@ -289,7 +289,7 @@ run, move, or switch off without another service or a file edit.
 | 5. Progression | Post-Merge Recommendation, Cleanup, Milestone | hard-coupled | co-located with Sibling Conflict in `on-pr-close.yaml`; the milestone check gates the recommendation step in one path; strips status on linked issues; feeds `ready for dev` candidates back to `/assign`. |
 | 7. Admin | Slash Command Dispatcher | hard-coupled | it is the single entry point for all three slash commands; the commands cannot be separated from it without restructuring. |
 
-Group 6 (Notifications) has no C++ implementation; it is Python-only (see `docs/services.md` section 2).
+Group 6 (Notifications) has no C++ implementation; it is Python-only (see `audit/services.md` section 2).
 The repo-hygiene part of Group 7 is CI-adjacent and out of scope.
 
 The pattern: the four read-or-own-their-state services (`/finalize`, `/unassign`, PR Open Checks,

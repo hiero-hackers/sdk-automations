@@ -19,7 +19,7 @@
 > **What is description and what is hypothesis.** The reading of each service's value and of what couples it
 > is description: it records what the code does now. The reading of whether a service could stand alone is an
 > assessment of the code as it is written. Where that assessment goes on to say what an independent version
-> would need, that is a hypothesis offered to `planning/solution.md`, not a design decision taken here. This
+> would need, that is a hypothesis offered to `design/architecture.md`, not a design decision taken here. This
 > document does not propose a target architecture, a split, a minimum viable product, or a toggle config.
 > Those are separate decisions for the planning stage.
 >
@@ -30,7 +30,7 @@
 
 ## 1. How to read each group
 
-The service groups are the seven laid out in `docs/services.md`. Six of them have a C++ implementation, and
+The service groups are the seven laid out in `audit/services.md`. Six of them have a C++ implementation, and
 those six are covered here: intake, assignment, PR quality and review, lifecycle, progression, and the
 admin dispatcher. Each one is read the same way, through three questions written out as plain paragraphs.
 
@@ -285,7 +285,7 @@ shared moving state sitting above the code and the shared files sitting under it
 
 ## 4. What an independent feature would need (a hypothesis)
 
-This last section is offered to `planning/solution.md` as a hypothesis, not decided here. If the question the
+This last section is offered to `design/architecture.md` as a hypothesis, not decided here. If the question the
 project keeps asking is whether each service could become a feature that runs on the shared config and a read
 of the shared status labels, then the deep dive suggests a feature would need four things, one to answer each
 of the four shared sources above.

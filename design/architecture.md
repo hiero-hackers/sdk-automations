@@ -4,15 +4,14 @@
 > it supersedes the first hypothesis draft, which is preserved in git history. Where a decision is
 > still open, the text says so (§10), and where the design takes a position early it is marked
 > **proposed**, with the reasoning and with what would overturn it. This is the central design document
-> the shorter notes point toward (the repo `README.md` gives the reading order):
-> `planning/opt-in-modules.md` (the modules), `planning/test-architecture.md` (the tests),
-> `planning/manual-edits.md` (the manual-edit semantics), `planning/operations.md` (hosting, rollout,
-> rate limits, failure loudness), `planning/taxonomy-draft.md` and
-> `planning/config-draft.md` (the drafts awaiting ratification). Vision and hard limits:
+> the component docs point toward (the repo `README.md` gives the reading order):
+> `design/modules/README.md` (the module catalogue), `design/testing/README.md` (the tests),
+> `design/core/manual-edits.md` (the manual-edit semantics), `design/operations/README.md` (hosting, rollout,
+> rate limits, failure loudness), `design/core/taxonomy.md` and
+> `design/config/schema.md` (the drafts awaiting ratification). Vision and hard limits:
 > `planning/goals.md`. The coupling this design avoids: `planning/lessons-learned.md` (classes A–E)
-> and `audit/deep-dive-cpp.md` §3. Left for later, on purpose: which services get built, the full
-> config schema, the label taxonomy, and the build order. This document is about the system that holds
-> the services, not the services themselves.
+> and `audit/deep-dive-cpp.md` §3. Left for later, on purpose: which services get built and the build
+> order. This document is about the system that holds the services, not the services themselves.
 
 ## 1. The problem, and the idea in one picture
 
@@ -123,7 +122,7 @@ sequenceDiagram
 
 | Part | Owns | The rule that keeps it safe |
 |---|---|---|
-| **state machine** | states + legal transitions, defined independently of installed modules | single `status:` writer; idempotent guarded transitions; coupled facts (assignee + status) move in one transition (lessons A1, A3) |
+| **state machine** | states + legal transitions (one machine per entity, `design/core/taxonomy.md` §2), defined independently of installed modules | single `status:` writer; idempotent guarded transitions; coupled facts (assignee + status) move in one transition (lessons A1, A3); close hygiene strips an item's own position on close — never across the link |
 | **resolvers** | `linkedIssues(pr)` · `eligibleLevel(user)` · `isBot(actor)` · `mayPerform(actor, action)` | one mechanism per question (B2) — authorization included, or two modules will answer it differently |
 | **safety** | grace periods, reversibility, **per-item cooldowns** | generalises the inactivity service's proven warn-then-act pattern; timers *derived* from GitHub timestamps in sweeps, never owned |
 | **projections** | every comment the app writes | rendered *from* state, **never read as input** (A2); any comment-borne metadata is core-private and schema-versioned |
@@ -155,8 +154,8 @@ One unit, on or off, talks only to the core. Its contract declares four things �
 
 In TypeScript the contract is a value the type system enforces: the registry hands each module a core
 handle *typed by its declaration* — an undeclared transition is a compile error — and the runtime
-projection (§3) backs the same rule at the boundary. The contract's exact form is the first open item in
-§10; it is what every test layer in `test-architecture.md` mocks against.
+projection (§3) backs the same rule at the boundary. The contract's exact form is drafted in
+`design/modules/contract.md`; it is what every test layer in `design/testing/README.md` mocks against.
 
 ## 6. The config file, sketched
 
@@ -169,7 +168,7 @@ Shape now, keys later (§10):
   "modules": {
     "assignment": { "maxOpenAssignments": 2 },   // presence = enabled
     "inactivity": { "issue": { "warnAfterDays": 7, "unassignAfterDays": 21 } }
-    // absent module = off · no file at all = safe defaults · keys: config-draft.md
+    // absent module = off · no file at all = safe defaults · keys: design/config/schema.md
   }
 }
 ```
@@ -182,8 +181,8 @@ destructive.
 **Every state a module consumes can also be set another way** — a hand-applied label, a config default, a
 command. An upstream module is only ever a shortcut, never the only way in: the light has both a switch
 and a motion sensor, and removing the sensor leaves the switch working. (The state graph with the manual
-entry point drawn is `opt-in-modules.md` §3; the exact semantics of manual edits — the coherence
-classes, the never-revert rule, the newer-fact rule — are `planning/manual-edits.md`.) Two corollaries,
+entry point drawn is `design/modules/README.md` §3; the exact semantics of manual edits — the coherence
+classes, the never-revert rule, the newer-fact rule — are `design/core/manual-edits.md`.) Two corollaries,
 made explicit:
 
 - Because states enter out-of-band, modules react to **state observed, not events assumed** — the sweeper
@@ -200,13 +199,13 @@ without storing it at all. The taxonomy itself waits for its own decision (§10)
 
 ## 9. How it is tested
 
-The design in `planning/test-architecture.md` stands, with three additions this architecture makes cheap
+The design in `design/testing/README.md` stands, with three additions this architecture makes cheap
 or necessary: the **fake core is an in-memory label set** plus the transition table (§4.1); two invariants
 become near-tautological and are asserted anyway — *no state outside GitHub*, *no write outside the
 adapter*; and one is new and load-bearing — **concurrent conflicting transitions resolve to exactly one
 winner**, the executable form of §2 plus §4's idempotency, and the regression test for removing the
 accidental mutex. The manual-edit semantics add their own invariants and an incoherence-injection axis to
-the toggle matrix (`planning/manual-edits.md` §6).
+the toggle matrix (`design/core/manual-edits.md` §6).
 
 ## 10. What we still need to decide
 
@@ -221,20 +220,28 @@ flowchart LR
     T --> SCHEMA
 ```
 
-- We need the label taxonomy and the state machine first — nothing downstream starts before it.
+- We need the label taxonomy and the state machines ratified first — drafted in `design/core/taxonomy.md`;
+  nothing downstream starts before it.
 - We need to ratify (or refute) §4.1: is GitHub the database? If we can name an invariant that provably
   needs an owned store, the store enters behind the core's interface and no module changes.
 - We need the manual-edit semantics ratified — what the core does when a hand-applied label conflicts
-  with the state machine. Drafted as `planning/manual-edits.md`: humans edit state (any position, from
+  with the state machine. Drafted as `design/core/manual-edits.md`: humans edit state (any position, from
   any position, never reverted), modules request transitions (edge-bound); incoherent observations get
   five defined classes; plus the newer-fact rule that stops a sweep re-derivation from fighting a
   human's edit.
-- We need the exact form of the module contract (§5) — it is what every test layer mocks against.
-- We need the serializer and idempotency semantics written down as the one-winner invariant (§2, §9).
+- The module contract (§5) is drafted as `design/modules/contract.md` — five typed declaration
+  fields, a required `cause` enforcing the newer-fact rule, `effects` carrying the A3 coupling.
+- The serializer and idempotency semantics are written down as the one-winner invariant in
+  `design/modules/contract.md` §3 — exactly one `applied` per conflicting set, compare-and-set via
+  `expect`, the app's own echo resolving to `already`.
+- The full register of proposed decisions and open questions is `design/decisions.md` — the
+  ratification memo's skeleton.
 - We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.
-- We need the safety specifics per destructive action: grace period, reversal path, trigger class.
+- We need the safety specifics per destructive action ratified — drafted as `design/core/safety.md`:
+  three destructive actions, warn-then-act mandatory for clock-triggered ones, every warning names its
+  exits, every action reverses in one gesture.
 - The operations questions — who hosts, rollout rings, config-error surfacing, and the rate-limit
-  arithmetic — are drafted in `planning/operations.md`. The one correction it makes here: the budget
+  arithmetic — are drafted in `design/operations/README.md`. The one correction it makes here: the budget
   is **per-organisation**, not per-repo (one installation covers every org repo), enforced entirely
   at the adapter, with sweep cadence derived from fleet arithmetic rather than configured. Its §7
   lists the shape-changes it forces on this document's §2 and §4.

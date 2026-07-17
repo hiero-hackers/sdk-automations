@@ -63,7 +63,7 @@ service that writes them.
 
 > One cross-SDK clash to flag: `status: ready-to-merge` lives in the `status:` namespace but it belongs to
 > Python's review queue, while C++'s `status:` namespace is its issue and PR review machine. The
-> normalized taxonomy has to reconcile the two (see `docs/services.md`).
+> normalized taxonomy has to reconcile the two (see `audit/services.md`).
 
 ### Lifecycle and moderation
 
@@ -216,7 +216,7 @@ which is the structural root of the drift: `pending-review`, `approved`, `discus
 `notes: spam-list-update`, `notes: mentor-duty`, `priority: critical`, `Priority: Critical`, and the bare
 `beginner`. That is about nine labels with no single place to rename or validate them.
 
-## Archive note (this feeds the "retired" column in `docs/services.md`)
+## Archive note (this feeds the "retired" column in `audit/services.md`)
 
 The 10 archived workflows in `.github/workflows/archive/` reference no archive-only labels. The only label
 they touch, `Good First Issue`, is still active. `bot-mentor-assignment.yml` is archived because its logic

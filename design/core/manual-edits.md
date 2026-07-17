@@ -1,10 +1,10 @@
 # Manual-Edit Semantics: What Happens When a Human Touches a Status Label
 
 > **Drafted for ratification.** The core is the single app-side writer of `status:`, yet a hand-applied
-> label "is ingested as a legitimate transition" (`solution.md` §4.1) — so what happens when a human
+> label "is ingested as a legitimate transition" (`design/architecture.md` §4.1) — so what happens when a human
 > applies a label the state machine has no edge for? The answer follows from two commitments already
-> made: **no surprise actions** (`goals.md`) and **every state has a non-module way in**
-> (`opt-in-modules.md` §1). Positions are marked **proposed**. This gates the taxonomy ratification,
+> made: **no surprise actions** (`planning/goals.md`) and **every state has a non-module way in**
+> (`design/modules/README.md` §1). Positions are marked **proposed**. This gates the taxonomy ratification,
 > the toggle matrix, and the safety engine.
 
 ## 1. Two rulebooks
@@ -12,15 +12,15 @@
 "Illegal manual transition" is a category error: humans and modules do not play by the same rules.
 
 - **Modules request transitions** — `(position → position)`, legal only if the state machine has that
-  edge and the module declared it (`solution.md` §5). The taxonomy diagram's edges are the *module*
+  edge and the module declared it (`design/architecture.md` §5). The taxonomy diagram's edges are the *module*
   rulebook, nothing else.
 - **Humans edit state** — any single coherent position they set is legitimate by definition; for
   humans every position is reachable from every position. Anyone who can apply a label is already
-  maintainer-trusted (`config-draft.md` §3), and restricting hand edits to the machine's edges would
+  maintainer-trusted (`design/config/schema.md` §3), and restricting hand edits to the machine's edges would
   re-couple every module to its upstream — the toggle matrix *requires* free manual entry (a repo
   running only inactivity needs `in progress` placed by hand).
 
-A hand edit is ordinary state: modules react to it exactly as to any observed state (`solution.md`
+A hand edit is ordinary state: modules react to it exactly as to any observed state (`design/architecture.md`
 §7). The only manual problems left are **incoherent states**, and those are enumerable (§3).
 
 ```mermaid
@@ -60,7 +60,7 @@ be a named, narrated policy veto; the default is none exists.
 
 ## 3. Coherence: five observation classes
 
-The app reacts to state observed, not events assumed (`solution.md` §2) — so semantics are defined
+The app reacts to state observed, not events assumed (`design/architecture.md` §2) — so semantics are defined
 over **observations**. Coherent = exactly one canonical position, optionally the `blocked` overlay,
 invariants holding. Otherwise:
 
@@ -77,18 +77,18 @@ invariants holding. Otherwise:
   what was kept and offers the one-line fix.
 - **Class 2:** repair would mean inventing a fact (an assignee, a PR), so the core flags instead. The
   toggle matrix already forces modules to tolerate states without their usual precursors — this is
-  that case. Per-position invariants are fixed at taxonomy ratification. A module *may* declare a
+  that case. The per-position invariants are the table in `design/core/taxonomy.md` §2.4. A module *may* declare a
   repair as its job (e.g. assignment consuming native-assign events to heal the A3 pair) — that is
   its contract's business.
 - **Class 3:** the core owns the **canonical set, not the `status:` prefix**. Maintainer-invented
   labels are margin-notes; the app has no prefix operations at all — this retires the A1 strip loss
   by construction.
-- **Class 4:** quarantine is *derived*, not stored (`solution.md` §8): with no unique position, no
+- **Class 4:** quarantine is *derived*, not stored (`design/architecture.md` §8): with no unique position, no
   module's precondition holds, so automation pauses naturally; one position restored resumes it.
 - **Class 5:** removal = **forget** (silent — the gesture is explicit, and nagging an opt-out is the
   noise bots get uninstalled over); `blocked` = **remember but pause**. Two gestures, two meanings.
 
-**`blocked` is absolute:** it pauses everything (`config-draft.md` §3) *including* class-1 repairs and
+**`blocked` is absolute:** it pauses everything (`design/config/schema.md` §3) *including* class-1 repairs and
 all narration. Repairs run when the overlay lifts. Hand add/remove of `blocked` is always legal, never
 narrated.
 
@@ -113,14 +113,14 @@ transitions must cite a dated fact"), weaker and policed by the toggle matrix.
 
 ## 5. Narration
 
-Every repair or flag above is one **narration comment** — a projection (`solution.md` §4): marker-
+Every repair or flag above is one **narration comment** — a projection (`design/architecture.md` §4): marker-
 keyed, single-writer, updated in place (never re-posted), cleared when the incoherence resolves, never
 read back. It always carries: what was observed, what was done or is awaited, and the one-line remedy.
-This is the fail-loud cure (`principles-review-cpp.md` §9) aimed at the one audience that can act.
+This is the fail-loud cure (`audit/principles-review-cpp.md` §9) aimed at the one audience that can act.
 
 ## 6. Tests
 
-New invariants for `test-architecture.md` (first one corrects its current wording, which
+New invariants for `design/testing/README.md` (first one corrects its earlier wording, which
 `blocked`-as-overlay violates):
 
 - **I-single-position:** never two canonical *position* labels after the app's next action.
@@ -143,7 +143,7 @@ belt-and-braces; the ordering is the fix.
 
 ## 8. Open
 
-- Per-position invariant list (class 2) — fixed at taxonomy ratification.
+- The per-position invariant table is drafted (`design/core/taxonomy.md` §2.4) — ratified with the taxonomy.
 - Any policy veto on manual entry (§2's overturn) — default no.
 - Whether assignment's contract includes the native-assignment repair (§3, class 2).
-- The timeline-read budget at sweep scale (§4's overturn; measured at ring 0, `operations.md`).
+- The timeline-read budget at sweep scale (§4's overturn; measured at ring 0, `design/operations/README.md`).

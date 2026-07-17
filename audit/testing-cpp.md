@@ -3,7 +3,7 @@
 > **What this covers:** an overview of the C++ bot-script test suite (`.github/scripts/tests/`) — what its
 > approach does well, what will not scale, and the lessons to carry into the replacement. Since the system
 > is being replaced, this is the lessons pass, not an exhaustive coverage report. The forward-looking test
-> design is `planning/test-architecture.md`.
+> design is `design/testing/README.md`.
 >
 > **One-line finding:** testability splits two ways. Unit/handler testing is strong (**A**); seam and
 > integration testing is weak (**D**) — the same two-band fault line as `audit/principles-review-cpp.md`,
@@ -56,7 +56,7 @@ retry/polling path is under-tested *today*, with no GitHub change required. Trea
 
 ## What this means for the replacement
 
-The lessons map directly onto the new design (`planning/test-architecture.md`):
+The lessons map directly onto the new design (`design/testing/README.md`):
 
 - Keep per-component tests and dependency injection — they are why the unit band is strong.
 - Confine GitHub-mocking to **one** adapter and contract-test it against GitHub's published schema, instead

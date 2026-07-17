@@ -1,7 +1,7 @@
 # Config Draft: `.github/hiero-automation.json`
 
 > **Non-normative** — a concrete object for the schema decision. Values come from the audited C++/Python
-> systems; labels are `taxonomy-draft.md`'s set. Rule of shape: `core` is read by the core alone; each
+> systems; labels are `design/core/taxonomy.md`'s set. Rule of shape: `core` is read by the core alone; each
 > `modules.<name>` block is read by that module alone, and is the whole config it can see.
 
 ## Goals and non-goals
@@ -26,7 +26,7 @@ the principles behind every key kept or cut.
 - **Duplicating GitHub's permission model.** No role tiers, no team management — the platform already
   decides who may act directly; the app only serves those who cannot.
 - **Configurable safety.** Warnings, the command surface, and the meaning of `status: blocked` are policy.
-  A config that could switch them off would be a config that breaks the promises in `goals.md`.
+  A config that could switch them off would be a config that breaks the promises in `planning/goals.md`.
 - **Completeness.** This file will never hold a key for every behaviour. The default posture for a new
   setting proposal is *no* — it enters only by the either/or test above.
 
@@ -132,6 +132,8 @@ defaults for a module but never enables it — a module runs only if the repo's 
 - **Role tiers.** There are none. Limits apply to command users (contributors); anyone with repo
   permissions acts natively and is outside them by construction — GitHub's permission model is the tier
   system, and the config does not duplicate it.
+- **Sweep cadence.** Derived from fleet arithmetic by the operator (`design/operations/README.md` §4) — a repo
+  cannot buy more polling.
 
 Every knob that remains answers a question two repos would genuinely answer differently: how many issues
 one person may hold, and how patient the two inactivity clocks are. Everything else is behaviour the module
