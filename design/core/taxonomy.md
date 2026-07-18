@@ -89,11 +89,15 @@ stateDiagram-v2
 
 ### 2.3 The seam: derived, never written
 
-| Event at the seam | What happens | What is *not* written |
+A closing reference is a relationship, not ownership. One issue may have several closing-reference
+PRs, and one PR may reference several issues. Each entity keeps its own state.
+
+| Observation at the seam | What happens | What is *not* written |
 |---|---|---|
-| PR opened | issue stays `in progress`; its clock stops by derivation (open PR exists) | no issue label |
-| PR merged | GitHub closes the linked issue natively (closing keywords); each entity's close triggers its own close hygiene | no app write across the link |
-| PR closed unmerged, or reaped | the issue is again "`in progress`, no PR" — its own clock resumes, and issue-side inactivity eventually reclaims it | the old cross-entity reset (lessons C1) becomes **unnecessary**, not centralized |
+| PR opened or reopened | the issue's state is unchanged; while at least one open closing-reference PR exists, its inactivity clock is paused by derivation | no issue label, assignee, or comment |
+| PR merged | the PR and every referenced issue are observed independently; if GitHub natively closes an issue under the repository's rules, that issue's own close hygiene runs when the closure is observed | no app-authored issue close or state change across the link |
+| PR closed unmerged, or reaped | the issue's state is unchanged; the core recomputes its open closing-reference PRs, and issue-side inactivity is eligible to resume only when the issue is open in `in progress` and none remain | no issue reset, unassignment, close, or comment because the PR closed |
+| Issue closed or reopened while a PR remains open | the PR's state is unchanged; the issue follows its own close or reopen rules | no PR label, close, reopen, or comment |
 
 **Close hygiene (a core rule, not a module):** on observing an item closed or merged while carrying a
 position, the core removes its canonical position labels — named labels, never a prefix (lessons A1) —
