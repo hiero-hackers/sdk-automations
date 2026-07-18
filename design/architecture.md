@@ -113,7 +113,7 @@ sequenceDiagram
     else scheduled reconciliation starts
         SH->>SH: begin sweep
     end
-    SH->>SH: verify webhook if present; enqueue item
+    SH->>SH: verify webhook if present, then enqueue item
     SH->>C: begin observation
     C->>A: read current facts
     A->>GH: narrow API reads
@@ -131,7 +131,7 @@ sequenceDiagram
     else echo is absent or missed
         SH->>SH: later sweep observes the item
     end
-    SH->>SH: verify webhook if present; enqueue item
+    SH->>SH: verify webhook if present, then enqueue item
     SH->>C: begin a new observation
     C->>A: reload current facts
     A->>GH: observable postcondition read
