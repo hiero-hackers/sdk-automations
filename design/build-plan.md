@@ -105,6 +105,12 @@ biggest single build so the modules stay thin. Starts during sign-off's final we
 scaffolding, CI, and the fake-GitHub harness are safe under any ratification outcome; code that a
 decision could overturn waits for the memo.*
 
+- **Walking skeleton first — week one, may start during sign-off.** A throwaway repo, a webhook, one
+  transition (`/assign` moves `ready for dev` → `in progress`), one adapter function — and, above
+  all, **one crash-recovery path through a pending record (D27)**: kill the process mid-write,
+  restart, recover from the comment-metadata log. This is the earliest possible test of the design's
+  riskiest mechanism; if it fails against the real API, D1's overturn clause fires in week one
+  instead of ring 0, and the memo ratifies against evidence.
 - **Shell:** webhook receiver, installation keying (what makes rings possible later), adapter with
   the global token bucket + write pacer, decision log (feeds the replay gate).
 - **Config:** registry, `_extends` resolution, the JSON Schema (written with the registry, per Q12),
@@ -204,6 +210,7 @@ the old bots must be recorded while they still run.
 |---|---|---|
 | ⏰ Baseline capture of live C++/Python bots | 1 | — |
 | Ratification memo convening | 1 | — |
+| Walking skeleton (D1/D27 de-risk, incl. crash recovery) | 1–2 | — |
 | Shell (webhooks, adapter, decision log) | 2 | — |
 | Config registry + JSON Schema | 2 | — |
 | Core (state machines, resolvers, safety, projections) | 2 | — |

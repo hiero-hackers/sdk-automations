@@ -35,6 +35,8 @@
 | D23 | Module contract: five typed declaration fields; required `cause`; `effects` for A3 coupling | `modules/contract.md` | build-time refinement of shapes | proposed |
 | D24 | One process orders work and checks `expect`; saved pending records and App events recover interrupted changes; `unknown` reports an unclear result | `architecture.md` §4; `modules/contract.md` §3 | several active processes, or a partial change that cannot be matched and recovered → shared state for coordination, reopening D1 | proposed |
 | D25 | Threat model: per-actor command budgets, echo policy + authorship checks, same-org one-level `_extends`, schema floors, safe-to-shed backpressure | `operations/threat-model.md` §3 | red-team findings at ring 0/1 | proposed |
+| D26 | The label set is code, not config — no `core.labels` key; legacy spellings are the migration table's business, never standing config | `config/schema.md` §3, `core/taxonomy.md` §3 | a genuine display-spelling need → a narrow rendering alias, never a semantic change | proposed |
+| D27 | The pending-record protocol: comment metadata is the app's only durable state — a write-ahead log (write-read-back `pending`, verify, `completed`); de-risked by the walking skeleton in week one | `core/projections.md` §3; `modules/contract.md` §3 | the skeleton proving it impractical against the real API → an owned store behind the core, reopening D1 | proposed |
 
 ## Open questions
 

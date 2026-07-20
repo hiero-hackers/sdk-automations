@@ -19,7 +19,9 @@ the principles behind every key kept or cut.
   reasonable repos (pool capacity, patience). A key that would be `true` in every sane config is not a
   choice — it is the module's behaviour, and lives in code.
 - **One source of truth per fact.** Labels for lifecycle state, native fields for what GitHub already
-  models, config for numbers and the canonical sets — no fact stored twice.
+  models, config for numbers and team handles — no fact stored twice. The label set itself is the
+  taxonomy's, fixed in code (§3): an earlier draft of this file listed it under `core.labels`, which
+  made the config a second source of truth for the one fact the whole design hangs on.
 
 **Non-goals**
 
@@ -40,27 +42,8 @@ the principles behind every key kept or cut.
     "teams": {
       "maintainers": "@hiero-ledger/hiero-sdk-cpp-maintainers"   // who the app pings and trusts
     },
-    "labels": {
-      // The complete label set — a label not listed here does not exist.
-      "status": [
-        "status: awaiting triage",      // new, nobody has looked yet
-        "status: ready for dev",        // triaged, free to pick up
-        "status: in progress",          // assigned, being worked
-        "status: needs review",         // PR open, checks passed
-        "status: needs revision",       // reviewer asked for changes
-        "status: ready to merge",       // approvals met
-        "status: blocked"               // pause flag on top of any of the above
-      ],
-      "skill": [
-        "skill: good first issue",
-        "skill: beginner",
-        "skill: intermediate",
-        "skill: advanced"
-      ],
-      "meta": [
-        "meta: open to community review"   // human signal to browsers; automation never touches it
-      ]
-    },
+    // Note what is absent: no label list. The twelve canonical labels are the taxonomy's
+    // (design/core/taxonomy.md §3), shipped in code — see §3 below.
     "skillLadder": {
       // What /assign checks before giving someone an issue at each level:
       // e.g. to take a "beginner" issue you must have completed 2 good first issues.
@@ -104,7 +87,6 @@ the principles behind every key kept or cut.
 ```jsonc
 // hiero-ledger/.github → .github/hiero-automation.json
 {
-  "core": { "labels": { /* the one canonical set, so every repo agrees */ } },
   "modules": {
     "inactivity": {
       "issue": { "warnAfterDays": 7,  "unassignAfterDays": 28 },  // gentler org-wide defaults,
@@ -119,6 +101,14 @@ defaults for a module but never enables it — a module runs only if the repo's 
 
 ## 3. What is deliberately not configurable
 
+- **The label set** *(proposed)*. The twelve canonical labels are the design, not a key
+  (`design/core/taxonomy.md` §3): the state machines' invariants, the manual-edit coherence classes,
+  and the org-wide ladder all assume every repo means the same thing by the same string — a repo that
+  could rename or extend the set would silently re-open all three. There is no `core.labels`. Legacy
+  spellings during cutover are the **migration protocol's mapping table**
+  (`operations/migration.md`, Q7) — a per-repo, time-bounded artifact of the runbook, never standing
+  config. **Overturned by:** a repo with a genuine display-spelling need — which would enter as a
+  narrow rendering alias, never as a semantic change to the set.
 - **Commands.** The full set is `/assign`, `/unassign`, `/working` — commands exist only for contributors,
   who cannot act directly; maintainers use the label picker. No command has a config key.
 - **Warnings before destructive actions.** Always on; only the timing is a knob.

@@ -43,11 +43,21 @@ write through the adapter. This is what makes rule 1 enforceable — a module *c
 dashboard because no module ever holds a comment at all. (The old Sibling-Conflict-reads-the-dashboard
 failure, lessons A2, is thereby unwritable.)
 
-## 3. The exception register
+## 3. The exception register — the app's only durable state
 
 Exactly two projections carry metadata the core later reads back. This register is the governance
 mechanism: a third exception enters by amending this section, with the same scrutiny §1 rule 1 exists
 to enforce — not by quietly reading a comment somewhere.
+
+Name it for what it is: **these records are a write-ahead log implemented in comment metadata** —
+write-and-read-back `pending` before the first GitHub change, mark `completed` only after the full
+requested state is verified, recover after a crash by matching the record against App-authored
+events. That is the hardest, most failure-prone mechanism in this design, and the honest price of
+D1's "no owned store": the durable state did not disappear, it moved into GitHub. It is therefore a
+decision in its own right (D27), not a footnote — and **the first thing the walking skeleton must
+exercise**: one transition, killed mid-write, recovered from its pending record on restart. If this
+protocol is miserable against the real GitHub API, that is D1's overturn clause knocking, and the
+skeleton finds out in week one instead of ring 0.
 
 | Exception | What is read back | Why no alternative |
 |---|---|---|

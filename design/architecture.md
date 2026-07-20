@@ -32,7 +32,9 @@ The answer is one shared thing in the middle: a **core** that owns everything se
 pass between themselves, behind one door to GitHub — plus one sentence that holds the design together:
 
 > **The app is a stateless reducer over GitHub's state:** `(GitHub state, event, config) → transitions`.
-> The app itself stores nothing.
+> The app owns no store outside GitHub. (Not quite "stores nothing": its two durable records — the
+> safety warned-at and the command ack — ride as projection metadata *in* GitHub, a real recovery
+> protocol designed in `design/core/projections.md` §3.)
 
 ```mermaid
 flowchart TB

@@ -131,7 +131,11 @@ The table `design/core/manual-edits.md` §3 class 2 consumes: a broken invariant
 ## 3. The full label set
 
 Twelve labels in three namespaces, one spelling each, one writer each, one home each. This is the
-complete set: a label not listed here does not exist in the new system.
+complete set: a label not listed here does not exist in the new system. **The set is code, not
+config** — there is no `core.labels` key (`design/config/schema.md` §3): a config that could rename
+or extend the set would be a second source of truth for the one fact every invariant, coherence
+class, and the org-wide ladder assumes is shared. Old spellings during migration map to these
+through the migration protocol's table, never through standing config.
 
 | Label | Lives on | Written by | Meaning |
 |---|---|---|---|
