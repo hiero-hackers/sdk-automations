@@ -51,8 +51,13 @@ to enforce — not by quietly reading a comment somewhere.
 
 | Exception | What is read back | Why no alternative |
 |---|---|---|
-| **safety warned-at** | the warning's timestamp + schema-versioned metadata | warn-then-act needs durable memory of "warned at T"; no label can carry a timestamp, and the app has no store (`design/architecture.md` §4.1) |
-| **command ack marker** | the 👀 reaction's presence | the processed-marker that lets the sweep find un-acked commands after downtime — commands become durable with no store (`design/operations/README.md` §5) |
+| **safety warned-at** | warning time; before a destructive change, a pending or completed record with the item, edge, `expect`, safety fact, requested state, and plan version | the app needs this record to finish safely after a crash; a label cannot hold it, and the app has no owned store (`design/architecture.md` §4.1) |
+| **command ack marker** | whether the command was received or completed; before a change, a pending or completed record with the item, edge, `expect`, command comment ID, requested state, and plan version | after downtime, the app must tell the difference between a new command, an unfinished command, and a completed command (`design/architecture.md` §4; `design/operations/README.md` §5) |
+
+For either exception, the core writes and reads back `pending` before making the first GitHub change. It marks
+the record `completed` only after it reads the item and sees every requested change. If a newer reason for a
+change exists, the old record is closed without another write. Modules never see this metadata and still
+cannot read comments.
 
 ## 4. Voice: the templates are a product surface
 

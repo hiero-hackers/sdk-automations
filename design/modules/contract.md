@@ -3,8 +3,8 @@
 > **Drafted — the exit from design into code (roadmap Track C1).** This is the core's public API as
 > modules see it, written *against* the six core docs; the type signatures are deliberately the
 > forcing function, and where a signature was hard to write, the exposed ambiguity is named in §5.
-> Also fixes the **one-winner serializer/idempotency semantics** `design/architecture.md` §10 left
-> open (§3). TypeScript is illustrative-but-binding: shapes are the contract, identifier spelling is
+> It also explains how the serializer handles repeated work and restarts (`design/architecture.md` §10,
+> this document §3). TypeScript is illustrative-but-binding: shapes are the contract, identifier spelling is
 > refined at build.
 
 ## 1. The declaration — five fields answering the four tangles
@@ -42,9 +42,9 @@ interface Core<D extends ModuleDeclaration> {
 interface TransitionRequest<E extends Edge> {
   item: ItemRef;
   edge: E;
-  expect: ObservedState;   // what the module saw — the compare-and-set token (§3)
+  expect: ObservedState;   // what the module saw; the core checks it again before writing (§3)
   cause: DatedFact;        // the dated fact justifying it — the newer-fact rule's input
-  effects?: { assign?: Login; unassign?: Login };   // coupled facts move in the same transition (A3)
+  effects?: { assign?: Login; unassign?: Login };   // requested assignee state; GitHub calls are separate (A3)
 }
 ```
 
@@ -53,12 +53,15 @@ runtime as the boundary backstop (`design/architecture.md` §3, §5). `cause` is
 newer-fact rule (`design/core/manual-edits.md` §4) a field, not a convention — a request that cannot
 name its dated fact cannot be expressed.
 
-## 3. TransitionResult — the one-winner semantics, executable
+## 3. TransitionResult — what happened to a request
 
 ```ts
 type TransitionResult =
-  | { outcome: 'applied' }                       // this request won; labels + effects written
-  | { outcome: 'already' }                       // target was current — idempotent success
+  | { outcome: 'applied' }                       // calls succeeded and every requested change was verified
+  | { outcome: 'already' }                       // every requested change was already present
+  | { outcome: 'unknown'; reason:
+        'postcondition-unreadable'                // the app could not read enough state to check the result
+      | 'partial-effect' }                        // some calls worked, but the app cannot yet finish safely
   | { outcome: 'deferred'; until: Iso8601 }      // destructive: safety warned, grace running
   | { outcome: 'refused'; reason:
         'stale'         // expect ≠ current state — re-observe and retry if still warranted
@@ -67,13 +70,30 @@ type TransitionResult =
       | 'illegal' };    // edge not legal from current position — a contract bug, telemetry only
 ```
 
-The **one-winner invariant**, stated precisely (this closes `design/architecture.md` §10's open
-item): the shell's per-item serializer totally orders requests per item; each is validated against
-current observed state inside its turn, compare-and-set style via `expect`. For N concurrent
-conflicting requests: **exactly one** returns `applied`; others return `already` (same target) or
-`refused: stale` (different target). The app's own write, echoing back later as a webhook, resolves
-to `already`. `deferred` is how safety composes: the sweep re-derives the condition next pass and
-re-requests; after the grace elapses the same request returns `applied` — no module tracks timers.
+Only one app process may be active. Its per-item serializer handles one request at a time. Before writing,
+the core reads the item again and checks `expect`. The first valid request may return `applied`. A later
+request for the same state returns `already`; a conflicting request based on old state returns
+`refused: stale`. A webhook caused by the app's own write also returns `already`.
+
+This rule works inside one process only. Two processes can both check the same old state before either write
+is visible. D18 therefore requires deployments to stop the old process before starting a new one. If the app
+must run several processes, it will need shared coordination and D1 must be reviewed again.
+
+`effects` describes all labels and assignees that should be present when a transition is done. It does not
+make several GitHub calls atomic. A multi-call transition must list its calls in order and explain how to
+recognize and finish the state left after each call (`design/architecture.md` §4). The core returns `applied`
+only after it reads the complete requested state. It returns `already` when that state was present before it
+wrote, or when a lost response is followed by a read that shows the change. It returns `unknown` when it
+cannot check or safely finish the result. Modules do not retry `unknown`; a later observation or sweep reads
+the item again.
+
+The single-assignee assign and unassign plans are in `design/architecture.md` §4. Restart recovery needs two
+matching sources: a saved pending record identifies the transition and `cause`, and App-authored issue events
+show which calls worked. A similar state made by a human does not count, so the manual-edit rules still apply
+and Q5 remains open.
+
+For `deferred`, no module keeps a timer. A later sweep checks the condition again. After the grace period, the
+core can make the requested change.
 
 ## 4. The module runtime, and the fake core for free
 

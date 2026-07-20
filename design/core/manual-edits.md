@@ -72,6 +72,12 @@ invariants holding. Otherwise:
 | 4 | class 1 with no ordering signal | quarantine until a human resolves it | narration only |
 | 5 | no position | unmanaged — the app forgets the item | nothing |
 
+Before using this table, the core checks whether the state came from an unfinished app transition. It may
+resume an assign or unassign operation only when its saved pending record identifies the transition and
+`cause`, the issue events match the calls in that record, and no newer human edit, command, or safety fact
+exists. This finishes a change that the core had already approved; it does not repair a human edit. Without
+that match, the state remains class 1 or 2 and Q5 remains open.
+
 - **Class 1:** the webhook names the added label; on a sweep, the core reads the item's timeline to
   order them (the one extra API read here, on a rare path); unorderable → class 4. The narration says
   what was kept and offers the one-line fix.

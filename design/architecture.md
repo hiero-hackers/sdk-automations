@@ -81,8 +81,11 @@ Work arrives two ways and is serialised once:
   sweep. (The inactivity service already works this way; the pattern is promoted from one service's trick
   to a first-class delivery mechanism.)
 - **Per-item serializer** — one worker per issue or PR. The audit removed the accidental mutex (the shared
-  concurrency groups, lessons D2); this is its deliberate replacement. GitHub's API has no
-  compare-and-swap on labels, so races are prevented here and absorbed by idempotent transitions (§4).
+  concurrency groups, lessons D2); this is its deliberate replacement. It orders work in the one running app
+  process. It cannot coordinate two processes. GitHub cannot update a label only when an expected value still
+  matches, so operations must prevent two app processes from handling the same item at once
+  (`design/operations/README.md` §1). Repeated work in one process is safe because every transition checks the
+  latest state and can do nothing when the requested change is already present (§4).
 
 ## 3. Config and registry
 
@@ -153,11 +156,74 @@ The adapter is the transport boundary for both GitHub reads and writes: API vers
 limits, retry classification, narrow mutations, and conversion between API data and normalized facts stay
 there. The diagram shows the core-side read boundary without deciding whether a snapshot builder or
 individual core resolvers invoke those reads.
-If a write response is lost, its result is unknown: the adapter reads the operation's observable
-postcondition before any retry. A satisfied target converges to `already`; otherwise the operation is
-retried only when repeating that particular mutation is safe. Several GitHub calls are not one atomic
-transition. Recovery or compensation for partially applied effects remains open; those scenarios test
-whether the proposed stateless design is sufficient.
+
+`expect` records the state that the module saw. The core reads the item again before it writes. If the state
+has changed, the request is refused. GitHub never sees or checks `expect`.
+
+The adapter makes each GitHub call separately. When it finishes, it reads the item again and checks every
+requested label and assignee. The result is `applied` when the calls succeeded and the complete requested
+state is present. It is `already` when that state was present before the first call, or when a response was
+lost but a later read shows that the change happened. It is `unknown` when the app cannot read enough state
+to be sure. A module never retries an `unknown` result itself.
+
+These cases show what the design needs:
+
+| Situation | What the app does | Design result |
+|---|---|---|
+| the same webhook arrives again | read the item; return `already` if the requested state is present | the app does not need to remember every webhook |
+| webhooks arrive out of order | use the current state; return `stale` if `expect` no longer matches; use `older-fact` only when a human made a newer edit | webhook order does not decide the result, and D9 still applies only to human edits |
+| GitHub applies a write but its response is lost | read the complete requested state; return `already` if it is present; repeat a call only when that call is safe to repeat | an API response does not by itself prove whether the requested change happened |
+| the app crashes between the label and assignee calls | save the exact planned change before the first call; after restart, use that record and the issue timeline to find the last completed step | several GitHub calls are not one transaction, and knowing only that the App made a change is not enough |
+| a second app process handles the same item | both processes may pass the same `expect` check; repeated writes toward the same state may be harmless, but conflicting writes have no single winner | only one process may be active; supporting several processes would require shared coordination and would reopen §4.1 |
+
+A transition that needs several GitHub calls must list its starting state, stable ID, calls in order, state
+after each call, final state, safe retries, and restart steps. Before the first call, the core saves a
+`pending` record with the item, transition, `expect`, dated `cause`, requested state, and plan version. It then
+reads the record back. A command stores this information in its command-ack comment. A timed destructive
+action stores it in its safety-warning comment. These are the same two private records that the core already
+reads (`design/core/projections.md` §3).
+
+The record ID comes from the GitHub item and either the command comment ID or the timed safety fact. Replaying
+the same work therefore finds the same record. If the core cannot read the saved record, it makes no other
+change. After it confirms the complete requested state, it marks the record `completed` and keeps it as an
+audit trail.
+
+After a restart, the pending record tells the core which change was in progress and why. GitHub issue events
+show which calls took effect. Before continuing, the core checks for a newer human edit, command, or timed
+safety fact. If there is one, the old record is closed without making another change. If the app has nowhere
+approved to save the record, or cannot safely identify and finish every partial state, that transition cannot
+be built under D1.
+
+Assignment and unassignment show how this works. The app adds the new position before removing the old one.
+An interrupted update may briefly leave two positions, but it never leaves the item with no position. The
+table covers one assignee. The behavior for `/unassign` when several people are assigned remains open.
+
+| Transition | Starting state and reason | Calls in order | State after an interrupted call | What happens after restart |
+|---|---|---|---|---|
+| assign | open issue; `ready for dev`; no assignee; dated `/assign(login)` | confirm pending command record; add `login`; add `in progress`; remove `ready for dev`; mark completed | first `ready for dev` + `login`; then both positions + `login` | continue only when the pending record matches the App's issue events and there is no newer human edit or command |
+| unassign the last assignee | open issue; `in progress`; only `login` is assigned; dated `/unassign` or reaping fact | confirm pending command or warning record; remove `login`; add `ready for dev`; remove `in progress`; mark completed | first `in progress` with no assignee; then both positions with no assignee | apply the same record, event, and newer-change checks before making the remaining calls |
+
+GitHub issue events show the event type, actor, time, label or assignee, and the App that made the change. The
+events show which calls worked. The pending record shows which transition those calls belonged to. If either
+source cannot be read, the result is `unknown` and a later sweep tries the read again. The app never finishes
+a partial update that it cannot match to a pending record. A human assignment on `ready for dev` therefore
+remains class 2 and Q5 remains open.
+
+Evidence checked on 20 July 2026: the current C++ automation at
+[`a898153`](https://github.com/hiero-ledger/hiero-sdk-cpp/blob/a898153fa50b6ba99ba85d2be1afb16a9cf1602d/.github/scripts/commands/assign.js)
+reads the issue again before assignment. It then makes separate calls for the assignee, comment, and labels.
+Current Python
+upstream at [`e8c9787`](https://github.com/hiero-ledger/hiero-sdk-python/blob/e8c97875c8cf7631bca71d4a24a78e07d58d094b/.github/scripts/bot-unassign-on-comment.js)
+also makes separate assignee and comment calls. GitHub provides separate APIs for
+[label](https://docs.github.com/en/rest/issues/labels) and
+[assignee](https://docs.github.com/en/rest/issues/assignees) mutations, and warns that
+[webhooks may arrive out of order](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/troubleshooting-webhooks).
+Its [issue-event schema](https://docs.github.com/en/rest/using-the-rest-api/issue-event-types) exposes the
+actor, timestamp, label or assignee, and App attribution used by the recovery rows above.
+Kubernetes Prow at
+[`0633879`](https://github.com/kubernetes-sigs/prow/blob/0633879af8026d056e1a5dbe1e29f5a98f6acec3/pkg/plugins/label/label.go)
+skips labels that are already present. It adds and removes the other labels with separate calls and reports
+each failure. This is an example of checking current state and retrying safely, not of one atomic update.
 
 Human projections are a separate optional effect. The core renders structured content under a stable
 projection identity and publishes it through the same adapter; identical content produces no write. A
@@ -176,11 +242,11 @@ transition nor create another copy of the projection.
 **GitHub is the database.** Labels are the status store — the core is the app-side exclusive writer, and a
 hand-applied label is ingested as a legitimate transition, which is §7's rule working natively with no
 synchronisation machinery. Comments are projections. Timestamps are the safety engine's clocks. The app is
-stateless per event: trivial hosting, crash-safe, state auditable in GitHub's own UI, and the test fake
-for the core is an in-memory label set. The honest costs: label writes are not transactional (mitigated by
-§2's serializer plus idempotency), and any datum that fits no label rides in core-private comment metadata
-or derives from timestamps. **Overturned by:** a concrete invariant that provably needs an owned store —
-which would then live *behind* the core's interface, changing no module.
+stateless per event: state is visible in GitHub, a restarted app reads GitHub again, and the test fake is an
+in-memory label set. Label and assignee changes are separate calls. A multi-call transition is safe only when
+it follows the restart rules in §4. Data that does not fit in a label is stored in private comment metadata or
+derived from timestamps. **Overturned by:** a required rule or transition that cannot be recovered this way
+without an owned store. That store would sit behind the core interface, so modules would not change.
 
 This answers the first draft's open question "labels the core manages, or state a label only reflects":
 that question was really *does the app have a database*, and the proposal is no.
@@ -246,10 +312,10 @@ without storing it at all. The taxonomy itself waits for its own decision (§10)
 The design in `design/testing/README.md` stands, with three additions this architecture makes cheap
 or necessary: the **fake core is an in-memory label set** plus the transition table (§4.1); two invariants
 become near-tautological and are asserted anyway — *no state outside GitHub*, *no write outside the
-adapter*; and one is new and load-bearing — **concurrent conflicting transitions resolve to exactly one
-winner**, the executable form of §2 plus §4's idempotency, and the regression test for removing the
-accidental mutex. The manual-edit semantics add their own invariants and an incoherence-injection axis to
-the toggle matrix (`design/core/manual-edits.md` §6).
+adapter*; and the serializer tests prove ordering within one process. The adapter tests fail after every step
+listed in §4 and test responses whose result is unclear. A deployment test makes sure two app processes do
+not overlap. The in-process fake cannot prove coordination across processes. The manual-edit semantics add their own
+invariants and an incoherence-injection axis to the toggle matrix (`design/core/manual-edits.md` §6).
 
 ## 10. What we still need to decide
 
@@ -275,9 +341,11 @@ flowchart LR
   human's edit.
 - The module contract (§5) is drafted as `design/modules/contract.md` — five typed declaration
   fields, a required `cause` enforcing the newer-fact rule, `effects` carrying the A3 coupling.
-- The serializer and idempotency semantics are written down as the one-winner invariant in
-  `design/modules/contract.md` §3 — exactly one `applied` per conflicting set, compare-and-set via
-  `expect`, the app's own echo resolving to `already`.
+- The serializer and idempotency semantics are written down in `design/modules/contract.md` §3:
+  `expect` checks the latest state inside the one running process, the core reads the complete requested state
+  after writing, and `unknown` reports when it cannot tell what happened. A saved pending record connects an
+  interrupted assign or unassign operation to its GitHub issue events. Coordinating several app processes
+  would need shared durable state.
 - The full register of proposed decisions and open questions is `design/decisions.md` — the
   ratification memo's skeleton.
 - We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.
