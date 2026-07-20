@@ -24,7 +24,7 @@ run in virtual time, so a 21-day reclaim is a unit test, not a wait.
 | **Core unit** | state machines (every legal + illegal transition); resolvers; safety engine | nothing — pure logic |
 | **Module unit** | one module's logic in isolation | the **fake core** (owned, stable) |
 | **Adapter contract** | the one GitHub adapter vs GitHub's published schemas; typed client so a rename is a compile error | GitHub (here only) |
-| **Transition recovery** | duplicate and out-of-order observations; every ambiguous response; failure to persist pending identity; a crash after each call in every endpoint plan; matching, missing, stale, and superseded records; App-attributed versus human lookalike prefixes | adapter + recorded projections and issue-event timelines |
+| **Transition recovery** | repeated and out-of-order observations; unclear API responses; failure to save a pending record; a crash after every call; records that match, are missing, are old, or were replaced; similar changes made by the App and by a human | adapter + recorded comments and issue-event timelines |
 | **Module↔core contract** | a module only requests transitions / reads keys it *declared* | the registry |
 | **Composition** | a real sequence (intake → assign → inactivity) on a real core | adapter only |
 | **Toggle matrix** | enabling/disabling a module has no side effect on the others; plus the incoherence-injection axis — each `design/core/manual-edits.md` §3 class × each module combination | adapter |
@@ -38,8 +38,8 @@ The layers map to gates — this mapping is policy, fixed here rather than disco
 
 | Gate | Must pass |
 |---|---|
-| **every PR** | core unit · module unit · module↔core contract · transition-recovery model cases · the conformance kit (incl. toggle matrix + incoherence injection) · invariants |
-| **release candidate** | all of the above + adapter contract against recorded App-attributed timelines + composition + **replay gate** (`design/operations/README.md` §3) + selected-host no-overlap test |
+| **every PR** | core unit · module unit · module↔core contract · restart cases · the conformance kit (incl. toggle matrix + incoherence injection) · invariants |
+| **release candidate** | all of the above + adapter contract against recorded App timelines + composition + **replay gate** (`design/operations/README.md` §3) + a test that the chosen host runs only one app process |
 | **scheduled (nightly)** | E2E on the ring-0 sandbox — failures mark the dashboard, page nobody (`design/operations/README.md` §1) |
 
 Everything a module author can break runs at PR time; everything that needs real GitHub runs where

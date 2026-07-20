@@ -81,10 +81,11 @@ Work arrives two ways and is serialised once:
   sweep. (The inactivity service already works this way; the pattern is promoted from one service's trick
   to a first-class delivery mechanism.)
 - **Per-item serializer** — one worker per issue or PR. The audit removed the accidental mutex (the shared
-  concurrency groups, lessons D2); this is its deliberate replacement. It orders work inside the sole active
-  process; it is not a distributed lock. GitHub's API has no compare-and-swap on labels, so same-item overlap
-  between processes is excluded operationally (`design/operations/README.md` §1), while duplicate observations
-  inside one process are absorbed by guarded, idempotent transitions (§4).
+  concurrency groups, lessons D2); this is its deliberate replacement. It orders work in the one running app
+  process. It cannot coordinate two processes. GitHub cannot update a label only when an expected value still
+  matches, so operations must prevent two app processes from handling the same item at once
+  (`design/operations/README.md` §1). Repeated work in one process is safe because every transition checks the
+  latest state and can do nothing when the requested change is already present (§4).
 
 ## 3. Config and registry
 
@@ -156,72 +157,73 @@ limits, retry classification, narrow mutations, and conversion between API data 
 there. The diagram shows the core-side read boundary without deciding whether a snapshot builder or
 individual core resolvers invoke those reads.
 
-`expect` is an admission guard against the state reloaded inside one serializer turn; it is not a
-compare-and-swap token understood by GitHub. The adapter executes each GitHub call separately and verifies
-the transition's **whole observable target**, not merely the last endpoint response. An acknowledged set of
-writes whose full target is verified is `applied`. A target found satisfied before the first write, or after
-an ambiguous response, is `already`: success without a claim about which request caused it. If the full
-target cannot be observed, the result is `unknown`; modules never retry that result themselves.
+`expect` records the state that the module saw. The core reads the item again before it writes. If the state
+has changed, the request is refused. GitHub never sees or checks `expect`.
 
-The failure scenarios set the boundary:
+The adapter makes each GitHub call separately. When it finishes, it reads the item again and checks every
+requested label and assignee. The result is `applied` when the calls succeeded and the complete requested
+state is present. It is `already` when that state was present before the first call, or when a response was
+lost but a later read shows that the change happened. It is `unknown` when the app cannot read enough state
+to be sure. A module never retries an `unknown` result itself.
 
-| Scenario | Required behavior | What it proves |
+These cases show what the design needs:
+
+| Situation | What the app does | Design result |
 |---|---|---|
-| duplicate delivery or webhook echo | reload; return `already` when the whole target is present | no delivery ledger is needed for state-derived effects |
-| out-of-order delivery | decide from current state; refuse `stale` when `expect` no longer matches, and use `older-fact` only when the cause predates a human edit | correctness cannot depend on delivery order; D9 is not broadened to order app facts |
-| write applied, response lost | read the whole postcondition; return `already` if satisfied; retry only an endpoint whose repetition is safe; otherwise return `unknown` | transport success and logical-effect identity are different facts |
-| crash between label and assignee calls | persist and verify the effect identity before writing; on a later observation, correlate that record with the timeline and complete only a recognized prefix with no superseding cause | `effects` are a target, not an atomic GitHub transaction; App attribution alone is insufficient, and no blanket compensation is safe |
-| second process handles the same item | two processes can both pass `expect`; same-target idempotent writes may converge, but conflicting writes have no one-winner guarantee | single-active, no-overlap deployment is a safety precondition; active-active would require durable coordination and would overturn §4.1 |
+| the same webhook arrives again | read the item; return `already` if the requested state is present | the app does not need to remember every webhook |
+| webhooks arrive out of order | use the current state; return `stale` if `expect` no longer matches; use `older-fact` only when a human made a newer edit | webhook order does not decide the result, and D9 still applies only to human edits |
+| GitHub applies a write but its response is lost | read the complete requested state; return `already` if it is present; repeat a call only when that call is safe to repeat | an API response does not by itself prove whether the requested change happened |
+| the app crashes between the label and assignee calls | save the exact planned change before the first call; after restart, use that record and the issue timeline to find the last completed step | several GitHub calls are not one transaction, and knowing only that the App made a change is not enough |
+| a second app process handles the same item | both processes may pass the same `expect` check; repeated writes toward the same state may be harmless, but conflicting writes have no single winner | only one process may be active; supporting several processes would require shared coordination and would reopen §4.1 |
 
-Every compound transition therefore owns an endpoint plan: precondition, stable effect identity, ordered calls,
-observable prefix after each call, whole postcondition, ambiguous-result read, safe-retry rule, and recovery
-rule. Before the first effect, the core writes and reads back a pending record containing the item, edge,
-`expect`, dated `cause` identity, target, and plan version. A command uses its command-ack projection; a
-clock-triggered destructive transition uses its safety-warning projection. These are the two existing
-core-private read exceptions (`design/core/projections.md` §3), now carrying the correlation data the crash
-scenario proves necessary. The stable identity is derived from the GitHub item plus the immutable command
-comment ID or safety fact, so replay updates the same record. If the pending record cannot be verified, no
-effect starts. Once the whole target is verified, the record is marked completed and retained as the audit
-trail.
+A transition that needs several GitHub calls must list its starting state, stable ID, calls in order, state
+after each call, final state, safe retries, and restart steps. Before the first call, the core saves a
+`pending` record with the item, transition, `expect`, dated `cause`, requested state, and plan version. It then
+reads the record back. A command stores this information in its command-ack comment. A timed destructive
+action stores it in its safety-warning comment. These are the same two private records that the core already
+reads (`design/core/projections.md` §3).
 
-On restart, a pending record—not App authorship by itself—selects the exact plan and cause eligible for
-recovery. The core correlates its recorded next prefix with App-attributed issue events, then checks for a
-newer human edit **or newer command/safety cause** before continuing. A superseded record is resolved without
-further effects and the newer observation is processed normally. A transition with no sanctioned projection
-to hold this identity, or whose partial prefixes still cannot be distinguished and repaired from
-GitHub-observable facts, cannot ship under D1. This is a gate, not permission to guess a compensation.
+The record ID comes from the GitHub item and either the command comment ID or the timed safety fact. Replaying
+the same work therefore finds the same record. If the core cannot read the saved record, it makes no other
+change. After it confirms the complete requested state, it marks the record `completed` and keeps it as an
+audit trail.
 
-The required assignment pair exercises that gate. Adding the target position before removing the source
-temporarily creates two positions but never a positionless item; the core knows this is its own incomplete
-plan, not a human class-1 edit. These rows cover the single-assignee case only. What `/unassign` means with
-multiple assignees remains a module-policy question and is not decided here.
+After a restart, the pending record tells the core which change was in progress and why. GitHub issue events
+show which calls took effect. Before continuing, the core checks for a newer human edit, command, or timed
+safety fact. If there is one, the old record is closed without making another change. If the app has nowhere
+approved to save the record, or cannot safely identify and finish every partial state, that transition cannot
+be built under D1.
 
-| Transition | Precondition and cause | Ordered narrow calls | Observable prefixes after a crash | Later convergence |
+Assignment and unassignment show how this works. The app adds the new position before removing the old one.
+An interrupted update may briefly leave two positions, but it never leaves the item with no position. The
+table covers one assignee. The behavior for `/unassign` when several people are assigned remains open.
+
+| Transition | Starting state and reason | Calls in order | State after an interrupted call | What happens after restart |
 |---|---|---|---|---|
-| assign | open issue; `ready for dev`; no assignee; dated `/assign(login)` | verify pending command-ack record; add `login`; add `in progress`; remove `ready for dev`; mark completed | `ready for dev` + `login`; then both positions + `login` | pending record identifies this command and next prefix; matching App events plus no newer human or command cause permit the remaining calls; otherwise resolve the record without repair |
-| unassign final assignee | open issue; `in progress`; exactly `login`; dated `/unassign` or reaping fact | verify pending command-ack or safety-warning record; remove `login`; add `ready for dev`; remove `in progress`; mark completed | `in progress` + no assignee; then both positions + no assignee | the same record/event correlation and superseding-cause guard permit the remaining calls; otherwise resolve the record without repair |
+| assign | open issue; `ready for dev`; no assignee; dated `/assign(login)` | confirm pending command record; add `login`; add `in progress`; remove `ready for dev`; mark completed | first `ready for dev` + `login`; then both positions + `login` | continue only when the pending record matches the App's issue events and there is no newer human edit or command |
+| unassign the last assignee | open issue; `in progress`; only `login` is assigned; dated `/unassign` or reaping fact | confirm pending command or warning record; remove `login`; add `ready for dev`; remove `in progress`; mark completed | first `in progress` with no assignee; then both positions with no assignee | apply the same record, event, and newer-change checks before making the remaining calls |
 
-GitHub issue events expose the event type, actor, timestamp, affected label or assignee, and the App that
-performed the event. They establish which recorded calls landed, while the pending projection supplies the
-attempt and cause identity the events do not contain. A temporarily unreadable record or timeline produces
-`unknown` and is retried by a later sweep. An uncorrelated prefix is not automatically completed. In
-particular, a human assigning someone to `ready for dev` remains class 2 and Q5; this recovery rule does not
-silently decide native-assignment repair.
+GitHub issue events show the event type, actor, time, label or assignee, and the App that made the change. The
+events show which calls worked. The pending record shows which transition those calls belonged to. If either
+source cannot be read, the result is `unknown` and a later sweep tries the read again. The app never finishes
+a partial update that it cannot match to a pending record. A human assignment on `ready for dev` therefore
+remains class 2 and Q5 remains open.
 
-Evidence refreshed 20 July 2026: the current C++ automation at
+Evidence checked on 20 July 2026: the current C++ automation at
 [`a898153`](https://github.com/hiero-ledger/hiero-sdk-cpp/blob/a898153fa50b6ba99ba85d2be1afb16a9cf1602d/.github/scripts/commands/assign.js)
-fresh-reads before assignment, then performs assignee, comment, and label calls separately; current Python
+reads the issue again before assignment. It then makes separate calls for the assignee, comment, and labels.
+Current Python
 upstream at [`e8c9787`](https://github.com/hiero-ledger/hiero-sdk-python/blob/e8c97875c8cf7631bca71d4a24a78e07d58d094b/.github/scripts/bot-unassign-on-comment.js)
-also performs assignee and comment calls separately. GitHub documents separate
+also makes separate assignee and comment calls. GitHub provides separate APIs for
 [label](https://docs.github.com/en/rest/issues/labels) and
 [assignee](https://docs.github.com/en/rest/issues/assignees) mutations, and warns that
 [webhooks may arrive out of order](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/troubleshooting-webhooks).
 Its [issue-event schema](https://docs.github.com/en/rest/using-the-rest-api/issue-event-types) exposes the
 actor, timestamp, label or assignee, and App attribution used by the recovery rows above.
-As a mature workflow-app precedent, Kubernetes Prow at
+Kubernetes Prow at
 [`0633879`](https://github.com/kubernetes-sigs/prow/blob/0633879af8026d056e1a5dbe1e29f5a98f6acec3/pkg/plugins/label/label.go)
-skips labels already present, issues remaining adds and removes independently, and reports each failure. The
-precedent supports observable convergence; it does not supply atomicity or a global winner.
+skips labels that are already present. It adds and removes the other labels with separate calls and reports
+each failure. This is an example of checking current state and retrying safely, not of one atomic update.
 
 Human projections are a separate optional effect. The core renders structured content under a stable
 projection identity and publishes it through the same adapter; identical content produces no write. A
@@ -240,12 +242,11 @@ transition nor create another copy of the projection.
 **GitHub is the database.** Labels are the status store — the core is the app-side exclusive writer, and a
 hand-applied label is ingested as a legitimate transition, which is §7's rule working natively with no
 synchronisation machinery. Comments are projections. Timestamps are the safety engine's clocks. The app is
-stateless per event: state is auditable in GitHub's own UI, restart recovery re-observes GitHub, and the test
-fake for the core is an in-memory label set. The honest costs: label and assignee writes are not transactional;
-crash recovery is safe only for endpoint plans meeting §4's partial-prefix gate; and any datum that fits no
-label rides in core-private comment metadata or derives from timestamps. **Overturned by:** a concrete invariant
-or required compound transition that provably cannot meet that gate without an owned store — which would then
-live *behind* the core's interface, changing no module.
+stateless per event: state is visible in GitHub, a restarted app reads GitHub again, and the test fake is an
+in-memory label set. Label and assignee changes are separate calls. A multi-call transition is safe only when
+it follows the restart rules in §4. Data that does not fit in a label is stored in private comment metadata or
+derived from timestamps. **Overturned by:** a required rule or transition that cannot be recovered this way
+without an owned store. That store would sit behind the core interface, so modules would not change.
 
 This answers the first draft's open question "labels the core manages, or state a label only reflects":
 that question was really *does the app have a database*, and the proposal is no.
@@ -311,9 +312,9 @@ without storing it at all. The taxonomy itself waits for its own decision (§10)
 The design in `design/testing/README.md` stands, with three additions this architecture makes cheap
 or necessary: the **fake core is an in-memory label set** plus the transition table (§4.1); two invariants
 become near-tautological and are asserted anyway — *no state outside GitHub*, *no write outside the
-adapter*; and the serializer suite proves one-process ordering while the adapter suite injects every
-ambiguous response and partial prefix from §4. A deployment test rejects overlapping active processes.
-No test may claim a distributed winner from the in-process fake. The manual-edit semantics add their own
+adapter*; and the serializer tests prove ordering within one process. The adapter tests fail after every step
+listed in §4 and test responses whose result is unclear. A deployment test makes sure two app processes do
+not overlap. The in-process fake cannot prove coordination across processes. The manual-edit semantics add their own
 invariants and an incoherence-injection axis to the toggle matrix (`design/core/manual-edits.md` §6).
 
 ## 10. What we still need to decide
@@ -341,10 +342,10 @@ flowchart LR
 - The module contract (§5) is drafted as `design/modules/contract.md` — five typed declaration
   fields, a required `cause` enforcing the newer-fact rule, `effects` carrying the A3 coupling.
 - The serializer and idempotency semantics are written down in `design/modules/contract.md` §3:
-  `expect` guards admission inside the sole process, whole-postcondition reads establish convergence,
-  and `unknown` makes an ambiguous or unsafe partial result explicit. A verified pending record in an existing
-  projection correlates the required single-assignee compound prefixes with App-attributed timeline events.
-  There is no distributed one-winner claim without durable coordination.
+  `expect` checks the latest state inside the one running process, the core reads the complete requested state
+  after writing, and `unknown` reports when it cannot tell what happened. A saved pending record connects an
+  interrupted assign or unassign operation to its GitHub issue events. Coordinating several app processes
+  would need shared durable state.
 - The full register of proposed decisions and open questions is `design/decisions.md` — the
   ratification memo's skeleton.
 - We need the MVP module set, then the policy knobs reconciled across the SDK bots, then the schema keys.

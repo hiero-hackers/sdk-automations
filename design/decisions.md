@@ -33,7 +33,7 @@
 | D21 | Every failure has exactly one audience (routing table) | `operations/README.md` §5 | — | proposed |
 | D22 | Replay gate + rings + three-grain kill switches for rollout | `operations/README.md` §3 | — | proposed |
 | D23 | Module contract: five typed declaration fields; required `cause`; `effects` for A3 coupling | `modules/contract.md` | build-time refinement of shapes | proposed |
-| D24 | Single-process admission via serializer + `expect`; verified projection identity + App-event recovery; whole-target verification and explicit `unknown`; no distributed one-winner claim | `architecture.md` §4; `modules/contract.md` §3 | active-active requirement or an uncorrelatable required prefix → durable coordination, reopening D1 | proposed |
+| D24 | One process orders work and checks `expect`; saved pending records and App events recover interrupted changes; `unknown` reports an unclear result | `architecture.md` §4; `modules/contract.md` §3 | several active processes, or a partial change that cannot be matched and recovered → shared state for coordination, reopening D1 | proposed |
 | D25 | Threat model: per-actor command budgets, echo policy + authorship checks, same-org one-level `_extends`, schema floors, safe-to-shed backpressure | `operations/threat-model.md` §3 | red-team findings at ring 0/1 | proposed |
 
 ## Open questions

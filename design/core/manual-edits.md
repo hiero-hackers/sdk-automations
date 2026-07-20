@@ -72,12 +72,11 @@ invariants holding. Otherwise:
 | 4 | class 1 with no ordering signal | quarantine until a human resolves it | narration only |
 | 5 | no position | unmanaged — the app forgets the item | nothing |
 
-This table applies after the core has ruled out its own incomplete compound transition. The single-assignee
-assign/unassign endpoint plans in `design/architecture.md` §4 may be resumed only when a verified pending
-projection record identifies the transition and `cause`, matching issue events identify its landed calls,
-and no newer human edit or command/safety cause supersedes it. That is crash recovery of one correlated,
-already-authorized transition, not module repair of a human edit. Without that correlation the observation
-remains class 1 or 2 here, and Q5's native-assignment question stays open.
+Before using this table, the core checks whether the state came from an unfinished app transition. It may
+resume an assign or unassign operation only when its saved pending record identifies the transition and
+`cause`, the issue events match the calls in that record, and no newer human edit, command, or safety fact
+exists. This finishes a change that the core had already approved; it does not repair a human edit. Without
+that match, the state remains class 1 or 2 and Q5 remains open.
 
 - **Class 1:** the webhook names the added label; on a sweep, the core reads the item's timeline to
   order them (the one extra API read here, on a rare path); unorderable → class 4. The narration says

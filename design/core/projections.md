@@ -51,12 +51,13 @@ to enforce — not by quietly reading a comment somewhere.
 
 | Exception | What is read back | Why no alternative |
 |---|---|---|
-| **safety warned-at** | warning timestamp; before destructive effects, pending/completed identity with item, edge, `expect`, safety-cause identity, target, and plan version | warn-then-act and crash recovery need durable correlation; no label can carry it, and the app has no owned store (`design/architecture.md` §4.1) |
-| **command ack marker** | receipt/completion state; before command effects, pending/completed identity with item, edge, `expect`, immutable comment ID as cause, target, and plan version | the sweep must distinguish received, incomplete, and completed commands and correlate partial GitHub effects after downtime (`design/architecture.md` §4; `design/operations/README.md` §5) |
+| **safety warned-at** | warning time; before a destructive change, a pending or completed record with the item, edge, `expect`, safety fact, requested state, and plan version | the app needs this record to finish safely after a crash; a label cannot hold it, and the app has no owned store (`design/architecture.md` §4.1) |
+| **command ack marker** | whether the command was received or completed; before a change, a pending or completed record with the item, edge, `expect`, command comment ID, requested state, and plan version | after downtime, the app must tell the difference between a new command, an unfinished command, and a completed command (`design/architecture.md` §4; `design/operations/README.md` §5) |
 
-For either exception, the core must write and read back `pending` before the first compound effect. It marks
-`completed` only after reading the whole postcondition. A newer cause resolves the old record without further
-effects. Modules never receive this metadata or gain a comment-read API; the exception remains inside the core.
+For either exception, the core writes and reads back `pending` before making the first GitHub change. It marks
+the record `completed` only after it reads the item and sees every requested change. If a newer reason for a
+change exists, the old record is closed without another write. Modules never see this metadata and still
+cannot read comments.
 
 ## 4. Voice: the templates are a product surface
 
