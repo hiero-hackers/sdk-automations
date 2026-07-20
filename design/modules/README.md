@@ -2,9 +2,10 @@
 
 > DRAFT — the module-level companion to `design/architecture.md`, which designs the system these run
 > on. No decision yet on which modules ship: the catalogue is a worked split of the audited
-> capabilities (`audit/services.md`), with placeholder state names pending `design/core/taxonomy.md`.
-> As each module is designed for build, its spec lands in this directory as `<name>.md`. The typed
-> contract every module implements is `contract.md`.
+> capabilities (`audit/services.md`). Every module now has a **catalogue-level draft spec** in this
+> directory (linked in the table below) — written from the audit against `TEMPLATE.md` to inform
+> the module-set decision (Q2); each is re-worked and ratified individually before its build. The
+> typed contract every module implements is `contract.md`.
 
 ## 1. The decoupling rule
 
@@ -28,14 +29,14 @@ Each module is one independently togglable unit (never bundled behind a shared t
 
 | Module | What it does | Consumes (state in) | Produces (state out) | Standalone when its upstream is off |
 |---|---|---|---|---|
-| **intake** | moderate/lock new issues, `/finalize` validate + promote | issue opened / reopened | `awaiting triage` → `ready for dev` (issue) | n/a — it is the producer; maintainers can also set `ready for dev` by hand |
-| **assignment** | `/assign`, `/unassign`, skill gates, limits | `ready for dev` (issue) | `in progress` ↔ `ready for dev` (issue) | works whenever `ready for dev` is set — by intake **or** by a maintainer label |
-| **inactivity** | warn → reclaim stalled work, `/working` reset | `in progress` (issue, no open PR) · `needs revision` (PR) | `ready for dev` (issue) · closed (PR) | acts on any stalled item, regardless of who assigned it |
-| **pr-quality** | DCO/GPG/conflict/link checks + dashboard | PR opened | `needs review` / `needs revision` (PR) | fully self-contained on the PR side |
-| **review-routing** | review → status, queue state machine | `needs review` (PR) | `queue:*` / `ready to merge` (PR) | works whenever `needs review` is set — by pr-quality **or** by hand |
-| **progression** | post-merge recommend, level-up, milestone | PR merged + the `ready for dev` pool | recommendations only — the old status strip is now the core's close hygiene (`design/core/taxonomy.md` §2.3) | reads whatever `ready for dev` issues exist; recommends nothing if the pool is empty |
-| **notifications** | alerts, reminders, CI-failure feedback, AI hooks | events only | comments only — **no state** | fully standalone; touches no shared label |
-| **admin** | spam-list, mentor rotation | assignment events | `notes:*` bookkeeping | standalone; degrades to no-op without the events it watches |
+| **[intake](intake.md)** | moderate/lock new issues, `/finalize` validate + promote | issue opened / reopened | `awaiting triage` → `ready for dev` (issue) | n/a — it is the producer; maintainers can also set `ready for dev` by hand |
+| **[assignment](assignment.md)** | `/assign`, `/unassign`, skill gates, limits | `ready for dev` (issue) | `in progress` ↔ `ready for dev` (issue) | works whenever `ready for dev` is set — by intake **or** by a maintainer label |
+| **[inactivity](inactivity.md)** | warn → reclaim stalled work, `/working` reset | `in progress` (issue, no open PR) · `needs revision` (PR) | `ready for dev` (issue) · closed (PR) | acts on any stalled item, regardless of who assigned it |
+| **[pr-quality](pr-quality.md)** | DCO/GPG/conflict/link checks + dashboard | PR opened | `needs review` / `needs revision` (PR) | fully self-contained on the PR side |
+| **[review-routing](review-routing.md)** | review → status, derived queue view | `needs review` (PR) | `ready to merge` (PR); queue rendered, not stored (its spec answers Q6) | works whenever `needs review` is set — by pr-quality **or** by hand |
+| **[progression](progression.md)** | post-merge recommend, level-up | PR merged + the `ready for dev` pool | recommendations only — the old status strip is now the core's close hygiene (`design/core/taxonomy.md` §2.3) | reads whatever `ready for dev` issues exist; recommends nothing if the pool is empty |
+| **[notifications](notifications.md)** | alerts, reminders, CI-failure feedback, AI hooks | events only | comments only — **no state** | fully standalone; touches no shared label |
+| **[admin](admin.md)** | deny-list upkeep, mentor rotation | assignment events | projections only — no labels (the `notes:` namespace folded away, D3; the spam *gate* is the core's `mayPerform`) | standalone; degrades to no-op without the events it watches |
 
 The pattern: every "standalone when upstream is off" cell resolves to *"the state it needs can also
 be set manually"* — that column is the decoupling rule made concrete.
@@ -82,6 +83,34 @@ Read it as: intake and assignment never reference each other — both reference 
 so does the manual entry point. Cut intake out and the node keeps an inbound edge
 (`maintainer label`), so assignment keeps working. The missing module-to-module edge **is** the
 decoupling.
+
+The second channel, resolvers, drawn the same way — every shared *question* the modules ask, and
+who asks it. Two modules on one resolver is the promoted fact (lessons B2: one mechanism per
+question); even here, no module→module edge exists:
+
+```mermaid
+flowchart LR
+    ASSIGN[assignment] --> EL & MP & LI & IB
+    INTAKE[intake] --> MP & IB
+    INACT[inactivity] --> LI & IB
+    PRQ[pr-quality] --> LI & IB
+    ROUTE[review-routing] --> MP & IB
+    PROG[progression] --> EL & LI & PO & IB
+    NOTIF[notifications] --> PO & IB
+    ADMIN[admin] --> MP & IB
+    subgraph RES["core resolvers — one mechanism per question"]
+        EL[eligibleLevel]
+        LI[linkedIssues / linkedPRs]
+        MP[mayPerform]
+        PO[priorityOf]
+        IB[isBot]
+    end
+```
+
+The heaviest-shared resolver (`isBot`, everyone) is also the cheapest; the most consequential
+(`eligibleLevel`) has exactly two consumers — assignment gates on it, progression celebrates it —
+which is why the ladder-scope decision (`design/core/resolvers.md` §3) touches two module specs
+and zero module-to-module interfaces. Each spec's §2 carries its own slice of this picture.
 
 ## 4. The module lifecycle: proposal to retirement
 

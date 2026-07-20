@@ -130,14 +130,19 @@ end-to-end, including the toggle matrix and the five incoherence injections.
 another, by design.*
 
 Each module follows the same path: spec from [`modules/TEMPLATE.md`](modules/TEMPLATE.md) → ratify →
-build → pass the kit (passing the kit **is** the definition of being a module). Order below is by
-standalone-ness so each ships useful on its own; the actual set is whatever sign-off chose.
+build → pass the kit (passing the kit **is** the definition of being a module). Order is the
+**risk ladder** (full table: [Module build order](#module-build-order)) — the app earns trust
+rung by rung, and never takes a risk on maintainers:
 
-1. **assignment** — fully functional from hand-applied `ready for dev` labels, no upstream needed.
-   Settles whether native-assign repair is in its contract (**Q5**).
-2. **pr-quality** — self-contained on the PR side.
-3. **intake** — automates the pool assignment already consumes; the lock question was decided at
-   sign-off.
+1. **pr-quality, dashboard-only** — reads and one comment, no transitions: a wrong output is an
+   awkward comment, never a wrong state.
+2. **notifications** (a subscription or two) — a second comment-only module proves the kit
+   generalises.
+3. **pr-quality, full** — the first label writes, visible and hand-reversible.
+4. **intake** — stamping and the nudge, then `/finalize`: the first *command*, exercised by
+   maintainers before any contributor types one.
+5. **assignment** — the flagship lands once commands, `eligibleLevel`, and the gates have all run
+   under lower-stakes modules. Settles the native-assign repair (**Q5**).
 
 `modules/authoring.md` and the kit implementation guide are written alongside the first real module
 (Q12's triggers).
@@ -200,6 +205,35 @@ The module lifecycle takes over: proposal → fitness test → spec → kit → 
 E2E on ring 0 continues as the standing drift alarm; fixtures re-recorded on schedule; the rate
 arithmetic re-run when the fleet grows. AI-assist hooks are explored through the notifications
 module — the one module that touches no state.
+
+## Module build order
+
+No module *requires* another — every consumed state has a manual way in, so the order is free to
+optimize for risk and value, not dependency. The ordering principle is a **risk ladder — never
+take a risk on maintainers**: each rung ships only when the rung below has run clean, and the
+app's first weeks in front of real people are read-and-comment only.
+
+> rung 0: reads + comments only → rung 1: non-destructive labels → rung 2: assignee effects +
+> commands → rung 3: destructive actions
+
+| # | Module (slice) | Rung | Why this position | Demand |
+|---|---|---|---|---|
+| 1 | **[pr-quality](modules/pr-quality.md)** — *dashboard-only slice* | 0 | reads checks, renders one comment, **requests no transitions**; wrong output = an awkward comment, never a wrong state; exercises adapter reads, projections, idempotent render, recorded fixtures | 🟢 (C++ full, Python partial) |
+| 2 | **[notifications](modules/notifications.md)** — one or two subscriptions | 0 | zero state by construction; a second comment-only module proves the kit + config path generalises | 🟣/JS |
+| 3 | **[pr-quality](modules/pr-quality.md)** — *full* | 1 | adds the entry/swap edges; label mistakes are visible and hand-reversible, and never-revert protects the human correcting them | — |
+| 4 | **[intake](modules/intake.md)** — stamping + nudge, then `/finalize` | 1→2 | `awaiting triage` stamping is the lowest-stakes label write there is; `/finalize` is the *first command*, exercised by maintainers (who can judge rough edges) before contributors ever type one | 🔵/🟣 split |
+| 5 | **[assignment](modules/assignment.md)** | 2 | the flagship — but it needs the command surface, `eligibleLevel`, limits, and the deny-list gate all proven before its first contributor interaction; by now every one of those has run in production under lower-stakes modules | 🟢 both SDKs |
+| 6 | **[inactivity](modules/inactivity.md)** | 3 | the biggest maintainer pain — and the destructive one; enters only after warn-then-act has soaked and the pending-record recovery (D27) has survived real restarts | 🟢 both SDKs |
+| 7 | **[review-routing](modules/review-routing.md)** | 1 | completes the PR side; settles Q6 (queue derived, not stored); slots after full pr-quality whenever capacity allows | 🟣 Python |
+| 8 | **[progression](modules/progression.md)** | 0 | comment-only, but needs Q3 + the ladder scope ratified and `eligibleLevel` battle-tested by assignment first | 🟢 both SDKs |
+| 9 | **[admin](modules/admin.md)** | 0 | degrades to no-op; half its old job moved into the core (`mayPerform`); build on demand | 🟣 Python |
+
+Two consequences worth stating. First, the walking skeleton and this order disagree on purpose:
+the skeleton exercises a risky mechanism (D27 crash recovery) on a **throwaway repo**; the build
+order governs what runs in front of **real people**. Risk-first in the lab, risk-last in
+production. Second, the cutover lens is unchanged — **assignment + inactivity** turns off the
+Python bots, **assignment + pr-quality** the C++ ones — so modules 1–6 remain the natural MVP
+proposal for Q2; only the order inside it changed.
 
 ## Who builds it (Q13)
 
