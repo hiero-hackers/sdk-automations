@@ -1,220 +1,123 @@
-# assignment: self-serve `/assign` with the ladder as the gate
+# Candidate Capability: Contributor Assignment
 
-> Spec for the `assignment` module. Status: **draft** — catalogue-level, written from the audit
-> (C++ `/assign`/`/unassign`, `audit/services-cpp.md` §8–9; Python's per-tier guard chain,
-> `audit/services-python.md`) to inform Q2 and ratification; re-worked against `TEMPLATE.md`
-> before build. This is the 🟢 common core of both audited SDKs — the flagship module, built
-> deliberately *late* in the risk ladder (`design/build-plan.md`, module build order): its guards
-> (`eligibleLevel`, limits, the deny-list gate) and the command surface must all have run in
-> production under lower-stakes modules before its first contributor interaction.
+> This capability is a candidate. Existing C++ automation provides evidence for command-based assignment,
+> but the exact policy must be confirmed with each repository that wants it.
 
-## 1. The job
+## 1. Maintainer need and evidence
 
-Without assignment, a contributor who wants an issue must ask and wait; maintainers do assignment
-arithmetic by hand (is this person ready for an intermediate issue? how many do they already
-hold?). Assignment makes claiming an issue self-service — `/assign` checks the ladder and the
-limits, then hands the issue over. One outcome: **contributors claim work instantly, and the ladder
-is enforced without a maintainer in the loop.**
+A public issue can attract several contributors, abandoned assignments, and repeated requests. The existing
+C++ flow uses assignment commands, contributor limits, and skill-related policy. Other repositories may
+prefer ordinary GitHub assignment with no additional gate. The platform therefore needs a configurable
+capability, not one universal assignment rule.
 
-## 2. The declaration
+## 2. The capability boundary
+
+This capability handles an explicit request to assign or unassign a contributor and returns assignment-
+related intents. It does not decide whether issue intake is complete, measure inactivity, or maintain a
+contributor progression system. Those facts can remain manual or come from independently enabled policies.
+
+## 3. Candidate declaration
 
 ```ts
 {
-  name: 'assignment',
-  config: { maxOpenAssignments: 'number (default 2)' },
-  consumes: ['ready for dev', 'in progress'],
-  transitions: [
-    { from: 'ready for dev', to: 'in progress' },   // /assign — effects: { assign }
-    { from: 'in progress', to: 'ready for dev' },   // /unassign — effects: { unassign }
-  ],
-  resolvers: ['eligibleLevel', 'mayPerform', 'isBot', 'linkedPRs'],
-  triggers: ['issue_comment.created', 'sweep'],
+  name: "contributor-assignment",
+  configSchema: AssignmentConfigSchema,
+  triggers: ["issue_comment.created", "issues.assigned", "issues.unassigned"],
+  observations: ["IssueObservation", "CommandObservation", "ActorObservation"],
+  resolvers: ["mayPerform", "eligibleForAssignment", "isAutomation"],
+  intents: ["AddAssignee", "RemoveAssignee", "UpsertManagedComment", "AddMappedLabel", "RemoveMappedLabel"],
+  permissions: {
+    repository: ["issues:read", "issues:write", "metadata:read"],
+    organization: [],
+  },
+  operationalNeeds: {
+    schedule: false,
+    durableState: "candidate",
+    crossItemCoordination: true,
+    externalDelivery: false,
+  },
 }
 ```
 
-`linkedPRs` is the declared cross-entity read behind the C++ *needs-review bypass*: an issue whose
-PR sits in `needs review` does not count against the holder's cap — waiting on maintainers must not
-freeze a contributor (`design/config/schema.md` §3, whose-turn).
+The eligibility resolver and permission list require an experiment because limits based on assignments in
+other repositories would cross the repository boundary.
 
-The declaration, drawn — this module's **entire** view of the core; anything not shown is
-inexpressible through its typed handle:
+## 4. Configuration and repository mappings
 
-```mermaid
-flowchart LR
-    TRIG["triggers:<br/>issue_comment.created · sweep<br/>(+ issues.assigned if Q5 ratifies)"] --> M[assignment]
-    M -->|"resolve()"| RES["eligibleLevel · mayPerform<br/>isBot · linkedPRs"]
-    M -->|"request()"| ED["ready for dev → in progress<br/>in progress → ready for dev<br/>effects: assign / unassign"]
-    M -->|"project()"| PJ["welcome"]
-    RES & ED & PJ --> CORE["Core&lt;D&gt; — the typed handle"] --> ADP["adapter → GitHub"]
-```
+The capability defaults to disabled. Candidate settings include exact assign and unassign commands,
+authorized actor roles, the maximum number of open assignments per contributor, whether self-assignment is
+allowed, whether several assignees are allowed, and whether a skill policy is enabled. Skill checking is
+optional and must not be part of the platform default.
 
-## 3. Behaviour
+If the repository wants workflow labels, meanings such as `assignmentAvailable` and `assignmentActive` map
+to exact labels. A repository that uses only native GitHub assignees does not need those mappings.
 
-- **On `/assign`** (issue in `ready for dev`, commenter unprivileged — privileged actors assign
-  natively and are outside all limits): gate in the threat model's cheap-first order
-  (`operations/threat-model.md` §3.1) — position present and unassigned (invariant) → open-count vs
-  `maxOpenAssignments`, with the needs-review bypass → `eligibleLevel(user)` ≥ the issue's `skill:`
-  rung. All pass → request `ready for dev → in progress` with `effects: { assign: user }`, cause =
-  the command comment. Any fail → one refusal ack naming the gate and the exit ("2 open
-  assignments — finish one or `/unassign` one").
-- **On `/unassign`** from the current assignee: request `in progress → ready for dev` with
-  `effects: { unassign }`. Immediate — self-service on self needs no grace
-  (`design/core/safety.md` §1).
-- **Welcome projection** on successful assign; the good-first-issue variant tags the support team
-  (from `core.teams`).
-- **Manual-mode story** (assignment alone): a maintainer hand-labels `ready for dev`; `/assign`
-  works from that state exactly as from intake's. This is the module the decoupling rule was
-  designed around (`design/modules/README.md` §5).
+## 5. Behavior
 
-Consolidated away from the old systems: Python's four separate per-tier workflows (GFI, beginner,
-intermediate, advanced) collapse into the one `eligibleLevel` gate; its *assign-then-unassign* guard
-pattern (accept, then revoke on a failed check) is replaced by *gate-then-assign* — the app never
-gives and then takes back. The spam-list cap is not this module's business: it is a `mayPerform`
-clause in the core (`design/modules/contract.md` §6).
+For an assignment command, the capability parses the exact command, identifies the requested contributor,
+checks current actor permission, observes current assignees, and evaluates configured eligibility. If every
+check passes, it returns an assignee intent and any separately configured managed-output intents.
 
-### 3.1 Step by step
+For an unassignment command, it verifies that the actor may unassign the named contributor and returns a
+remove-assignee intent. The policy may allow a contributor to release their own assignment while reserving
+third-party removal for maintainers.
 
-The flows in one picture; the numbered steps below are authoritative for detail:
+A person may also use GitHub's native assignment controls. The capability must either treat that action as
+a valid manual decision or advise about a configured violation. It must not silently fight the native UI.
+Edited comments do not execute commands, and duplicate deliveries use the same idempotency identity.
 
-```mermaid
-flowchart TB
-    ASSIGN["/assign comment"] --> GATE1{"mayPerform?<br/>(deny-list here)"}
-    GATE1 -->|no| R1[refusal ack]
-    GATE1 -->|yes| GATE2{"ready for dev<br/>+ unassigned?"}
-    GATE2 -->|no| R2["ack: not available /<br/>already taken"]
-    GATE2 -->|yes| GATE3{"open count <<br/>maxOpenAssignments?<br/>(needs-review bypass)"}
-    GATE3 -->|no| R3["ack: finish one or<br/>/unassign one"]
-    GATE3 -->|yes| GATE4{"eligibleLevel ≥<br/>issue's rung?<br/>(expensive — runs last)"}
-    GATE4 -->|no| R4["ack names the path:<br/>'2 more beginner completions…'"]
-    GATE4 -->|yes| T1["request ready for dev → in progress<br/>effects: assign"]
-    T1 --> W["welcome projection<br/>(GFI variant tags support team)"]
-    T1 -. "refused: stale" .-> RETRY[re-observe once] -.-> GATE2
+## 6. GitHub events, reads, writes, and permissions
 
-    UN["/unassign comment"] --> UGATE{commenter is<br/>an assignee?}
-    UGATE -->|no| R5["ack: only the<br/>assignee can release"]
-    UGATE -->|yes| LAST{last assignee?}
-    LAST -->|yes| T2["request in progress → ready for dev<br/>effects: unassign"]
-    LAST -->|no| T3["effects: unassign only —<br/>position stays"]
+The capability reads issue assignees, labels, command authors, repository permissions, and possibly a
+contributor's other open assignments. Search results require correct pagination and may be eventually
+consistent. Repository-wide or organization-wide eligibility queries need measured cost and a stated
+privacy boundary.
 
-    NAT["native assign observed<br/>(provisional, Q5)"] --> INV{"ready for dev<br/>+ assignee?"}
-    INV -->|yes| HEAL["request → in progress<br/>(heal the A3 pair)"]
-```
+Adding and removing assignees and writing issue comments require `issues:write`. Reading repository roles
+and public metadata requires the relevant read access. The experiment must verify fork, outside-
+collaborator, suspended-user, renamed-user, and deleted-user behavior.
 
-#### Flow A — `/assign`
+## 7. Compatibility without dependency
 
-1. Comment created on an issue; the shell has filtered bots (`isBot`) and per-actor budgets;
-   blocked and quarantined items were never dispatched.
-2. Parse exact `/assign`, case-insensitive. Near-miss → corrective ack, stop.
-3. Write the pending command record; ack reaction on the comment (D27 — a crash after this point
-   is recoverable).
-4. `mayPerform(actor, 'assign')` — the core's deny-list clause refuses spam-listed actors here.
-   A *privileged* actor is not refused; their ack notes they can also assign natively (meet people
-   where they typed).
-5. Cheap invariants, in order, stop at the first fail with one ack naming the exit:
-   - position is `ready for dev` — else "not open for assignment: it's `in progress`" or "needs
-     triage first";
-   - no current assignee — else "already taken; watch for it returning to the pool".
-6. **Limit gate**:
-   - collect the actor's open `in progress` issues in this repo;
-   - for each, `linkedPRs` — an issue whose open PR sits in `needs review` or `ready to merge` is
-     *excluded* from the count (the needs-review bypass: waiting on maintainers never blocks you);
-   - remaining count ≥ `maxOpenAssignments` → refusal ack ("finish one or `/unassign` one"), stop.
-7. **Ladder gate** (the expensive resolver runs last — threat-model gate ordering):
-   - the issue has no `skill:` label → refuse with "awaiting triage details" (intake's nudge, if
-     on, is already asking for the label), stop;
-   - `eligibleLevel(actor)` < the issue's rung → refusal names the path ("2 more beginner
-     completions unlock intermediate"), stop.
-8. Request `ready for dev → in progress`; `expect` = the observed state; `cause` = the command
-   comment; `effects: { assign: actor }` (the A3 pair moves as one).
-9. Outcomes:
-   - `applied` → welcome projection (the good-first-issue variant tags the support team from
-     `core.teams`); complete the ack.
-   - `already` → ack "it's already yours".
-   - `refused: stale` → re-observe once (someone may have just taken it); retry if still valid,
-     else ack the truth ("just taken").
-   - `unknown` → ack "processing"; the sweep completes it from the pending record.
+Assignment works when intake is disabled because a human can identify an assignable issue. Inactivity may
+later remove an assignment through its own approved intent, but it does not call this capability. If both
+capabilities write the same position mapping, their compatibility profile must define clear preconditions
+and tests.
 
-#### Flow B — `/unassign`
+## 8. Operational state and recovery
 
-1. Comment created; shell filtering as Flow A step 1.
-2. Parse exact `/unassign`. Near-miss → corrective ack, stop.
-3. Pending record + ack reaction, as Flow A step 3.
-4. The commenter is a current assignee of this issue — else refusal ack ("only the assignee can
-   release it"), stop. No permission gate beyond that: releasing your own claim is always allowed.
-5. Count the assignees:
-   - the commenter is the **only** assignee → request `in progress → ready for dev`,
-     `effects: { unassign: actor }`, `cause` = the command;
-   - **other assignees remain** → request `effects: { unassign: actor }` with **no edge** — the
-     position stays `in progress` while ≥1 assignee holds it (the invariant). Only the last
-     assignee's `/unassign` moves the position. (The old bots never handled this; see §3.2.)
-6. Outcomes:
-   - `applied` → ack confirms: "back in the pool — your work is safe in your fork; `/assign` to
-     reclaim."
-   - `already` → a maintainer already removed them; ack the truth.
-   - `refused: stale` / `unknown` → as Flow A step 9.
+Adding an assignee and changing a label are separate GitHub calls. A crash between them can leave a partial
+effect. The safest first milestone can manage only the native assignee or can use a durable operation record
+that stores the expected state, completed step, cause, and configuration revision. The App must not infer a
+pending operation merely from an unusual label and assignee combination.
 
-#### Flow C — native-assign repair *(provisional — declared only if Q5 ratifies it)*
+Per-actor command budgets also require short-lived state or a queue service that provides an equivalent
+counter. The design must name its retention and tenant boundary.
 
-1. Trigger: `issues.assigned` (a maintainer assigned someone through GitHub's own UI).
-2. Observe: position `ready for dev` **with** an assignee — the class-2 invariant break
-   (assigned-but-available).
-3. This module declared the repair: request `ready for dev → in progress`, `cause` = the dated
-   native-assign event. No `effects` — the assignee is already set; only the position heals.
-4. Outcomes: `applied` → the pair is whole; `already` → Flow A got there first (its own write's
-   echo); `refused: older-fact` → a human set `ready for dev` *after* the assign — their gesture
-   stands, the core's narration flags the invariant instead.
+## 9. Failure handling and safety
 
-### 3.2 Bug surface — what to test for
+Ambiguous commands, unauthorized actors, full contributor limits, unavailable GitHub users, missing
+permissions, and stale observations cause no assignment write. A concise managed response may explain the
+next step, but refusal replies are rate-limited so the App does not amplify spam.
 
-- **The two-`/assign` race**: serializer + `expect` → exactly one `applied`; the loser's ack must
-  read "just taken", never a stack trace of refusal jargon.
-- **Native assign between observe and write**: `expect` mismatch → `refused: stale` → re-observe
-  shows an assignee → correct "already taken" ack.
-- **The multi-assignee seam** (Flow B step 5): GitHub allows up to 10 assignees; the invariant table says
-  `in progress` = ≥1 assignee. The C++ bot assumed exactly one and the Python bot removed only the
-  commenter without touching labels. Position moves only when assignees hit zero — this is decided
-  *here*, and the kit's invariant cases must cover it.
-- **Count-limit staleness**: an issue closed seconds ago still shows in the open-count search
-  (GitHub search lag). Cost: one over-strict refusal; acceptable, self-heals. Never pre-cache.
-- **Comment edited after ack**: edits are not commands (`operations/threat-model.md` §3.1) — no
-  re-dispatch, ever.
-- **Missing business logic to decide**: may an actor `/assign` an issue while holding a
-  *different* issue in `awaiting triage` they filed? (No interaction — filing ≠ holding.) May a
-  maintainer `/assign` **someone else** (`/assign @user`)? The old bots said no (self-service
-  only); native assignment covers it — proposed: keep self-only, revisit on demand.
+An unassignment is reversible but can disrupt contributor work. The capability must preserve a newer human
+assignment and must never bulk-remove assignees because a search result was incomplete.
 
-## 4. Safety
+## 10. Tests and sandbox proof
 
-None — nothing destructive. `/unassign` is the actor releasing their own assignment; the reap of
-*stalled* assignments belongs to inactivity.
+Tests must cover self-assignment, maintainer assignment, unauthorized commands, edited comments, duplicate
+deliveries, several assignees, concurrent commands, limit queries with more than one page, stale search
+results, partial effects, missing permissions, and native UI changes. The sandbox should begin with dry-run
+decisions before it writes a real assignee.
 
-## 5. Projections
+## 11. Disable, uninstall, and migration behavior
 
-One **welcome** per item on assign: what happened ("assigned to you") · what's next (branch, link
-the issue with a closing keyword) · the exit (`/unassign` returns it to the pool). Refusals are
-command acks (core kind), not module content.
+Disabling the capability stops command handling and assignment writes immediately. It does not remove
+current assignees. A repository migrating from an old bot must disable the old command handler before this
+one becomes active, because two bots can both accept the same command and create conflicting messages.
 
-## 6. Config knobs
+## 12. Open decisions
 
-- `maxOpenAssignments` (default 2): a large repo with a deep pool tolerates 3–4 concurrent claims;
-  a small repo protecting a shallow pool wants 1–2. Genuine either/or. Caps command users only —
-  GitHub's permission model is the tier system (`design/config/schema.md` §3).
-
-Dropped: C++ `maxGfiCompletions` (cap 5 GFI completions) — its job (move people up the ladder, stop
-GFI-farming) is the ladder's own, via `eligibleLevel`; a second counter is a second mechanism for
-the same question (lessons B2). Ratifiers can restore it as a knob if the incentive proves real.
-
-## 7. Tests beyond the kit
-
-Gate ordering (cheap checks refuse before `eligibleLevel`'s search runs); the needs-review bypass;
-race — two `/assign`s in one sweep window (serializer + `expect` yields one `applied`, one
-`refused: stale`); assign on a hand-labeled pool issue (manual-mode); privileged actor assigns
-natively and no limit fires.
-
-## 8. Open questions
-
-- **Q5**: does this module declare the class-2 repair (native-assign observed on `ready for dev` →
-  request `in progress`, healing the A3 pair)? Recommended yes — it is this module's domain — but
-  it adds `issues.assigned` to `triggers` and one edge; decided at spec ratification.
-- Whether `eligibleLevel` credit is org-wide or per-repo — decided in the memo
-  (`design/core/resolvers.md` §3), consumed here unchanged.
+Maintainers need to decide whether assignment is self-service, whether native assignment bypasses policy,
+whether several assignees are allowed, whether limits cross repositories, and whether skill eligibility is
+useful. The technical experiment must determine the minimum safe recovery record for multi-call effects.

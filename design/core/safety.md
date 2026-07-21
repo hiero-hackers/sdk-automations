@@ -1,69 +1,92 @@
-# Safety: the Destructive Actions, One Row Each
+# Safety Requirements for Repository Changes
 
-> **Drafted for ratification** — the safety engine's contract (`design/architecture.md` §4), completing
-> roadmap Track A3. The engine generalises the one proven pattern in the old bots (the C++ reaper's
-> warn-then-act, `planning/lessons-learned.md` keep-list): every destructive action below inherits it.
-> Timing numbers are config defaults (`design/config/schema.md`) — the *structure* (that a warning
-> exists, what it says, the reversal path) is policy and not configurable. Positions are **proposed**.
+> This document defines platform safety requirements. Candidate action rows remain inactive until the
+> affected maintainers approve the capability, configuration, warning, rollback, and test evidence.
 
-## 1. What counts as destructive, by trigger class
+## 1. Action classes
 
-An action is destructive if it takes something from a person: an assignment, an open PR, a
-conversation. The rule differs by what triggers it:
+The platform classifies an action by its effect on repository participants.
 
-- **Clock-triggered** (derived from timestamps at sweep): **warn-then-act is mandatory** — a warning
-  projection, a grace period, then the act. Never acts on the first observation.
-- **Event-triggered preventive** (must act immediately to be useful, e.g. moderation lock):
-  no grace period would make sense — instead **explain-and-reverse**: the act carries an immediate
-  explanation comment and a one-gesture reversal.
-- **Command-triggered**: none are destructive — `/unassign` is the actor releasing *their own*
-  assignment; self-service on self needs no protection.
+| Class | Examples | Minimum requirement |
+|---|---|---|
+| Observation | The App reads state and records a dry-run decision. | The App requires no workflow write permission and explains where the record is visible. |
+| Human-facing output | The App creates or updates a managed comment. | The write is idempotent, App-authored, rate-limited, and removable without changing workflow state. |
+| Reversible state change | The App adds one mapped label or assigns a user. | The App checks current state, verifies the result, and provides a tested repair or reversal. |
+| Clock-triggered destructive change | The App unassigns a stalled issue or closes a stalled pull request. | The App warns first, observes a full grace period, rechecks current state, and provides a simple reversal. |
+| Immediate preventive change | The App locks a new issue under an approved moderation policy. | The App explains the action immediately and provides a simple maintainer reversal. |
 
-Two standing rules across all rows:
+## 2. Rules for every write
 
-1. **Every warning names the exits.** What was observed, when the app will act, the one-line way to
-   stop it now, and the one-line way to undo it afterwards. A warning that doesn't say how to stop it
-   is a threat, not a warning.
-2. **Every action reverses with at most one human gesture**, and the app must never fight the
-   reversal (`design/core/manual-edits.md` §2 — the reversal is a human edit; the newer-fact rule
-   protects it from re-derivation).
+Every repository write must satisfy all of the following rules.
 
-## 2. The table
+1. The repository explicitly enabled the capability and active mode.
+2. The installation has the required permission.
+3. The capability supplied a dated cause and expected current state.
+4. The platform rechecked mutable preconditions before the write.
+5. A newer human change causes a conflict instead of an automatic reversal.
+6. The adapter names the exact item and value that it may change.
+7. The adapter verifies the requested postcondition after the write.
+8. The executor records an unclear outcome and reconciles it instead of retrying blindly.
+9. The operation has a tested disablement, repair, and rollback path.
+10. The operation appears in dry-run output before it becomes active in a new environment.
 
-| Action | Module | Trigger | Warn → act (defaults) | Reversal (one gesture) |
-|---|---|---|---|---|
-| **Unassign a stalled issue** (`in progress` → `ready for dev`, assignee removed) | inactivity | clock: issue-side, no open linked PR, assignee silent | 7d → 21d | `/assign` again, or a maintainer re-assigns — the class-2 repair (`design/core/taxonomy.md` §2.4) may restore `in progress` automatically |
-| **Close a stalled PR** (`needs revision`, author silent) | inactivity | clock: PR-side | 10d → 60d | reopen the PR — it re-enters positionless and pr-quality (or a hand label) re-places it |
-| **Lock a new issue pending approval** | intake *(provisional — ships only if the module does)* | event: issue opened, moderation on | immediate + explanation comment | a maintainer approves — unlock + `awaiting triage` |
+## 3. Clock-triggered destructive actions
 
-What is *deliberately not here*: **close hygiene** (`design/core/taxonomy.md` §2.3) strips a closed
-item's position labels but is bookkeeping consequent to a close a human or a merge already performed —
-the destructive act was the close, and its reversal (reopen) is native. **Recommendations, level-ups,
-narrations, acks** are comments — nothing to protect.
+A clock-triggered action never occurs on its first stale observation. The capability requests a warning, and
+the platform records the warning before the grace period begins.
 
-## 3. The clock's semantics
+Before the final action, the executor confirms that the item is still in the expected state, the affected
+person has not provided qualifying activity, the warning remains valid, the grace period has elapsed, and no
+newer human action cancelled the plan.
 
-- **What resets it:** any commit, push, or comment from the assignee (or PR author), or `/working`.
-  A reset also clears the standing warning projection — the item is healthy again, and a stale
-  warning is noise.
-- **Where "warned at" lives:** in the warning projection's core-private metadata — one of the two
-  sanctioned exceptions to "projections are never inputs" (`design/architecture.md` §4), schema-
-  versioned like all comment metadata. No label, no store.
-- **Cooldown after reversal** *(proposed)*: a reversal restarts the clock from zero — the full warn
-  lead must elapse again before the item can be re-warned. A reversal that was immediately re-warned
-  would read as the app arguing with the human.
-- **`blocked` freezes everything** *(proposed — the reset-on-unblock half is the open choice)*:
-  while the overlay is on, the clock does not advance, the warning neither escalates nor updates
-  (`design/core/manual-edits.md` §3 — blocked is absolute). On unblock the clock **resets to zero**
-  rather than resuming: an item blocked at day 6 of 7 and unblocked a month later should not lose its
-  assignee the next morning. **Overturned by:** ratifiers preferring resume; the engine supports
-  either, the default is the generous one.
+The warning states the observed inactivity, the earliest action time, the command or action that cancels the
+plan, and the action that reverses it later.
 
-## 4. Open
+## 4. Candidate Hiero profile actions
 
-- Whether the intake lock ships at all — decided with the MVP module set, not here.
-- Reset-vs-resume on unblock (§3's overturn clause).
-- Whether the assignment module's contract includes the auto-restore repair named in row 1
-  (`design/core/manual-edits.md` §8 carries the same question).
-- Exact warning template wording — build-time, against the narration format
-  (`design/core/manual-edits.md` §5).
+The following rows come from the audited automation. They are candidate policy for repositories that request
+the related capabilities.
+
+| Candidate action | Capability | Current candidate default | Reversal |
+|---|---|---|---|
+| The App releases a stalled issue assignment. | `inactivity` | The App warns after 7 days and may unassign after 21 days. | The contributor or a maintainer assigns the issue again. |
+| The App closes a stalled pull request that needs contributor revision. | `inactivity` | The App warns after 10 days and may close after 60 days. | A maintainer or author reopens the pull request when repository policy allows it. |
+| The App locks a new issue pending moderation. | `intake` | The App acts immediately only when the repository enabled moderation. | A maintainer approves and unlocks the issue. |
+
+These numbers are not universal platform defaults. The configuration schema must set safe minimums and must
+prevent a zero-day or negative grace period.
+
+## 5. Pause and cancellation
+
+A repository may configure a mapped `blocked` meaning for a workflow profile. When present, the platform
+stops capability writes for that item. The profile must decide whether removing the pause resets or resumes a
+clock. The earlier proposal preferred a reset, but maintainers have not ratified that policy.
+
+Global, installation, repository, and capability kill switches cancel new work. The executor must define how
+pending work is closed, retained, or reconciled after a kill switch activates.
+
+## 6. Multi-call effects
+
+An operation that changes a label, assignee, and comment uses several GitHub calls. The effect plan must list
+the call order, partial states, safe retries, verification, and restart behavior.
+
+The recovery experiment must stop the process after every call and must include a concurrent human edit. A
+multi-call operation cannot enter a real repository until the executor can distinguish an App-created partial
+state from a similar human-created state.
+
+## 7. Rollout requirements
+
+No destructive action runs in the first technical MVP. A destructive capability requires a separate review,
+personal-sandbox failure injection, a Hiero Hackers sandbox soak, a consenting repository, and a practiced
+rollback.
+
+The old and new automation must never write the same managed state during migration.
+
+## 8. Questions that remain open
+
+- Maintainers must decide which destructive capabilities they want.
+- The configuration design must decide safe timing floors and cancellation commands.
+- The storage experiment must decide where warning and pending-effect records live.
+- The effect executor must define rollback when GitHub returns an unclear result.
+- Each profile must decide how a mapped pause affects clocks.
+- The project must define the clean observation period required before a destructive pilot.

@@ -1,83 +1,82 @@
-# Resolvers: One Mechanism per Question
+# Shared Read-Only Resolvers
 
-> **Drafted for ratification.** The resolvers are the core's shared read-only answers — where two
-> modules must agree on a computation, they call one resolver instead of each carrying a copy
-> (`design/architecture.md` §4, the B2 cure). This document fixes each resolver's mechanism, and takes
-> a position on the one real product decision hiding here: **the skill ladder's scope** (§3).
-> Positions are **proposed**.
+> A resolver answers a question that more than one capability must ask in the same way. Resolvers are
+> read-only platform services. Their exact list remains open until the first capabilities are selected.
 
-## 1. The contract every resolver obeys
+## 1. Resolver rules
 
-- **Read-only and deterministic** per observation — a resolver never writes, and two calls in one
-  processing pass agree (memoized within the pass; no cache beyond it — the app is stateless).
-- **One mechanism per question.** The old system answered "what issue is linked?" two ways that could
-  disagree (lessons B2). Here a second mechanism for an existing question is a rejected PR.
-- **Implementation choices are quarantined behind the signature.** Where a fact lives (a native
-  field, a Projects field, an org-wide count) is the resolver's private business — swapping it
-  changes no module. This is what lets §3's decision be made calmly, and remade cheaply.
-- **Metered, not declared** — resolver call costs are measured at the core
-  (`design/operations/README.md` §4); modules never see budgets.
+Every resolver follows these rules.
 
-## 2. The register
+1. A resolver uses one documented source and interpretation for a question.
+2. A resolver performs no repository write.
+3. A resolver returns normalized facts rather than GitHub transport objects.
+4. A resolver declares its permissions, pagination, rate cost, caching, and unclear-result behavior.
+5. A resolver is memoized only when the architecture can prove that the cache does not hide newer state.
+6. A capability can call only the resolvers in its declaration.
+7. Repository policy that changes the answer enters through validated configuration or a selected workflow
+   profile.
 
-| Resolver | Answers | Mechanism | Main consumers |
+## 2. Candidate resolver register
+
+| Resolver | Question | Candidate source | Main open issue |
 |---|---|---|---|
-| `linkedIssues(pr)` / `linkedPRs(issue)` | what is linked to what, both directions | GraphQL closing references — **only** | inactivity (open-PR check), pr-quality, progression |
-| `eligibleLevel(user)` | the highest rung this user may take | closed-issue counts per rung vs the ladder thresholds — scope per §3 | assignment (gate), progression (recommend) |
-| `isBot(actor)` | is this actor automation | actor type = Bot **+ the app's own identity + the old-bot deny-list** | shell (skip self), manual-edit seniority (`design/core/manual-edits.md` §7) |
-| `mayPerform(actor, action)` | may this actor invoke this | GitHub's own permission level + config teams — no app-side tiers | command dispatch, intake |
-| `priorityOf(item)` | the item's priority | native field / Projects / legacy label — quarantined | progression (sort) — rule fixed in `design/core/taxonomy.md` §4 |
+| `linkedIssues` and `linkedPullRequests` | Which issues and pull requests are related under the repository's policy? | GitHub closing references are the candidate default. | Repositories may use different link rules, and reverse lookup cost requires testing. |
+| `mayPerform` | May this actor request the named action? | GitHub repository permissions plus declared teams or deny rules. | The permission and team scopes must remain acceptable to maintainers. |
+| `isAutomationActor` | Did an App or known bot create this event? | GitHub actor type, App identity, and migration configuration. | Old automation identities must be listed during coexistence. |
+| `priorityOf` | What priority does the repository assign to this item? | A configured native field, Project field, or legacy label mapping. | Project fields require additional permissions and may not be wanted. |
+| `eligibleLevel` | Which optional skill-policy rung may this contributor claim? | Configured completion rules over repository or organization history. | Skill policy, credit scope, and completion meaning are not universal decisions. |
 
-Per-resolver notes, where the mechanism is an argument and not just a choice:
+The first implementation should build only the resolvers required by the selected technical slice and first
+capability.
 
-- **`linkedIssues` must be closing references, not text-scanning** — not merely for consistency:
-  the seam design (`design/core/taxonomy.md` §2.3) relies on GitHub *natively* closing linked issues
-  at merge, and GitHub closes exactly what the closing references name. Any other mechanism would
-  make the resolver disagree with what actually happens at merge. A PR without a closing keyword is
-  simply not linked; pr-quality's link check is the module that tells authors so.
-- **`isBot` carries three lists, each load-bearing:** the platform's Bot type; the app's own
-  identity (its writes echo back as webhook events — recognising itself is loop prevention before
-  idempotency even has to absorb anything); and the known old-bot accounts, which are refused
-  human seniority during migration (`design/core/manual-edits.md` §7).
-- **`mayPerform` adds no tiers** (`design/config/schema.md` §3): GitHub's permission model is the
-  tier system. It answers only what the platform can't express — which slash commands an
-  unprivileged contributor may invoke (`/finalize` needs triage; `/assign` is open, gated by the
-  ladder, limits, and invariants instead of by role).
+## 3. Link resolution
 
-## 3. The skill ladder's scope: per-repo or org-wide? *(proposed: org-wide credit, repo-local gate)*
+The audited automation answers the issue and pull request link question in more than one way. Body text and
+GitHub closing references can disagree. A selected capability must therefore use one configured resolver and
+must not implement a private parser.
 
-The old bots counted completions per repo — by accident of architecture, not decision. A hosted app
-is the first design that *can* count across the org, so the question is finally real:
+Closing references are the current default hypothesis because they match GitHub's native close-on-merge
+behavior. The sandbox test must still cover multiple linked issues, several pull requests for one issue,
+missing closing keywords, reopened items, forks, and inaccessible repositories.
 
-| | Per-repo | Org-wide |
-|---|---|---|
-| contributor experience | proven in Python, a stranger in C++ | progression is portable across the SDK family |
-| calibration | each repo's labels match its difficulty | assumes rungs mean roughly the same across repos |
-| config | thresholds could vary per repo | thresholds **must** live in the org file, or counting is incoherent |
-| hoarding | `maxOpenAssignments` caps per repo only | cross-repo counting also enables a future org-wide view |
-| queries | repo-scoped search | org-scoped search — same call count (~1/rung, event-driven, cheap) |
+## 4. Authorization
 
-**Proposed:** *org-wide credit, repo-local gate.* Completions count across the organisation — the
-SDKs are one domain (the same API surface in five languages), and a contributor who finished two
-good-first-issues in the Python SDK has proven exactly what the C++ SDK's beginner gate exists to
-check. The *gate* stays repo-local — each repo still decides which rung each of its issues demands,
-via its own `skill:` labels. Consequence, accepted with eyes open: the ladder thresholds
-(`core.skillLadder`) become **org-level config that repos do not override** — a repo-varied
-threshold under org-wide counting would be incoherent.
+`mayPerform` does not replace GitHub permissions. It combines the installation's actual permission, the
+actor's repository authority, and capability policy that cannot be expressed through GitHub alone.
 
-**Overturned by:** maintainers judging difficulty non-transferable between repos. The fallback is a
-single org-level scope key (`org` | `repo`) inside the resolver's config — and because the scope is
-quarantined behind `eligibleLevel`'s signature, flipping it changes **no module, no contract, no
-test above the core unit layer**. This question belongs in the ratification memo; it is a product
-choice about contributors, not an engineering constraint.
+A capability must not invent its own role hierarchy. If a capability needs organization team membership or
+another broad permission, the endpoint and permission matrix must show the need before the App manifest is
+expanded.
 
-## 4. Open
+## 5. Optional skill policy
 
-- The ladder scope (§3) — for the ratification memo.
-- What counts as a completion: issue closed *by a merged PR* of the user's, or any close while
-  assigned? (Proposed at build: merged-PR closes only — a maintainer closing as stale should not
-  credit a rung.)
-- Whether `eligibleLevel` also surfaces progress ("1 of 2 toward beginner") for progression's
-  level-up messages — a return-shape detail, decided with that module.
-- The old-bot deny-list contents — fixed by the migration protocol (`design/operations/` when
-  drafted).
+`eligibleLevel` exists only when a repository enables a skill-based assignment or progression policy. It is
+not a universal core requirement.
+
+Repositories that request this resolver must decide all of the following questions.
+
+- They must decide which rung mappings and prerequisite counts apply.
+- They must decide what event counts as a completed contribution.
+- They must decide whether credit is repository-local or organization-wide.
+- They must decide how renamed or retired labels affect historical credit.
+- They must decide how API search delay and rate limits affect an assignment refusal.
+
+The resolver hides the chosen mechanism from capabilities, but it does not make the product decision on
+behalf of maintainers.
+
+## 6. Failure behavior
+
+A resolver distinguishes an empty answer from an answer that could not be determined. A capability must not
+treat an API failure as proof that a user is ineligible, that no linked issue exists, or that no permission is
+present.
+
+The platform reports whether the resolver can retry, must wait for a rate limit, lacks permission, or cannot
+answer under the current configuration.
+
+## 7. Questions that remain open
+
+- The first capability selection must determine the first resolver set.
+- The adapter experiment must determine pagination and rate costs.
+- The configuration design must determine how resolver policy and mappings are supplied.
+- Maintainers must decide whether any repository wants the optional skill resolver.
+- The project must decide whether reverse issue-to-pull-request lookup requires owned indexing.

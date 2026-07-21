@@ -1,266 +1,234 @@
-# Build Plan: Audit → Design → Build → Launch
+# Draft Validation and Build Roadmap
 
-> DRAFT — the plan the README promises: names, estimates, and what is actually committed. The plan
-> is **gated, not dated**: each phase ends at a gate the design already defines (the ratification
-> memo, the conformance kit, the replay gate, the ring soaks). Phases deliberately **overlap** — a
-> phase's setup work (scaffolding, recruiting, doc drafting) starts during the previous phase's
-> tail, but its gate-dependent work never starts before the gate is green. Dates anchor the plan to
-> a start on **20 Jul 2026** (sign-off begins immediately); slipping the start slips everything by
-> the same amount. Week counts are calibrated to the cadence the project has actually run at — the
-> full audit-and-design effort took ~5 weeks with two part-time contributors (16 Jun → 20 Jul 2026).
+> This document is working material. It is not an approved build plan or a commitment to dates. Sophie and
+> Farzan are expected to change it as architecture experiments and maintainer discussions produce evidence.
+> The gates control progress. A date does not permit work when its entry gate is still open.
 
-## The picture
+## 1. Current position
 
-```mermaid
-gantt
-    title sdk-automations — Jul 2026 → Feb 2027 (indicative)
-    dateFormat YYYY-MM-DD
-    axisFormat %b
+The repository contains detailed audits and several architecture proposals. The audit snapshots are useful
+and complete for their pinned revisions. The product architecture is not finished because configuration,
+capability demand, label mappings, the adapter, recovery storage, hosting, and the first user-facing
+capability remain open.
 
-    section Done
-    Audit & design (this repo)          :done, p0, 2026-06-16, 2026-07-20
+Pull request 23 should merge as an honest catalogue of candidate capabilities and a plan for resolving those
+questions. It should not merge as an approved production schedule.
 
-    section Approve
-    1 · Sign-off                        :p1, 2026-07-20, 2026-08-14
-    design approved                     :milestone, 2026-08-14, 0d
+## 2. Goal for November 2026
 
-    section Build
-    2 · Build the engine                :p2, 2026-08-10, 2026-09-25
-    engine works                        :milestone, 2026-09-25, 0d
-    3 · Build the features              :p3, 2026-09-07, 2026-10-16
-    features complete, RC cut           :milestone, 2026-10-16, 0d
+The working goal for 30 November 2026 is the following result.
 
-    section Test
-    4 · Sandbox testing (ring 0)        :p4, 2026-10-12, 2026-11-13
-    sandbox passed                      :milestone, 2026-11-13, 0d
-    5 · Beta — one real repo (ring 1)   :p5, 2026-11-09, 2026-12-11
-    beta passed                         :milestone, 2026-12-11, 0d
+> The project has an agreed platform boundary, a working development GitHub App in a sandbox, and one
+> repository-selected capability that has passed dry-run, failure, disablement, and rollback tests.
 
-    section Launch
-    6 · Fleet rollout (ring 2)          :p6, 2026-12-07, 2027-02-12
-    old bots retired                    :milestone, 2027-02-12, 0d
-```
+This goal does not promise fleet rollout, removal of existing repository bots, or destructive automation.
+Those steps require a consenting pilot, an operator, and a clean observation period.
 
-Every bar starts inside the one before it: the overlap is setup work that no gate can overturn
-(scaffolding, sandbox plumbing, volunteer recruiting, runbook drafting). The milestones are the
-hard sequence — no gate is passed early.
-
-And the gates as the design defines them — a phase is over when its gate is green, not when its
-weeks run out:
+## 3. Work sequence
 
 ```mermaid
 flowchart LR
-    A[audit + design ✓] --> G1{memo signed}
-    G1 --> B[engine] --> G2{kit green<br/>on a stub}
-    G2 --> C[features] --> G3{all modules<br/>kit-green → RC}
-    G3 --> D[ring 0<br/>sandbox] --> G4{replay gate clean<br/>+ soak clean}
-    G4 --> E[ring 1<br/>volunteer repo] --> G5{soak clean +<br/>migration dry-run}
-    G5 --> F[ring 2<br/>fleet] --> G6{old bots off}
+    A["Revise pull request 23"] --> B["Confirm maintainer needs"]
+    B --> C["Run GitHub App feasibility experiments"]
+    C --> D["Ratify the minimum architecture"]
+    D --> E["Build the shared platform foundation"]
+    E --> F["Prove one managed comment"]
+    F --> G["Prove one reversible mapped label"]
+    G --> H["Build one selected capability"]
+    H --> I["Run a Hiero Hackers sandbox soak"]
 ```
 
-## Phase summary
+Each gate below names the evidence required before the next stage begins.
 
-| # | Phase | Dates | Gate at the end |
-|---|---|---|---|
-| ✓ | **Audit & design** | 16 Jun – 20 Jul 2026 | this repo, as it stands |
-| 1 | **Sign-off** | 20 Jul – 14 Aug 2026 | ratification memo signed; hosting named; owners committed; baseline captured |
-| 2 | **Build the engine** | 10 Aug – 25 Sep 2026 | conformance kit green on a stub module |
-| 3 | **Build the features** | 7 Sep – 16 Oct 2026 | every chosen module kit-green; release candidate cut |
-| 4 | **Sandbox testing** (ring 0) | 12 Oct – 13 Nov 2026 | replay gate diffs clean; soak window clean |
-| 5 | **Beta** (ring 1) | 9 Nov – 11 Dec 2026 | soak clean; migration runbook dry-run |
-| 6 | **Launch** (ring 2) | 7 Dec 2026 – mid Feb 2027 | every participating repo on the app alone; old bots retired |
-| 7 | **Maintain & grow** | from Feb 2027 | — (the module lifecycle takes over) |
+## 4. Stage one: Revise and align the design
 
-## The phases
+**Working window:** 21 July through 31 July 2026.
 
-### ✓ Audit & design — 16 Jun – 20 Jul 2026 (done)
+The project will revise pull request 23 as one coherent change. The revision will align the goals,
+architecture, configuration proposal, candidate capability documents, testing approach, and roadmap with
+the accepted pre-interview proposal and the later GitHub research.
 
-The work this repo holds today: the C++, Python, and JavaScript bots read at pinned commits
-([`audit/`](../audit/)), the coupling anti-patterns distilled
-([`planning/lessons-learned.md`](../planning/lessons-learned.md)), and the replacement designed in
-full — architecture, taxonomy, module catalogue, config schema, safety, operations, threat model.
+The revision will make the following distinctions clear.
 
-### Phase 1 · Sign-off — 20 Jul – 14 Aug 2026
+- The audit contains facts about pinned repository revisions.
+- Product principles state the direction that the App should follow.
+- Capability documents describe candidate behavior rather than committed scope.
+- Architecture mechanisms remain hypotheses until official documentation or experiments support them.
+- Maintainer policy choices remain open until the affected maintainers decide them.
+- Dates remain working estimates until owners and gates exist.
 
-*Calendar-bound, not effort-bound: the limit is convening maintainers, not doing work.*
+**Exit gate:** Sophie reviews the complete revision and confirms that it represents the shared starting
+point. Pull request 23 may then merge as a discovery and architecture baseline.
 
-The design is written; nothing builds until maintainers walk the register.
-[`decisions.md`](decisions.md) is already the skeleton of the ratification memo.
+## 5. Stage two: Confirm maintainer needs
 
-- Ratification memo: maintainers walk **D1–D25**, flip each to ratified / overturned.
-- TSC asks: hosting vehicle (**Q1** — LFDT infra vs TSC account) and install-scope governance (**Q11**).
-- Pick the first feature set, and whether the intake lock ships (**Q2**) — this fixes Phase 3's scope.
-- Settle what counts as a ladder completion (**Q3**) and any manual-entry veto (**Q4**).
-- Name owners for every row of this plan (**Q13** — the table below).
-- ⏰ **Deadline-bound: capture baseline behaviour of the live C++/Python bots** while they still run.
-- Write [`contributors.md`](contributors.md) (promised by the README, still missing).
+**Working window:** 1 August through 7 August 2026.
 
-**Gate — design approved.** Decisions ratified, hosting named, feature set fixed, at least one owner
-per build workstream, baseline captured.
+The first needs review should include the C++, Python, and JavaScript SDKs, one repository that wants minimal
+automation, and any repository proposed for a pilot.
 
-### Phase 2 · Build the engine — 10 Aug – 25 Sep 2026 🔨 *coding starts here*
+The discussion will ask which automation is essential, which automation causes mistakes, which work still
+costs maintainer time, which actions must remain human, which permissions are unacceptable, and what the
+smallest useful capability would be.
 
-*The long pole. Everything modules depend on and nothing they see — the core is deliberately the
-biggest single build so the modules stay thin. Starts during sign-off's final week: repo
-scaffolding, CI, and the fake-GitHub harness are safe under any ratification outcome; code that a
-decision could overturn waits for the memo.*
+Every candidate capability will record the requesting repositories, current behavior, policy variation,
+required permissions, safe disablement, and GitHub-native alternatives.
 
-- **Walking skeleton first — week one, may start during sign-off.** A throwaway repo, a webhook, one
-  transition (`/assign` moves `ready for dev` → `in progress`), one adapter function — and, above
-  all, **one crash-recovery path through a pending record (D27)**: kill the process mid-write,
-  restart, recover from the comment-metadata log. This is the earliest possible test of the design's
-  riskiest mechanism; if it fails against the real API, D1's overturn clause fires in week one
-  instead of ring 0, and the memo ratifies against evidence.
-- **Shell:** webhook receiver, installation keying (what makes rings possible later), adapter with
-  the global token bucket + write pacer, decision log (feeds the replay gate).
-- **Config:** registry, `_extends` resolution, the JSON Schema (written with the registry, per Q12),
-  health-issue reporting of unknown keys.
-- **Core:** the two state machines and twelve labels, per-position invariants, resolvers
-  (`linkedIssues`, `eligibleLevel`, `isBot`), safety engine (warn-then-act, blocked-freezes-clocks),
-  projections renderer, serializer + compare-and-set, manual-edit / incoherence handling.
-- **Test harness:** fake core, conformance-kit derivation from module declarations, fixture recorder
-  (fixtures recorded, never hand-written — [`testing/README.md`](testing/README.md)).
+**Exit gate:** Maintainers provide enough evidence to rank the first two candidate capabilities. The gate does
+not require every repository to agree on one workflow.
 
-**Gate — the engine works.** Core unit + invariant suites pass; the kit runs a trivial stub module
-end-to-end, including the toggle matrix and the five incoherence injections.
+## 6. Stage three: Run GitHub App feasibility experiments
 
-### Phase 3 · Build the features — 7 Sep – 16 Oct 2026
+**Working window:** 8 August through 21 August 2026.
 
-*Overlaps the engine build's tail; parallelizes perfectly across owners — no module ever depends on
-another, by design.*
+The experiments will use a separate development GitHub App and a personal sandbox repository. They will not
+write to a maintainer's working repository.
 
-Each module follows the same path: spec from [`modules/TEMPLATE.md`](modules/TEMPLATE.md) → ratify →
-build → pass the kit (passing the kit **is** the definition of being a module). Order is the
-**risk ladder** (full table: [Module build order](#module-build-order)) — the app earns trust
-rung by rung, and never takes a risk on maintainers:
+### 6.1 Installation and authentication experiment
 
-1. **pr-quality, dashboard-only** — reads and one comment, no transitions: a wrong output is an
-   awkward comment, never a wrong state.
-2. **notifications** (a subscription or two) — a second comment-only module proves the kit
-   generalises.
-3. **pr-quality, full** — the first label writes, visible and hand-reversible.
-4. **intake** — stamping and the nudge, then `/finalize`: the first *command*, exercised by
-   maintainers before any contributor types one.
-5. **assignment** — the flagship lands once commands, `eligibleLevel`, and the gates have all run
-   under lower-stakes modules. Settles the native-assign repair (**Q5**).
+The experiment will verify selected-repository installation, installation identity, short-lived token
+refresh, suspension, uninstall behavior, and permission diagnostics.
 
-`modules/authoring.md` and the kit implementation guide are written alongside the first real module
-(Q12's triggers).
+### 6.2 Webhook delivery experiment
 
-**Gate — features complete.** Every chosen module passes its derived kit; composition suite green;
-release candidate cut.
+The experiment will verify signature rejection, fast acknowledgement, duplicate delivery identifiers,
+delayed and out-of-order events, a process restart before and after work is accepted, failed deliveries,
+manual redelivery, bounded queues, and reconciliation after a missed event.
 
-### Phase 4 · Sandbox testing — 12 Oct – 13 Nov 2026 (ring 0)
+### 6.3 Configuration experiment
 
-*First contact with real GitHub, on a practice repo. Mostly watching it run — and measuring every
-number the design estimated. The sandbox repo, webhook plumbing, and hosting deploy are set up
-while the last features finish; the soak clock starts only when the RC lands.*
+The experiment will cover absent, valid, invalid, unknown, and outdated configuration. It will test a config
+change that exists only in a pull request, a default-branch update, inheritance failure, effective-config
+reporting, and a capability whose required permission is missing.
 
-- Before entering: fix marker/schema format, warning templates, health-issue pinning (**Q9**).
-- Sandbox live on real webhooks; nightly E2E; failures mark the dashboard, page nobody.
-- Record fixtures and replay corpora from real traffic — retires all hand-guessed payloads.
-- Measure timeline-read + secondary-limit budgets (**Q10**) → confirms or overturns the newer-fact
-  rule (D9) and the rate arithmetic (D20).
-- Build the replay gate from the decision log; first red-team pass on the threat model (D25's
-  overturn clause names ring 0/1).
-- Write the ring-0 sandbox runbook, against the working sandbox (Q12).
+### 6.4 Adapter experiment
 
-**Gate — sandbox passed.** Replay of N days of sandbox events diffs clean; agreed observation window
-with zero unexplained alerts.
+The experiment will cover pagination, conditional reads, rate-limit headers, secondary limits, redirects,
+forbidden operations, validation errors, timeouts, and bounded backoff. It will confirm that capabilities can
+operate through narrow normalized interfaces without receiving Octokit.
 
-### Phase 5 · Beta — 9 Nov – 11 Dec 2026 (ring 1)
+### 6.5 Recovery and storage experiment
 
-*One real repo with real contributors; the old bots keep running as the safety net until cutover is
-scripted. Volunteer recruiting and the first draft of the migration doc begin during the sandbox
-soak; the app touches the volunteer repo only after the sandbox gate.*
+The experiment will apply one managed comment and one reversible mapped-label change. It will stop the
+process after each step and will simulate a response that is lost after GitHub may have accepted the write.
 
-- Recruit the volunteer repo; agree soak duration, log retention, ring visibility (**Q8**).
-- Write `operations/migration.md`: label mapping table + per-repo cutover runbook (**Q7** — blocks
-  the C++/Python cutover, nothing else).
-- Kill switches proven in anger: operator per-module, repo config block, item-level `blocked`.
-- Failure-loudness routing validated with a real audience on the other end.
+The experiment will compare three recovery sources: current GitHub state and events, App-authored comment
+metadata, and a small owned operational store. The result will identify the minimum state required for
+delivery deduplication, pending effects, retries, schedules, and coordination.
 
-**Gate — beta passed.** Soak window clean; migration runbook dry-run on the volunteer repo.
+### 6.6 Fork and private repository experiment
 
-### Phase 6 · Launch — 7 Dec 2026 – mid Feb 2027 (ring 2)
+The experiment will verify which installation permissions and base-repository operations are available for
+public forks and private or internal forks. It will not execute pull request code with App write credentials.
 
-*Rolling, repo by repo, with holiday slack built in — December is a bad month to cut over live
-repos, so the fleet is paced as small batches through January. First-batch prep (configs, per-repo
-runbooks) starts during beta's tail; no repo cuts over before the beta gate.*
+**Exit gate:** The experiments produce an endpoint and permission matrix, measured failure behavior, a storage
+decision, and an adapter contract that is small enough for the first capability.
 
-- Fleet repos onboard in batches: install → config → runbook → old-bot decommission.
-- C++ and Python SDK cutovers first (they carry the richest automation); JS follows.
-- Remaining modules ride the same spec → kit → ring path as capacity allows: inactivity,
-  review-routing (settles the `queue:` storage question, **Q6**), progression, notifications, admin.
-- Rate arithmetic re-checked at real fleet size; escape hatches (ETags → cadence → owned store) in
-  reserve.
+## 7. Stage four: Ratify the minimum architecture
 
-**Gate — old bots retired.** Every participating repo runs on the app alone; per-repo scripts
-deleted; baseline comparison archived.
+**Working window:** 22 August through 5 September 2026.
 
-### Phase 7 · Maintain & grow — from Feb 2027
+Maintainers will review only the decisions needed for the first technical slice. The review will decide the
+configuration format, minimum storage, deployment model, first adapter operations, permission ceiling,
+repository mapping model, and first capability.
 
-The module lifecycle takes over: proposal → fitness test → spec → kit → ring
-([`modules/README.md`](modules/README.md) §4). Config keys deprecate in place, never break. Nightly
-E2E on ring 0 continues as the standing drift alarm; fixtures re-recorded on schedule; the rate
-arithmetic re-run when the fleet grows. AI-assist hooks are explored through the notifications
-module — the one module that touches no state.
+The review will not attempt to settle every candidate capability or every Hiero workflow policy.
 
-## Module build order
+**Exit gate:** The decision register names the approving maintainers, date, and evidence for every decision
+that authorizes implementation.
 
-No module *requires* another — every consumed state has a manual way in, so the order is free to
-optimize for risk and value, not dependency. The ordering principle is a **risk ladder — never
-take a risk on maintainers**: each rung ships only when the rung below has run clean, and the
-app's first weeks in front of real people are read-and-comment only.
+## 8. Stage five: Build the shared platform foundation
 
-> rung 0: reads + comments only → rung 1: non-destructive labels → rung 2: assignee effects +
-> commands → rung 3: destructive actions
+**Working window:** 6 September through 2 October 2026.
 
-| # | Module (slice) | Rung | Why this position | Demand |
-|---|---|---|---|---|
-| 1 | **[pr-quality](modules/pr-quality.md)** — *dashboard-only slice* | 0 | reads checks, renders one comment, **requests no transitions**; wrong output = an awkward comment, never a wrong state; exercises adapter reads, projections, idempotent render, recorded fixtures | 🟢 (C++ full, Python partial) |
-| 2 | **[notifications](modules/notifications.md)** — one or two subscriptions | 0 | zero state by construction; a second comment-only module proves the kit + config path generalises | 🟣/JS |
-| 3 | **[pr-quality](modules/pr-quality.md)** — *full* | 1 | adds the entry/swap edges; label mistakes are visible and hand-reversible, and never-revert protects the human correcting them | — |
-| 4 | **[intake](modules/intake.md)** — stamping + nudge, then `/finalize` | 1→2 | `awaiting triage` stamping is the lowest-stakes label write there is; `/finalize` is the *first command*, exercised by maintainers (who can judge rough edges) before contributors ever type one | 🔵/🟣 split |
-| 5 | **[assignment](modules/assignment.md)** | 2 | the flagship — but it needs the command surface, `eligibleLevel`, limits, and the deny-list gate all proven before its first contributor interaction; by now every one of those has run in production under lower-stakes modules | 🟢 both SDKs |
-| 6 | **[inactivity](modules/inactivity.md)** | 3 | the biggest maintainer pain — and the destructive one; enters only after warn-then-act has soaked and the pending-record recovery (D27) has survived real restarts | 🟢 both SDKs |
-| 7 | **[review-routing](modules/review-routing.md)** | 1 | completes the PR side; settles Q6 (queue derived, not stored); slots after full pr-quality whenever capacity allows | 🟣 Python |
-| 8 | **[progression](modules/progression.md)** | 0 | comment-only, but needs Q3 + the ladder scope ratified and `eligibleLevel` battle-tested by assignment first | 🟢 both SDKs |
-| 9 | **[admin](modules/admin.md)** | 0 | degrades to no-op; half its old job moved into the core (`mayPerform`); build on demand | 🟣 Python |
+The first implementation will include the following technical path.
 
-Two consequences worth stating. First, the walking skeleton and this order disagree on purpose:
-the skeleton exercises a risky mechanism (D27 crash recovery) on a **throwaway repo**; the build
-order governs what runs in front of **real people**. Risk-first in the lab, risk-last in
-production. Second, the cutover lens is unchanged — **assignment + inactivity** turns off the
-Python bots, **assignment + pr-quality** the C++ ones — so modules 1–6 remain the natural MVP
-proposal for Q2; only the order inside it changed.
+1. The App authenticates installations and verifies webhooks.
+2. The intake path durably accepts delivery work before it acknowledges an event within GitHub's time limit.
+   The ratified storage decision defines the additional recovery records.
+3. The configuration layer reads the default branch, validates the schema, and reports effective values.
+4. The registry activates only explicitly enabled capabilities.
+5. The platform produces normalized observations and exposes narrow adapter reads.
+6. The policy layer enforces repository mode, permissions, mappings, and current-state preconditions.
+7. The system records operator-visible dry-run intents without applying repository writes.
+8. The test harness uses recorded GitHub fixtures at the adapter boundary and owned fakes above that boundary.
 
-## Who builds it (Q13)
+**Exit gate:** The platform handles real sandbox webhooks in observe and dry-run modes, survives a restart,
+and explains every proposed effect without changing repository workflow state.
 
-Every dash below is Q13's open question. The baseline-capture row is the one with a real deadline —
-the old bots must be recorded while they still run.
+## 9. Stage six: Prove reversible effects
 
-| Workstream | Phase | Owner |
-|---|---|---|
-| ⏰ Baseline capture of live C++/Python bots | 1 | — |
-| Ratification memo convening | 1 | — |
-| Walking skeleton (D1/D27 de-risk, incl. crash recovery) | 1–2 | — |
-| Shell (webhooks, adapter, decision log) | 2 | — |
-| Config registry + JSON Schema | 2 | — |
-| Core (state machines, resolvers, safety, projections) | 2 | — |
-| Test harness + conformance kit | 2 | — |
-| assignment module | 3 | — |
-| pr-quality module | 3 | — |
-| intake module | 3 | — |
-| Ring-0 sandbox + replay gate | 4 | — |
-| Migration protocol (`operations/migration.md`) | 5 | — |
-| Fleet rollout operator | 6 | — |
+**Working window:** 3 October through 23 October 2026.
 
-## Critical path and standing risks
+The first effect creates or updates one App-authored managed comment. Repeated delivery must update the same
+comment or return `already` without creating a copy. The test must cover an edited marker, a deleted comment,
+an unclear create response, and a restart.
 
-- **Q1 blocks build start.** No hosting vehicle → no webhook endpoint → nothing real to build
-  against. It is the first ask of the TSC and the only sign-off item that can slip the whole plan.
-- **Baseline capture has a real deadline.** Everything else in this plan is elastic; that row is not.
-- **Owners are the multiplier.** Phase 3's features parallelize perfectly. One owner ≈ serial; three
-  owners ≈ the overlap the gantt draws. Adding people shortens the build (Phases 2–3), not the
-  testing and rollout (Phases 4–6) — roughly a third of the calendar is deliberate watching-it-run.
+The second effect applies one configured label and verifies the final state. The test must cover the label
+already being present, a missing permission, a concurrent human change, a rate-limit response, a timeout, and
+a process restart. The App must never remove unrelated labels.
+
+**Exit gate:** Both effects pass local failure injection and the personal-sandbox test. The repository,
+capability, and installation kill switches are demonstrated.
+
+## 10. Stage seven: Build one selected capability
+
+**Working window:** 24 October through 13 November 2026.
+
+The capability will be chosen from maintainer demand and the measured permission and failure surface. A
+comment-only pull request quality dashboard is the current low-risk candidate, but the choice remains open
+until the earlier gates close.
+
+The capability document must contain the complete declaration, configuration, mappings, permissions, failure
+behavior, disablement behavior, rollback, and tests. The capability must pass the conformance kit and run in
+dry-run mode before active mode.
+
+Contributor-facing assignment and destructive inactivity behavior are not the first live experiment unless
+new evidence gives them a safer and more valuable path.
+
+**Exit gate:** The capability passes local, adapter-contract, sandbox, disablement, and rollback tests.
+
+## 11. Stage eight: Run a Hiero Hackers sandbox soak
+
+**Working window:** 14 November through 30 November 2026.
+
+The project will request permission to use a clearly named Hiero Hackers sandbox repository. The App will
+begin in observe mode, then use dry-run mode, and then enable one reversible capability only after the earlier
+results are clean.
+
+The soak will measure webhook delay, duplicate processing, API use, unclear outcomes, configuration errors,
+operator visibility, and rollback. Any unexplained behavior stops promotion and becomes a recorded test case.
+
+**Exit gate:** The observation period is clean, the rollback rehearsal succeeds, and maintainers decide
+whether the capability is ready for a volunteer repository pilot.
+
+## 12. Work that remains outside this roadmap
+
+The following work requires later approval and is not promised by November.
+
+- The roadmap does not promise a fleet rollout or removal of current C++ or Python automation.
+- The roadmap does not promise assignment, inactivity closure, issue locking, review routing, progression,
+  or a skill ladder.
+- The roadmap does not promise organization Projects, off-GitHub notifications, or additional App
+  permissions.
+- The roadmap does not permit two automation systems to write the same managed state during migration.
+- The roadmap does not permit destructive or cross-repository writes without a separate review and rollback
+  rehearsal.
+
+## 13. Ownership and dates
+
+The working windows above help order the work, but they are not commitments until each row has an owner.
+
+| Workstream | Required owner |
+|---|---|
+| Pull request 23 revision and architecture review | Sophie and Farzan must confirm the review arrangement. |
+| Maintainer-needs review | The affected repository maintainers must participate. |
+| Development App and personal sandbox | An implementation owner must be named. |
+| GitHub endpoint and permission matrix | An architecture or adapter owner must be named. |
+| Configuration experiment | A configuration owner must be named. |
+| Recovery and storage experiment | A platform recovery owner must be named. |
+| Shared platform implementation | The project must name component owners after ratification. |
+| Hiero Hackers sandbox | An organization maintainer and an operator must approve and own it. |
+
+When an owner or gate is missing, the dependent date moves. The project does not compress safety testing to
+preserve a calendar estimate.

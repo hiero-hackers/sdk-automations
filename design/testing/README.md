@@ -1,80 +1,115 @@
-# Test Architecture for the Opt-In Module System (work in progress)
+# Test Strategy for the GitHub App Platform
 
-> **What this covers:** a working proposal for how to test the opt-in-module app — the forward-looking
-> partner to `audit/testing-cpp.md`, which found the C++ suite testable as units (A) but not across its
-> seams (D). This design makes the seams testable by construction.
->
-> **Tests the design in** `design/architecture.md` and `design/modules/README.md`; applies the
-> `planning/lessons-learned.md` constraints. **Deferred (implementation):** the concrete frameworks.
+> The test strategy must prove capability isolation, GitHub adapter behavior, effect recovery, configuration
+> safety, and rollout controls. Specific frameworks will be selected with the implementation.
 
-## The thesis: test modules against the core, not against GitHub
+## 1. Test boundary
 
-C++ tested each handler against a mock of **GitHub** — a system the project doesn't control, whose drift is
-silent (`planning/lessons-learned.md` B1, mock-fidelity). Here, a module only ever calls **the core**
-(`design/modules/README.md` §3), so it is tested against a **fake core** — an interface the project *owns*: small,
-stable, ours. GitHub-mocking is pushed down to **one** adapter and contract-tested there. The mock-drift
-surface collapses from "every handler re-models GitHub" to "one adapter, modelled once." The fake core
-carries an **injectable clock**: the safety engine's warn/grace/cooldown paths and the newer-fact rule
-run in virtual time, so a 21-day reclaim is a unit test, not a wait.
+Capabilities are tested against platform interfaces that this project owns. GitHub response shapes are
+handled and tested at one adapter boundary.
 
-## The layers
+This design preserves the strong per-handler testing found in the C++ automation while adding tests for the
+seams that the old system could not verify. It avoids giving every capability a separate hand-written model
+of GitHub.
 
-| Layer | Tests | Mocks |
+## 2. Test layers
+
+| Layer | What the layer proves | External dependency |
 |---|---|---|
-| **Core unit** | state machines (every legal + illegal transition); resolvers; safety engine | nothing — pure logic |
-| **Module unit** | one module's logic in isolation | the **fake core** (owned, stable) |
-| **Adapter contract** | the one GitHub adapter vs GitHub's published schemas; typed client so a rename is a compile error | GitHub (here only) |
-| **Transition recovery** | repeated and out-of-order observations; unclear API responses; failure to save a pending record; a crash after every call; records that match, are missing, are old, or were replaced; similar changes made by the App and by a human | adapter + recorded comments and issue-event timelines |
-| **Module↔core contract** | a module only requests transitions / reads keys it *declared* | the registry |
-| **Composition** | a real sequence (intake → assign → inactivity) on a real core | adapter only |
-| **Toggle matrix** | enabling/disabling a module has no side effect on the others; plus the incoherence-injection axis — each `design/core/manual-edits.md` §3 class × each module combination | adapter |
-| **Invariants** | item never in two *position* states (`blocked` is an overlay); destructive acts always pass the safety engine; the manual-edit set (`design/core/manual-edits.md` §6: never-revert, no-prefix, narrated, blocked-absolute) | — |
-| **Replay gate** | every release replays recent production events and diffs the emitted transitions against what production did; an unexplained diff blocks (`design/operations/README.md` §3) | nothing — real recorded traffic |
-| **E2E (scheduled)** | a real App install on a sandbox repo: real webhooks + API; doubles as ring 0 of the rollout (`design/operations/README.md` §3) | nothing |
+| Pure platform logic | Configuration merging, policy, compatibility, safety, and intent validation behave deterministically. | The layer has no external dependency. |
+| Capability unit | One capability produces the expected intent from normalized observations and its own configuration. | The layer uses owned platform fakes. |
+| Capability conformance | The capability cannot use undeclared configuration, resolvers, intents, permissions, or sibling capabilities. | The layer uses the registry and type boundary. |
+| Adapter contract | Normalized reads and narrow writes match GitHub's documented and recorded behavior. | The layer uses recorded GitHub fixtures and selected sandbox calls. |
+| Effect recovery | Duplicate delivery, unclear responses, partial multi-call effects, restarts, and concurrent human edits converge safely. | The layer uses the real executor with controlled adapter failures. |
+| Configuration integration | Default-branch loading, inheritance, schema errors, effective values, permission mismatch, and rollback behave safely. | The layer uses repository fixtures and sandbox configuration changes. |
+| Composition | Supported capability combinations preserve declared compatibility and ownership rules. | The layer uses the real platform and a fake adapter. |
+| End-to-end sandbox | The GitHub App installation, webhook, token, API, configuration, storage, and recovery path work together. | The layer uses a development App and personal sandbox. |
+| Replay and shadow | A new version evaluates recorded or live read-only observations without unexplained differences. | The layer uses sanitized audit records or approved shadow traffic. |
 
-## When each layer must pass
+## 3. Capability conformance kit
 
-The layers map to gates — this mapping is policy, fixed here rather than discovered in CI config:
+The kit derives tests from the capability declaration.
 
-| Gate | Must pass |
+- The kit verifies that disabled capabilities receive no events or schedules.
+- The kit verifies that only the declared configuration is visible.
+- The kit verifies that undeclared resolvers and intents are unavailable.
+- The kit verifies that missing permissions prevent writes.
+- The kit verifies dry-run output for every declared intent.
+- The kit verifies repeated observations without duplicate effects.
+- The kit verifies stale expectations and newer human changes.
+- The kit verifies capability-specific disablement and rollback.
+- The kit verifies every declared compatibility rule.
+
+Passing the conformance kit shows that the capability follows the platform contract. It does not prove that
+the capability policy is desirable. Maintainer review and capability-specific tests provide that evidence.
+
+## 4. Adapter fixtures
+
+The project should record real GitHub payloads and API responses from approved sandbox traffic. Every fixture
+records the source endpoint, event, API version, capture date, sanitization, and expected normalization.
+
+Hand-written fixtures remain acceptable for impossible or security-sensitive fault injection when the test
+clearly identifies them as synthetic. The suite must not pretend that a synthetic fixture proves real GitHub
+behavior.
+
+The adapter suite must cover pagination, `null` and missing fields, redirects, conditional reads, rate-limit
+headers, secondary limits, validation errors, forbidden responses, timeouts, and lost responses after a write
+may have succeeded.
+
+## 5. Recovery matrix
+
+Every multi-call effect is tested with failure after each call and before each verification read. The matrix
+includes the following scenarios.
+
+- The same webhook delivery arrives again.
+- A different delivery describes the same current state.
+- Events arrive out of order.
+- GitHub applies a write but the response is lost.
+- The process stops before recording progress.
+- The process stops after recording progress but before the next call.
+- A human makes the same change while the App is stopped.
+- A human makes an opposing change while the App is stopped.
+- A permission is removed during recovery.
+- The mapped label or managed comment is renamed, edited, or deleted.
+- Two executor processes attempt the same or opposing effects when the selected hosting model permits that
+  scenario.
+
+The expected result must be `applied`, `already`, `conflict`, `forbidden`, `retryLater`, or `unknown`. The
+test fails when the executor guesses success from an API response without verifying the postcondition.
+
+## 6. Configuration matrix
+
+The configuration suite covers absent, empty, valid, invalid, unknown-key, outdated, and future-version
+files. It covers default-branch changes, pull-request-only changes, inheritance failure, mapping conflicts,
+missing fields, missing permissions, mode changes, and rollback.
+
+The suite proves that no configuration and invalid configuration cause no workflow-changing writes. It also
+proves that organization defaults cannot silently enable a repository capability.
+
+## 7. Security tests
+
+The security suite covers invalid webhook signatures, replayed deliveries, command spam, forged markers,
+untrusted mentions and markup, oversized configuration, inheritance loops, permission reduction, queue
+saturation, and secret redaction.
+
+The App never runs pull request code with its write credentials. Fork and private-repository behavior is
+tested with the development App before the corresponding capability is offered.
+
+## 8. Required checks by stage
+
+| Stage | Required evidence |
 |---|---|
-| **every PR** | core unit · module unit · module↔core contract · restart cases · the conformance kit (incl. toggle matrix + incoherence injection) · invariants |
-| **release candidate** | all of the above + adapter contract against recorded App timelines + composition + **replay gate** (`design/operations/README.md` §3) + a test that the chosen host runs only one app process |
-| **scheduled (nightly)** | E2E on the ring-0 sandbox — failures mark the dashboard, page nobody (`design/operations/README.md` §1) |
+| Every pull request | Pure logic, capability unit, conformance, configuration, security, and deterministic failure-injection tests must pass. |
+| Release candidate | Adapter contracts, effect recovery, supported composition, migration, and replay tests must pass. |
+| Personal sandbox | Real webhook, token, API, storage, disablement, and rollback tests must pass. |
+| Hiero Hackers sandbox | Observe, dry-run, reversible-write, kill-switch, and clean-soak evidence must pass. |
+| Volunteer pilot | Maintainer approval, shadow comparison, rollback rehearsal, and an agreed clean observation period are required. |
 
-Everything a module author can break runs at PR time; everything that needs real GitHub runs where
-real GitHub is, off the PR critical path.
+## 9. Questions that remain open
 
-## Fixtures are recorded, never written
-
-The C++ suite's deepest flaw was hand-written mocks of GitHub drifting silently from the real thing
-(`audit/testing-cpp.md` — the mock that never returned `mergeable: null`). The cure applies to our
-own test data: **every GitHub payload fixture — adapter contract inputs, replay corpora, kit
-scenarios that need event shapes — is recorded from real traffic** (ring 0, or production via the
-decision log) **and never authored by hand.** A hand-written fixture encodes what its author
-believes GitHub does; a recorded one encodes what GitHub did. Re-recording on a schedule is the
-drift alarm hand-written mocks can never sound.
-
-## The conformance kit: one harness, derived per module
-
-Three of the layers above — **module↔core contract**, **toggle matrix**, and **invariants** — are
-packaged as a single reusable conformance kit, in the spirit of the Hiero TCK but cheaper: there is
-one implementation with many modules of one interface, so no external driver is needed — the kit
-runs any module in-process against the fake core, and **derives most of its suite from the module's
-own declaration** (`design/modules/contract.md` §1): a manual-production case per consumed state, a
-legal-request and refusal-handling case per declared edge, the five incoherence classes injected,
-the global invariants asserted throughout, and the on/off toggle cases. Undeclared operations need
-no tests — the types made them inexpressible. A module author writes only behaviour tests
-(does `/assign` check the ladder correctly); **passing the kit is the definition of being a
-module** — it is how the standards bind without anyone having to remember them.
-
-## The two layers only the decoupling makes possible
-
-These are the headline — they test what C++ structurally could not.
-
-- **Toggle matrix** turns the decoupling *claim* into an executable test: run assignment-alone vs +intake vs
-  full-stack and assert flipping one module doesn't perturb another. In C++ this was untestable — toggling a
-  co-located job wasn't a code path.
-- **Invariants** exist only because the core *owns* the spine: "never two *position* states," "every
-  destructive action passed the safety engine." Unassertable in C++ where no component owned that state
-  (`planning/lessons-learned.md` A1). Decoupling doesn't just ease tests — it *creates* testable guarantees.
+- The implementation must choose the test frameworks and fixture storage format.
+- The project must define how sandbox records are sanitized and retained.
+- The storage decision must determine database and queue integration tests.
+- The hosting decision must determine process-overlap and deployment tests.
+- The first capability must define policy-specific cases beyond the conformance kit.
+- Maintainers must define the clean observation period for a pilot.

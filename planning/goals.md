@@ -2,13 +2,12 @@
 
 ## Vision
 
-Turn the per-repo GitHub Actions automation into a **hosted, config-driven GitHub App** that any
-Hiero (or other) repo can install and switch on using a config file **only the contributor-workflow features it wants**.
-
+Turn repeated repository automation into a **hosted, configuration-driven GitHub App**. A repository
+installs one App and enables only the workflow features it wants.
 
 ## The problem
 
-Maintainers carry avoidable load: PRs pile up unassigned and unlinked, issues sit untriaged, stale work isn't reclaimed. 
+Maintainers carry avoidable load: PRs pile up unassigned and unlinked, issues sit untriaged, stale work isn't reclaimed.
 
 Existing bots in the C++ and Python SDK solve much of this, but there is no easy way to take part of the functionality, and copying the same scripts creates maintenance overhead that distracts from the core goals of the repository.
 
@@ -34,24 +33,31 @@ There is a use case for maintainers to have a reliable, low cost way of automati
 
 ## Goals
 
-1. **Decoupled by function.** Every capability is an independent feature a repo can enable, disable, or dial up.
-2. **Config-driven opt-in.** A repo declares its choices in `.github/hiero-automation.json` (with `_extends` org defaults). No config means safe defaults.
-3. **Phased adoption.** the core services should be split into a phased construction, starting with the most core and commonly needed functions.
-4. **Minimal, legible permissions.** `Issues:write` · `PR:write` · `Contents:read` only — never
-   `contents:write`.
-5. **Safe and trustworthy.** Destructive actions (auto-close, unassign) are
-   warned ahead with a grace period, and are reversible.
+1. **Each capability is separated by function.** A capability does not call or import another capability. Each one can be
+   enabled or disabled on its own. Any compatibility rule must be declared and checked.
+2. **Every repository makes a configuration-driven choice.** A repository declares its choices in a reviewed file on its default
+   branch. No configuration means no workflow-changing writes. Organization defaults may provide values,
+   but they do not silently enable a capability.
+3. **The project uses phased adoption.** The team starts with the shared App foundation, then adds capabilities that maintainers have
+   asked for. Move from observation to reversible writes before any destructive action.
+4. **The App uses minimal and clearly explained permissions.** Each released product slice uses the smallest
+   practical App permission set for its supported capabilities. Runtime checks prevent a capability from
+   using an undeclared or unavailable permission. Repository configuration does not change the installation
+   grant. The App never needs permission to change repository code.
+5. **The App must be safe and trustworthy.** Destructive actions, such as automatic closure or
+   unassignment, require an advance warning and a grace period, and they must be reversible.
 
 ## What success looks like
 
 - A repo installs the App, writes a few config lines, and gets exactly the automation it chose.
 - Turning a feature off is one config edit and has no side effects on the others.
-- One authoritative skill ladder, label taxonomy, and status state machine shared across features.
+- Repositories can use different workflow policies, labels, checks, thresholds, and contributor rules.
+- Stable internal meanings can be mapped to repository-specific labels or fields.
 - No surprise actions: the bot warns before it closes or unassigns, and explains each action in a comment.
 
 ## Non-goals
 
 - Absorbing CI / build / release pipelines — those stay as native Actions per repo.
 - A one-size-fits-all bot: the point is configurable subsets, not a fixed suite.
-- Adding new services - the focus of the app (for now) is safely abstracting current services.
-
+- Inventing workflow policy without maintainer demand. Existing automation is the starting evidence, and
+  new behavior needs a clear user need.

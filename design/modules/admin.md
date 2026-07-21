@@ -1,153 +1,122 @@
-# admin: the housekeeping nobody should have to remember
+# Candidate Capability: Repository Administration Assistance
 
-> Spec for the `admin` module. Status: **draft** — catalogue-level, written from the audit
-> (Python spam-list maintenance and mentor rotation, `audit/services-python.md`) to inform Q2 and
-> ratification; re-worked against `TEMPLATE.md` before build. Deliberately last in the build order:
-> it degrades to a no-op without the events it watches, and half its old job has moved into the
-> core.
+> This capability is an unconfirmed candidate based mainly on Python repository behavior. Administrative
+> actions can require broader permissions and durable policy state, so they should not be grouped into the
+> first platform milestone without direct maintainer demand.
 
-## 1. The job
+## 1. Maintainer need and evidence
 
-Without admin, two upkeep chores fall to whichever maintainer remembers: keeping the abuse/spam
-deny-list current, and rotating mentors onto good-first-issue assignments so first-timers get a
-named human. Admin automates both. One outcome: **the deny-list and the mentor roster stay current
-without anyone owning a chore.**
+Some repositories may want help rotating mentors, applying a denylist, or checking whether administrative
+policy files remain valid. These jobs are different from issue and pull request workflow assistance. They
+can affect people and organization policy, so convenience alone is not enough reason to automate them.
 
-## 2. The declaration
+## 2. The capability boundary
+
+This candidate may evaluate a repository-approved administrative rule and propose a change. The safest
+version opens or comments on a configuration pull request for human review. It does not write directly to
+the default branch, change organization roles, manage secrets, or alter repository settings.
+
+Mentor rotation and denylist enforcement may be separate capabilities after discovery because they use
+different evidence, permissions, safety rules, and recovery.
+
+## 3. Candidate declaration
 
 ```ts
 {
-  name: 'admin',
-  config: { mentors: '{ roster: Login[] } | absent' },
-  consumes: [],
-  transitions: [],                                 // none — bookkeeping and comments only
-  resolvers: ['isBot', 'mayPerform'],
-  triggers: ['issues.assigned', 'sweep'],
+  name: "administration-assistance",
+  configSchema: AdministrationConfigSchema,
+  triggers: ["scheduled evaluation", "pull_request events for a managed configuration change"],
+  observations: ["RepositoryPolicyObservation", "MembershipObservation"],
+  resolvers: ["mayPerform", "organizationMembership", "isAutomation"],
+  intents: ["UpsertManagedComment", "ProposeConfigurationChange"],
+  permissions: {
+    repository: ["contents:read", "pull_requests:read", "issues:write"],
+    organization: ["members:read only if an approved rule requires it"],
+  },
+  operationalNeeds: {
+    schedule: true,
+    durableState: "candidate",
+    crossItemCoordination: true,
+    externalDelivery: false,
+  },
 }
 ```
 
-Note what is *absent* against the old system. The catalogue's early sketch said admin produces
-"`notes:*` bookkeeping" — but the taxonomy folded the `notes:` namespace away (D3), so this spec
-produces **no labels at all**. And the spam list's *enforcement* is not here: contract §6 already
-promoted it into the core as a `mayPerform` clause — the gate is the core's, the *upkeep* is this
-module's.
+`ProposeConfigurationChange` is not yet an approved adapter operation. Its feasibility and permission cost
+must be evaluated separately.
 
-The declaration, drawn — this module's **entire** view of the core; no `request()` arrow exists —
-this module *cannot* touch state, by type:
+## 4. Configuration and repository mappings
 
-```mermaid
-flowchart LR
-    TRIG["triggers:<br/>issues.assigned · sweep"] --> M[admin]
-    M -->|"resolve()"| RES["isBot · mayPerform"]
-    M -->|"project()"| PJ["mentor welcome ·<br/>deny-list evidence issue"]
-    RES & PJ --> CORE["Core&lt;D&gt; — the typed handle"] --> ADP["adapter → GitHub"]
-```
+The capability defaults to disabled. A selected rule would name its policy file, eligible people or teams,
+exclusions, review owners, rotation period, and proposal mode. People and team identifiers need explicit
+organization mappings. A denylist requires a clear owner, reason model, visibility policy, correction
+process, and expiry policy.
 
-## 3. Behaviour
+Administrative configuration should not inherit from an unreviewed or mutable external source. A change in
+effective policy must be visible in the pull request that enables it.
 
-- **Mentor rotation**: on observing a good-first-issue assignment (and `mentors.roster` present),
-  pick the next mentor round-robin and render the welcome-with-mentor projection. Rotation position
-  is *derived* — count prior mentor comments via the module's own marker — not stored (no owned
-  state, D1).
-- **Deny-list upkeep**: on sweep, refresh the evidence view for maintainers — which actors tripped
-  the per-actor command budgets (`operations/threat-model.md` §3.1), with counts — rendered on one
-  tracking issue. **The list itself lives in config** (the org `_extends` file), so *changing* it
-  is a reviewed config PR, not a bot write: the app proposes, humans amend.
-- **Manual-mode story**: with no roster configured and no budget trips, admin does nothing at all —
-  and that is correct. It is pure automation of upkeep that maintainers can always do by hand in
-  config.
+## 5. Behavior
 
-Not carried over: Python's hourly cron editing `.github/spam-list.txt` — the app writing files
-needs `contents:write`, which the permission promise forbids, permanently. The config-PR path above
-is the replacement.
+At a scheduled evaluation, the capability reads the approved policy and current relevant facts. It produces
+either an advisory result or a proposed configuration change for human review. It does not apply that
+change to the protected branch. A later evaluation detects an existing proposal and updates or suppresses
+it instead of opening duplicates.
 
-### 3.1 Step by step
+A human edit to the policy is authoritative. The capability must re-read the latest default-branch revision
+before preparing a proposal and must not overwrite a newer maintainer change.
 
-The flows in one picture; the numbered steps below are authoritative for detail:
+## 6. GitHub events, reads, writes, and permissions
 
-```mermaid
-flowchart TB
-    AS["assignment on a<br/>good-first-issue"] --> ROSTER{roster<br/>configured?}
-    ROSTER -->|no| S1[stop]
-    ROSTER -->|yes| MARK{welcome marker<br/>already here?}
-    MARK -->|yes| S2["stop — redelivery-safe"]
-    MARK -->|no| IDX["derive position: count prior<br/>markers (index stored in each —<br/>roster edits can't shift history)"]
-    IDX --> PICK["next = roster[count mod len]"]
-    PICK --> GHOST{login is a ghost?}
-    GHOST -->|yes| NEXT["advance + health-issue note"] --> PICK
-    GHOST -->|no| WELCOME["render welcome —<br/>mention-only, never assigned"]
+The capability may need repository content, pull request, and organization membership reads. Membership
+visibility and team access need direct App tests. Creating a branch, commit, or pull request requires
+content write access and significantly enlarges the permission boundary.
 
-    SW[sweep] --> TRIPS{"budget-trip counters<br/>since last pass?"}
-    TRIPS -->|"nothing new"| S3[no write]
-    TRIPS -->|yes| EVID["merge into evidence issue:<br/>counts · first/last seen ·<br/>the one-line config change"]
-    EVID --> AGE["quiet actors age out;<br/>decision log keeps history"]
-```
+The preferred first experiment should generate a patch or advisory comment without granting content write.
+If maintainers later want App-created pull requests, that effect needs an isolated adapter design, branch
+naming rules, commit authorship, signing decisions, fork behavior, and protection against workflow changes
+in generated content.
 
-#### Flow A — mentor rotation
+## 7. Compatibility without dependency
 
-1. Trigger: `issues.assigned` on an issue carrying `skill: good first issue`. No `mentors.roster`
-   configured → stop.
-2. A mentor-welcome marker already exists on this issue → stop (redelivery-safe).
-3. Derive the rotation position: count this repo's prior mentor-welcome markers. Each marker
-   carries the **mentor's roster index at render time**, not just their login — so a later roster
-   edit cannot shift the derived history.
-4. Next mentor = `roster[count mod len(roster)]`.
-5. The chosen login is a ghost (deleted/suspended account) → advance to the next roster entry and
-   note it on the health issue — never render a broken @-mention.
-6. Render the welcome: who was assigned · who their mentor is · where to ask. Mention-only — the
-   mentor is **never added as an assignee** (the old `notes: mentor-duty` patch existed to fight
-   exactly the invariant collision that assigning them creates; see §3.2).
+Administration assistance does not depend on issue, pull request, assignment, or progression capabilities.
+Other capabilities may read the same approved policy through a shared resolver, but this candidate cannot
+enable them or rewrite their configuration.
 
-#### Flow B — deny-list evidence
+## 8. Operational state and recovery
 
-1. Trigger: sweep. Read the per-actor budget-trip counters the shell metered since the last pass
-   (metered in-process; the decision log is the durable history).
-2. Nothing tripped and the standing evidence renders nothing new → no write.
-3. Merge into the one evidence-issue projection: per-actor counts · first/last seen · the exact
-   one-line org-config change that would act on it.
-4. Actors quiet for N days age out of the rendering (retention, §8); the decision log keeps what
-   the projection forgets.
-5. **The module never edits the list itself** — the list lives in org config, changed only by a
-   reviewed config PR. The app proposes; humans amend.
+A deterministic policy check can use the current repository revision. Fair rotation usually needs history
+about prior selections, absences, overrides, and skipped periods. Git history may expose some changes but
+does not necessarily represent the decision that was made. A rotation feature must define a durable record
+or use a transparent deterministic rule that requires no hidden memory.
 
-### 3.2 Bug surface — what to test for
+Proposal creation is a multi-call effect. If it is ever allowed, recovery must distinguish a created branch,
+commit, and pull request and must never force-push or delete a human-modified branch.
 
-- **Roster edits mid-rotation**: mentor removed from the roster → the modulo must not resend
-  everyone one step; the index-in-marker scheme (Flow A step 3) is what makes the derivation
-  stable — kit case required.
-- **Ghost mentors** (login deleted/suspended): render must degrade to the next mentor with a
-  health-issue note, not a broken @-mention.
-- **Missing business logic to decide**: is the mentor also *assigned* (Python assigned them as an
-  issue assignee — colliding with the `ready for dev`/`in progress` invariants and the cap)?
-  Proposed: mention-only, never assigned — the old behaviour actively fought the taxonomy's
-  invariants (`notes: mentor-duty` existed to patch exactly that, and it folded away with D3).
+## 9. Failure handling and safety
 
-## 4. Safety
+Unknown membership, invalid policy, ambiguous identity, missing permission, a changed base revision, or an
+existing human proposal causes no administrative write. Public explanations must not expose private reasons
+for exclusions or denylist entries.
 
-None — nothing destructive. (Denying an actor via the list is `mayPerform`'s refusal at command
-time — a non-action, not a taking.)
+Direct default-branch writes, organization-role changes, repository-setting changes, secret changes, and
+workflow-file changes are outside this candidate. A content-writing version requires a separate security
+review and may belong in a separate GitHub App.
 
-## 5. Projections
+## 10. Tests and sandbox proof
 
-Two kinds: the **mentor welcome** (who was assigned · who their mentor is · where to ask) and the
-**deny-list evidence issue** (what was observed · current configured list · the one-line config
-change to act on it), updated in place.
+Tests must cover renamed and removed users, private teams, policy syntax errors, changed default branches,
+concurrent human edits, duplicate schedules, an existing proposal, partial proposal creation, private data
+redaction, and missing organization permission. No active administrative write should be tested in a shared
+Hiero repository until maintainers approve the exact policy and rollback.
 
-## 6. Config knobs
+## 11. Disable, uninstall, and migration behavior
 
-- `mentors.roster`: repos with a mentoring program list logins; repos without omit the block and the
-  behaviour is off. The either/or is existential, which is the cleanest kind.
+Disabling the capability stops schedules and new proposals. Existing pull requests remain ordinary GitHub
+objects for maintainers to close or merge. Any stored rotation or deduplication records expire according to
+policy. An existing administrative bot must remain the sole writer until an explicit handover is approved.
 
-The deny-list itself is org-level config, not an admin knob — one list, reviewed like all config.
+## 12. Open decisions
 
-## 7. Tests beyond the kit
-
-Round-robin fairness across restarts (derived position survives a redeploy); roster shrink while
-someone mid-rotation; evidence issue dedup and resolve-down when a listed actor goes quiet.
-
-## 8. Open questions
-
-- Whether budget-trip evidence needs retention limits (it names accounts) — decided with the
-  telemetry/retention review (`operations/README.md` §6).
-- Whether mentor rotation belongs here or inside assignment's welcome — kept here so assignment
-  stays gate-and-transition only; ratifiers may merge them.
+Maintainers must first decide whether mentor rotation, denylist management, or another administrative job is
+actually wanted. The team must then split the selected job into its own boundary, decide whether advisory
+output is enough, and evaluate whether broader repository or organization permissions are acceptable.

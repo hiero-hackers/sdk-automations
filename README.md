@@ -1,33 +1,36 @@
 # sdk-automations
 
-Design work for a hosted, config-driven GitHub App that takes over the maintainer automation —
-triage, assignment, the skill ladder, inactivity reaping, PR quality, progression — currently
-implemented as per-repo bots in the Hiero SDKs. There is no code here yet: the repo is an audit of
-the existing systems and the architecture of what replaces them. `design/` mirrors the components of
-the system; when implementation starts, the code lands in this repo alongside it, one source
-directory per component, with each component's design doc beside its code.
+Design work for a hosted, configuration-driven GitHub App that replaces repeated repository automation.
+A repository enables only the capabilities it wants and maps them to its own workflow. The shared platform
+handles GitHub access, configuration, safety, recovery, and audit information.
+
+There is no implementation code here yet. The repository contains an audit of existing Hiero automation and
+drafts for the system that may replace it. The module documents are candidates based on that audit. They are
+not a committed product list.
 
 ## Reading order
 
 1. [`planning/goals.md`](planning/goals.md) — the vision, the problem, and the hard limits.
-2. [`design/architecture.md`](design/architecture.md) — **the central design document**; its §1 is the overview
-   picture. [`design/decisions.md`](design/decisions.md) is the register of every proposed position
-   and open question — the ratification index.
-3. The component docs, each drafted for maintainer ratification:
-   - [`design/core/README.md`](design/core/README.md) — the core's anatomy and the index of its design
-   - [`design/core/taxonomy.md`](design/core/taxonomy.md) — the labels, the two state machines (issue and PR), and
-     the per-position invariants
-   - [`design/core/manual-edits.md`](design/core/manual-edits.md) — what happens when a human edits a status label
-   - [`design/config/schema.md`](design/config/schema.md) — the repo config file
-   - [`design/operations/README.md`](design/operations/README.md) — hosting, rollout, rate limits, failure loudness
-   - [`design/operations/threat-model.md`](design/operations/threat-model.md) — the adversarial pass: what an attacker touches, and the ceiling that bounds it
-4. [`design/modules/README.md`](design/modules/README.md) — the module catalogue and interaction graph; per-module
-   specs land in `design/modules/` as each is designed.
+2. [`design/architecture.md`](design/architecture.md) — the current architecture proposal and its open
+   feasibility questions. [`design/decisions.md`](design/decisions.md) records accepted principles,
+   hypotheses, and open decisions.
+3. The component documents explain the candidate design in more detail.
+   - [`design/core/README.md`](design/core/README.md) explains the shared platform services and indexes the
+     rest of the core design.
+   - [`design/core/taxonomy.md`](design/core/taxonomy.md) describes an optional Hiero workflow profile and
+     the repository mappings it would require.
+   - [`design/core/manual-edits.md`](design/core/manual-edits.md) proposes safe behavior when a person changes
+     a mapped workflow label.
+   - [`design/config/schema.md`](design/config/schema.md) proposes the reviewed repository configuration.
+   - [`design/operations/README.md`](design/operations/README.md) describes hosting, rollout, rate limits,
+     failure reporting, and storage questions.
+   - [`design/operations/threat-model.md`](design/operations/threat-model.md) describes security threats,
+     required controls, and decisions that still depend on the implementation.
+4. [`design/modules/README.md`](design/modules/README.md) — candidate capabilities found in the audit. A
+   capability becomes product scope only after maintainer review and a safe test plan.
 5. [`design/testing/README.md`](design/testing/README.md) — how the system is tested.
-6. [`design/contributors.md`](design/contributors.md) — the contributor-facing page: what the bot
-   does and won't do, in the bot's own voice.
-7. [`design/build-plan.md`](design/build-plan.md) — names, estimates, and what is actually
-   committed.
+6. [`design/build-plan.md`](design/build-plan.md) is working planning material through November 2026. Its
+   dates and candidate milestones still require agreement and are not delivery commitments.
 
 ## The evidence underneath
 

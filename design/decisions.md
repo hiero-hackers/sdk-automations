@@ -1,57 +1,93 @@
-# Decisions and Open Questions: the Register
+# Decision and Evidence Register
 
-> The index of every **proposed** position and every open question across the design — one line
-> each, pointing at the doc that argues it. **This file holds no content**: if a row disagrees with
-> its doc, the doc wins and the row is a bug. It is also the skeleton of the ratification memo —
-> maintainers walk this table, read behind the links they care about, and flip Status as they go.
-> Status: `proposed` → `ratified` / `overturned` (with a date and a line on what replaced it).
+> This register separates principles that current evidence supports from hypotheses that still need
+> maintainer review or sandbox experiments. A document does not become approved merely because it appears in
+> this repository or in pull request 23.
 
-## Decisions awaiting ratification
+## 1. Status meanings
 
-| # | Decision | Where argued | Overturned by | Status |
-|---|---|---|---|---|
-| D1 | GitHub is the database — stateless reducer, no owned store | `architecture.md` §4.1 | an invariant provably needing a store | proposed |
-| D2 | Two state machines, one per entity; no label written across the issue↔PR link | `core/taxonomy.md` §2 | a need no resolver read can meet | proposed |
-| D3 | The twelve-label set; priority/effort go native; `lifecycle:`+`notes:` folded away | `core/taxonomy.md` §1, §3 | ratifiers amending the set | proposed |
-| D4 | Close hygiene is the core's; named labels only, never a prefix strip | `core/taxonomy.md` §2.3 | — (cures A1 by construction) | proposed |
-| D5 | Per-position invariants incl. `ready for dev` = unassigned pool | `core/taxonomy.md` §2.4 | ratifiers amending rows | proposed |
-| D6 | Two rulebooks: humans edit state (any→any), modules request edge-bound transitions | `core/manual-edits.md` §1 | — (load-bearing for toggling) | proposed |
-| D7 | Never revert a human; the one exception is completing a two-position edit | `core/manual-edits.md` §2 | ratifiers wanting a hard gate on some position | proposed |
-| D8 | The five incoherence classes and their semantics (latest-wins · flag-don't-fix · invisible · quarantine · forget) | `core/manual-edits.md` §3 | per-class amendment | proposed |
-| D9 | The newer-fact rule, enforced via timeline reads | `core/manual-edits.md` §4 | timeline reads too costly at sweep scale | proposed |
-| D10 | Warn-then-act mandatory for clock-triggered destructive actions; explain-and-reverse for preventive ones; one-gesture reversal | `core/safety.md` §1 | — | proposed |
-| D11 | Blocked freezes clocks; **reset** (not resume) on unblock | `core/safety.md` §3 | ratifiers preferring resume | proposed |
-| D12 | Projections have no read API; modules never write comments — the core renders | `core/projections.md` §1–2 | — (cures A2 by construction) | proposed |
-| D13 | Exactly two projection-read exceptions, governed by the register | `core/projections.md` §3 | a third entering by amendment only | proposed |
-| D14 | Resolved projections are edited down, not deleted | `core/projections.md` §1.5 | maintainers preferring deletion | proposed |
-| D15 | `linkedIssues` = GraphQL closing references, only | `core/resolvers.md` §2 | — (must agree with native merge-close) | proposed |
-| D16 | **Skill ladder: org-wide credit, repo-local gate; thresholds org-level** | `core/resolvers.md` §3 | difficulty judged non-transferable → repo scope key | proposed |
-| D17 | A knob only where repos differ; safety, commands, and whose-turn not configurable | `config/schema.md` §3 | — | proposed |
-| D18 | Safe-to-be-down: no pager, one instance, sweeps as recovery | `operations/README.md` §1 | fleet growth past the arithmetic | proposed |
-| D19 | Hosted app over reusable workflows | `operations/README.md` §2 | no org-level operator found | proposed |
-| D20 | Rate budget enforced at the adapter only; sweep cadence is fleet arithmetic, not config | `operations/README.md` §4 | arithmetic off by >2× | proposed |
-| D21 | Every failure has exactly one audience (routing table) | `operations/README.md` §5 | — | proposed |
-| D22 | Replay gate + rings + three-grain kill switches for rollout | `operations/README.md` §3 | — | proposed |
-| D23 | Module contract: five typed declaration fields; required `cause`; `effects` for A3 coupling | `modules/contract.md` | build-time refinement of shapes | proposed |
-| D24 | One process orders work and checks `expect`; saved pending records and App events recover interrupted changes; `unknown` reports an unclear result | `architecture.md` §4; `modules/contract.md` §3 | several active processes, or a partial change that cannot be matched and recovered → shared state for coordination, reopening D1 | proposed |
-| D25 | Threat model: per-actor command budgets, echo policy + authorship checks, same-org one-level `_extends`, schema floors, safe-to-shed backpressure | `operations/threat-model.md` §3 | red-team findings at ring 0/1 | proposed |
-| D26 | The label set is code, not config — no `core.labels` key; legacy spellings are the migration table's business, never standing config | `config/schema.md` §3, `core/taxonomy.md` §3 | a genuine display-spelling need → a narrow rendering alias, never a semantic change | proposed |
-| D27 | The pending-record protocol: comment metadata is the app's only durable state — a write-ahead log (write-read-back `pending`, verify, `completed`); de-risked by the walking skeleton in week one | `core/projections.md` §3; `modules/contract.md` §3 | the skeleton proving it impractical against the real API → an owned store behind the core, reopening D1 | proposed |
+The register uses the following status values.
 
-## Open questions
+| Status | Meaning |
+|---|---|
+| `supported` | The audits, accepted proposal, and current research are strong enough to guide the next work. |
+| `hypothesis` | The idea is technically plausible, but maintainers or experiments must still confirm it. |
+| `reopened` | New evidence has challenged an earlier proposal, so it must not guide implementation yet. |
+| `ratified` | Maintainers have explicitly approved the decision and recorded the date and evidence. |
+| `replaced` | A later decision has replaced the earlier proposal. |
 
-| # | Question | Decided in / by | Blocks |
+## 2. Supported product principles
+
+| Identifier | Principle | Evidence |
+|---|---|---|
+| P1 | The product is one hosted GitHub App with repository-selected capabilities. | The accepted proposal and `planning/goals.md` support this direction. |
+| P2 | A repository must explicitly enable every workflow-changing capability. | Maintainer consent and the different C++, Python, and JavaScript workflows require explicit opt-in. |
+| P3 | A capability does not call or import another capability. | The coupling audit shows that direct and hidden sibling contracts are difficult to test and change. |
+| P4 | A capability receives only its own configuration and a narrow platform interface. | The C++ shared-config coupling and GitHub API mock drift support a smaller boundary. |
+| P5 | GitHub remains authoritative for visible repository facts. | Labels, assignees, reviews, comments, and open or closed state must continue to reflect human edits. |
+| P6 | The design does not assume that GitHub alone stores every operational recovery record. | Webhook delivery, multi-call recovery, and coordination require feasibility experiments. |
+| P7 | Repository labels and fields are mappings or profile defaults rather than universal platform strings. | The three audited SDKs use materially different workflow models. |
+| P8 | Testing begins with a development App and personal sandbox before any Hiero repository receives writes. | The permission and failure risks require an isolated validation path. |
+| P9 | A production webhook receiver durably accepts work before it acknowledges the delivery. | GitHub requires a quick response and does not automatically redeliver every failed delivery, so an acknowledged in-memory event cannot provide reliable recovery. |
+
+## 3. Earlier design proposals and their current status
+
+The identifiers below preserve references from the existing documents. Their current status is explicit so
+that older text cannot be mistaken for approval.
+
+| Identifier | Earlier proposal | Current status | Required next evidence |
 |---|---|---|---|
-| Q1 | Where hosting lands (LFDT infra vs TSC account) | TSC — ask is `operations/README.md` §2 | vehicle confirmation → build start |
-| Q2 | MVP module set + whether the intake lock ships | maintainers, with the memo | migration mapping, `config/schema.md` keys |
-| Q3 | What counts as a ladder completion (merged-PR close only?) | ratification memo (`core/resolvers.md` §4) | `eligibleLevel` build |
-| Q4 | Any policy veto on manual entry (default no) | ratification memo (`core/manual-edits.md` §2) | — |
-| Q5 | Does assignment's contract include the native-assign repair? | assignment module spec | class-2 healing |
-| Q6 | `queue:` namespace — storage or derivable? | review-routing module spec | that module only |
-| Q7 | Migration protocol (mapping table + per-repo runbook) | `operations/migration.md` — **unwritten** (Track A2) | C++/Python cutover |
-| Q8 | Ring-1 volunteer repo, soak durations, log retention, ring visibility | operator + TSC | rollout |
-| Q9 | Marker/schema format, warning templates, health-issue pinning | build time, before ring 0 | ring 0 |
-| Q10 | Timeline-read + secondary-limit budgets | measured at ring 0 | D9 confirmation |
-| Q11 | Install org-wide with config consenting, or tight repo selection? | TSC governance | install guidance |
-| Q13 | Who builds it — every dash in `build-plan.md`'s Owner column; the baseline-capture row has a deadline (old bots still running) | maintainers / TSC commit names | everything downstream |
-| Q12 | Build-time docs, deliberately deferred with triggers: `modules/authoring.md` (with the first real module), the config JSON Schema (with the registry), the ring-0 sandbox runbook (with ring 0), the kit implementation guide (extracted from the first working harness) | build phase — each written against working code, not before | nothing (deferral is the decision) |
+| D1 | GitHub and App-authored comments provide all durable state, so the App needs no owned operational store. | `reopened` | A sandbox must test duplicate delivery, restart recovery, scheduling, unclear API results, and concurrent processing. |
+| D2 | Issues and pull requests use separate workflow models, and cross-entity writes require an explicit operation. | `hypothesis` | Candidate capabilities must show which cross-entity reads and writes they need. |
+| D3 | Every repository uses one fixed twelve-label taxonomy. | `replaced` | P7 replaces this proposal with stable internal meanings and repository mappings or optional profiles. |
+| D4 | The platform removes only named managed labels and never removes a namespace prefix. | `supported` | Adapter tests must enforce the rule for every label operation. |
+| D5 | The full Hiero workflow profile has one invariant for each position. | `hypothesis` | Repositories that want the profile must review the invariants before activation. |
+| D6 | Human edits and capability requests use different rulebooks. | `hypothesis` | Concurrency and manual-edit scenarios must confirm the behavior for each selected capability. |
+| D7 | The App does not reverse a newer human change unless maintainers approve a named exception. | `supported` | Effect tests must prove the precondition and newer-change checks. |
+| D8 | Incoherent mapped states use the five classes described in `core/manual-edits.md`. | `hypothesis` | The selected workflow profile must prove that all five classes are needed and understandable. |
+| D9 | Timeline timestamps can enforce the newer-fact rule at acceptable cost. | `hypothesis` | Ring-zero measurements must confirm the API cost and timestamp reliability. |
+| D10 | Clock-triggered destructive actions always warn before they act and provide a simple reversal. | `supported` | Each destructive capability must provide its own warning, grace, cancellation, and rollback tests. |
+| D11 | Removing `blocked` resets an inactivity clock instead of resuming it. | `hypothesis` | Maintainers must decide this policy for a profile that enables inactivity handling. |
+| D12 | Capabilities provide structured comment content, while the platform owns managed comment identity and writes. | `supported` | The managed-comment sandbox test must prove idempotent update and authorship checks. |
+| D13 | Exactly two comment types may carry metadata that the platform reads back. | `reopened` | The storage experiment must decide whether comment metadata is appropriate for each recovery need. |
+| D14 | Resolved managed comments are shortened instead of deleted. | `hypothesis` | Maintainers must review the contributor experience for the first real comment type. |
+| D15 | GitHub closing references are the only supported issue and pull request link mechanism. | `hypothesis` | The first capability that needs links must confirm the repository policy and fork behavior. |
+| D16 | Skill credit is organization-wide while each repository chooses issue difficulty. | `reopened` | A skill ladder is optional, and repositories that request it must decide credit scope and completion rules. |
+| D17 | Configuration exposes only choices on which reasonable repositories differ. | `supported` | Each key must state the repository choice that justifies it and the safe validation range. |
+| D18 | One process and business-hours operation are sufficient because later sweeps repair missed work. | `reopened` | Hosting, queue, webhook, and recovery experiments must determine the required process and availability model. |
+| D19 | A hosted App is preferable to copied repository workflows. | `supported` | The project still needs an operator and hosting decision before production deployment. |
+| D20 | One adapter controls rate limits, retries, pacing, and conditional reads. | `supported` | Endpoint tests must measure real primary and secondary rate-limit behavior. |
+| D21 | Every failure class has one primary audience and a clear recovery message. | `supported` | The first implementation must verify the channel and permission needed for each message. |
+| D22 | Rollout uses a personal sandbox, a Hiero Hackers sandbox, shadow mode, reversible writes, and explicit kill switches. | `supported` | Owners and entry criteria must be recorded before each environment is used. |
+| D23 | A capability declares its configuration, inputs, intents, permissions, triggers, and operational needs. | `hypothesis` | The first two candidate capabilities must fit the contract without receiving a raw GitHub client. |
+| D24 | Current-state checks and comment records can recover every interrupted multi-call operation. | `reopened` | The effect executor experiment must crash after every call and compare comment-backed and owned-store recovery. |
+| D25 | The threat controls in `operations/threat-model.md` are sufficient for the first release. | `hypothesis` | A red-team pass and sandbox evidence must confirm the controls before a real pilot. |
+| D26 | The twelve GitHub label strings are fixed in code and cannot be configured. | `replaced` | P7 replaces this proposal. Code may keep stable meanings, while repositories configure mappings or select a profile. |
+| D27 | Comment metadata is the App's write-ahead log and only durable operational state. | `reopened` | The storage and recovery experiment must compare GitHub reconstruction, comment metadata, and a small owned store. |
+
+## 4. Open product and engineering questions
+
+| Identifier | Question | Decision owner or evidence | What the answer blocks |
+|---|---|---|---|
+| Q1 | Which organization hosts and operates the GitHub App? | The Hiero or LFDT infrastructure owner must decide. | Production deployment is blocked. |
+| Q2 | Which maintainer problems become the first user-facing capabilities? | Maintainer demand and the capability review must decide. | The user-facing minimum viable product is blocked. |
+| Q3 | Do any repositories want the optional skill ladder, and what counts as a completion? | The affected repository maintainers must decide. | Skill-based assignment and progression are blocked. |
+| Q4 | Which human actions may automation ever refuse or reverse? | Maintainers must review the selected capability policies. | Manual-edit enforcement is blocked. |
+| Q5 | How does assignment behave with native assignment and multiple assignees? | The assignment specification and sandbox scenarios must decide. | The assignment capability is blocked. |
+| Q6 | Is review queue state stored, derived, or left to native GitHub review rules? | Repositories that request review routing must decide. | Review routing is blocked. |
+| Q7 | How are old labels, configuration, and writers migrated without two systems writing the same state? | A per-repository migration plan must decide. | Existing repository cutover is blocked. |
+| Q8 | Which repository volunteers for a read-only or reversible pilot? | Repository maintainers and the operator must decide. | Ring-one testing is blocked. |
+| Q9 | What is the managed-comment marker and schema migration format? | The managed-comment implementation and sandbox test must decide. | Stable comment recovery is blocked. |
+| Q10 | What rate and timeline-read budget is safe for the fleet? | Ring-zero measurements must decide. | Sweep cadence and some manual-edit rules are blocked. |
+| Q11 | Is the App installed only on selected repositories or more broadly with repository configuration as a second gate? | Organization governance must decide. | Installation guidance is blocked. |
+| Q12 | Which implementation documents should be written alongside working code? | The first implementation work packet must decide. | This question does not block feasibility work. |
+| Q13 | Who owns architecture review, the development App, the platform components, testing, and rollout? | Sophie and the project maintainers must name owners. | Committed dates and production work are blocked. |
+| Q14 | What configuration path, format, inheritance rule, and schema migration policy should the App use? | The configuration design and sandbox test must decide. | The configuration implementation is blocked. |
+| Q15 | What minimum owned operational storage is required, and which technology should provide it? | The webhook and effect recovery experiments must decide. | Production recovery and hosting design are blocked. |
+| Q16 | What exact narrow operations and typed results belong in the first adapter? | The first capability and endpoint matrix must decide. | The adapter implementation is blocked. |
+
+## 5. Ratification rule
+
+A hypothesis becomes `ratified` only after the register names the approving maintainers, the date, and the
+evidence they reviewed. A sandbox result may reject a hypothesis without selecting the final replacement.
+When that happens, the row becomes `reopened` until a later decision is ready.

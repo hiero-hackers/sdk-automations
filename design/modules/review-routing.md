@@ -1,182 +1,115 @@
-# review-routing: reviews become status, and the queue becomes visible
+# Candidate Capability: Review Routing
 
-> Spec for the `review-routing` module. Status: **draft** — catalogue-level, written from the audit
-> (C++ review label relay, `audit/services-cpp.md` §3–4; Python `review-sync` queue machine,
-> `audit/services-python.md`) to inform Q2 and ratification; re-worked against `TEMPLATE.md`
-> before build. **This spec owns Q6** (the `queue:` namespace) and proposes: derive, don't store.
+> This capability is an unconfirmed candidate. The Python audit contains reviewer-related behavior, but
+> direct maintainer demand and a reliable routing policy still need confirmation.
 
-## 1. The job
+## 1. Maintainer need and evidence
 
-Without review-routing, a submitted review changes nothing an automation or a browsing contributor
-can see — "changes requested" lives only in the review tab, and nobody knows which PRs await which
-kind of reviewer. review-routing turns review events into status (`needs revision`,
-`ready to merge`) and renders where each PR sits in the approval ladder. One outcome: **the review
-state of every PR is legible at a glance, without a maintainer relabeling by hand.**
+Pull requests can wait because the right reviewer does not notice them. A routing capability may help when
+ownership rules and team availability are clear. It can create noise and unfair load when those facts are
+incomplete, so the project should not promise automated reviewer selection before maintainers explain how
+they currently make that decision.
 
-## 2. The declaration
+## 2. The capability boundary
+
+This capability may recommend or request configured reviewers for an eligible pull request. It does not
+judge pull request quality, grant approval, merge code, or maintain contributor skill. The first useful
+experiment can produce a dry-run recommendation without requesting a review.
+
+## 3. Candidate declaration
 
 ```ts
 {
-  name: 'review-routing',
-  config: { approvals: { committers: 'number (default 2)', maintainers: 'number (default 1)' } },
-  consumes: ['needs review'],
-  transitions: [
-    { from: 'needs review', to: 'needs revision' },   // changes requested
-    { from: 'needs review', to: 'ready to merge' },   // approval thresholds met
-  ],
-  resolvers: ['mayPerform', 'isBot'],
-  triggers: ['pull_request_review.submitted', 'sweep'],
+  name: "review-routing",
+  configSchema: ReviewRoutingConfigSchema,
+  triggers: ["pull_request.opened", "pull_request.ready_for_review", "pull_request.synchronize"],
+  observations: ["PullRequestObservation", "ChangedFilesObservation", "ReviewRequestObservation"],
+  resolvers: ["reviewCandidates", "mayPerform", "isAutomation"],
+  intents: ["RequestReviewers", "UpsertManagedComment"],
+  permissions: {
+    repository: ["pull_requests:read", "pull_requests:write", "contents:read"],
+    organization: ["members:read when team membership is part of policy"],
+  },
+  operationalNeeds: {
+    schedule: false,
+    durableState: "candidate",
+    crossItemCoordination: true,
+    externalDelivery: false,
+  },
 }
 ```
 
-The old fork-safety relay (C++'s two-workflow artifact dance, `audit/services-cpp.md` §3–4)
-dissolves: a hosted app's webhook handling is privileged by construction — the relay was an
-Actions-era workaround, and none of it survives.
+GitHub team visibility and organization permissions require a personal App experiment before this
+declaration can be accepted.
 
-The declaration, drawn — this module's **entire** view of the core; anything not shown is
-inexpressible through its typed handle:
+## 4. Configuration and repository mappings
 
-```mermaid
-flowchart LR
-    TRIG["triggers:<br/>pull_request_review.submitted ·<br/>sweep"] --> M[review-routing]
-    M -->|"resolve()"| RES["mayPerform (reviewer class) ·<br/>isBot"]
-    M -->|"request()"| ED["needs review → needs revision<br/>needs review → ready to merge"]
-    M -->|"project()"| PJ["the queue line"]
-    RES & ED & PJ --> CORE["Core&lt;D&gt; — the typed handle"] --> ADP["adapter → GitHub"]
-```
+The capability defaults to disabled. Candidate settings include path-to-team rules, excluded authors,
+draft behavior, maximum requested reviewers, whether existing requests are preserved, and whether the
+result is advice or an actual review request. A repository may reference a CODEOWNERS file, explicit path
+rules, or configured teams, but the project must not assume these sources mean the same thing.
 
-## 3. Behaviour
+Team names and reviewer identities are repository or organization mappings. Missing and invisible teams
+produce an invalid or unknown result rather than a guessed reviewer.
 
-- **On a `changes_requested` review** on a `needs review` PR: request
-  `needs review → needs revision`, cause = the review. Approved/commented reviews trigger
-  re-derivation, not a direct edge.
-- **On sweep (or any review event), derive the approval state**: count approvals by reviewer class
-  (committer/maintainer team membership via config `core.teams` + `mayPerform`). Thresholds met →
-  request `needs review → ready to merge`. New commits dismissing approvals is pr-quality's edge
-  (`ready to merge → needs review`), not this module's — each module owns the edges its own facts
-  justify.
-- **The queue, answered for Q6 — derived, never stored** *(proposed)*: Python's
-  `queue: junior-committer / committers / maintainers` labels are a *display* of "whose approval is
-  still missing," fully computable from the approval state plus config. Here that display is a line
-  in a **projection**, not a label: the taxonomy's §8 discipline (a derivable fact is an answer,
-  not a label) holds, the twelve-label set stays twelve, and the old `*/30` cron that existed to
-  repair queue-label drift has nothing to repair. **Overturned by:** contributors demonstrably
-  needing to *filter* by queue tier in GitHub's UI, which only labels can do — then the namespace
-  enters by taxonomy amendment, not by this module quietly writing labels.
-- **Manual-mode story** (review-routing alone): a maintainer hand-labels `needs review`;
-  routing takes it from there. With routing *off*, reviews still work — maintainers just move
-  labels by hand after reviewing.
+## 5. Behavior
 
-Not carried over: Python's reviewer→assignee mirroring (requested reviewers copied into the
-assignee field) — it duplicated GitHub's own review-request fact into a second field (one source
-of truth).
+When a pull request becomes ready for review, the capability observes changed files, existing review
+requests, author identity, and the configured ownership source. It resolves eligible candidates and returns
+either a recommendation comment or a bounded review-request intent. A synchronize event should not request
+the same reviewer again unless policy says a dismissed or completed review must be renewed.
 
-### 3.1 Step by step
+A maintainer's manual reviewer request is valid input and is preserved. The capability must not remove a
+manual request merely to enforce its own rotation. If no candidate is known, it explains the missing rule or
+does nothing according to configuration.
 
-The flows in one picture; the numbered steps below are authoritative for detail:
+## 6. GitHub events, reads, writes, and permissions
 
-```mermaid
-flowchart TB
-    EV["review submitted<br/>(or sweep)"] --> POS{"PR in<br/>needs review?"}
-    POS -->|no| STOP1[nothing to say]
-    POS -->|yes| DERIVE["derive live review state:<br/>latest per reviewer ·<br/>drop dismissed / author /<br/>bots / COMMENTED"]
-    DERIVE --> CLS["classify reviewers via teams:<br/>maintainer · committer · community<br/>(both teams → counts once, as maintainer)"]
-    CLS --> CR{"any surviving<br/>changes_requested?"}
-    CR -->|yes| NREV["request → needs revision<br/>(objection outranks approvals)"]
-    CR -->|no| QUOTA{"approvals meet both quotas?<br/>(maintainer fills either,<br/>maintainer-first)"}
-    QUOTA -->|yes| RTM["request → ready to merge"]
-    QUOTA -->|no| QUEUE["queue projection:<br/>'awaiting 1 more committer'"]
-    NREV & RTM -. "refused: older-fact —<br/>hand-set position stands" .-> QUEUE
-```
+The capability reads changed files, current requested reviewers, reviews, repository content when an
+ownership file is selected, and team membership when team routing is selected. Changed files and membership
+lists require pagination. Requesting individual or team reviewers uses pull request write access.
 
-#### Flow A — deriving the review state (shared)
+Private team visibility, outside collaborators, suspended members, author exclusion, and team review
+requests need direct API tests. The App must not broaden organization access merely to support an optional
+candidate without maintainer agreement.
 
-1. Fetch the PR's **live** review set — never trust the triggering event's snapshot (the
-   dismissal race: a review event can arrive before the `synchronize` that dismissed it).
-2. Reduce to the latest review per reviewer.
-3. Drop from the set: dismissed reviews · reviews by the PR author (self-review counts for
-   nothing) · reviews by `isBot` actors · `COMMENTED` reviews (noise, by decision).
-4. Classify each surviving reviewer via `core.teams` membership: maintainer, committer, or neither
-   (community — welcome, counts toward no quota). A reviewer in both teams counts **once**, as
-   maintainer.
+## 7. Compatibility without dependency
 
-#### Flow B — a review is submitted
+Review routing works when quality guidance is disabled because a maintainer can mark a pull request ready
+by hand. If a profile combines the two, it may require an explicit quality-ready observation before routing.
+That is a compatibility rule evaluated from shared facts, not a call from one capability to another.
 
-1. Trigger: `pull_request_review.submitted` on a PR in `needs review` (any other position → this
-   module has nothing to say; blocked → never dispatched).
-2. Run Flow A.
-3. Any surviving `changes_requested` → request `needs review → needs revision`, `cause` = that
-   review. Stop — a standing objection outranks any approval count.
-4. Else count approvals against `approvals.committers` and `approvals.maintainers` (a maintainer
-   approval fills either quota, maintainer-first — §3.2's explicit ratification item).
-5. Both quotas met → request `needs review → ready to merge`, `cause` = the latest qualifying
-   approval.
-6. Quotas not met → no transition; render the queue projection ("awaiting 1 more committer
-   approval") and stop.
-7. Outcomes: `applied` → queue projection resolves to its done state. `refused: older-fact` → a
-   human hand-placed the position after these reviews; the projection still renders, the position
-   stands. `refused: stale` → re-observe (pr-quality may have just moved it on a push); re-enter
-   at step 1.
+## 8. Operational state and recovery
 
-#### Flow C — sweep reconciliation
+Path ownership can be recomputed from current GitHub facts. Fair round-robin selection, recent workload,
+cooldowns, and vacation handling require history that GitHub may not expose reliably. Those policies need a
+defined durable record or should stay out of the first experiment.
 
-1. Enumerate open PRs in `needs review`; run Flow A + Flow B steps 3–7 for each (a missed review
-   webhook heals here).
-2. A PR whose derived state says `changes_requested` but whose position was hand-reset to
-   `needs review` after that review: the hand edit is newer → refused, correctly — the maintainer
-   overruled the objection, and re-requesting every sweep is the newer-fact rule's job to absorb
-   silently.
+Review requests are idempotent only after the adapter verifies existing requests and GitHub's response. A
+partial request to several reviewers must report exactly which requests succeeded.
 
-#### Flow D — the queue projection
+## 9. Failure handling and safety
 
-1. Rendered on every Flow B/C pass whose PR remains in `needs review`: the surviving approvals by
-   class · which quota is still open · nothing to remedy (informational).
-2. May share a rendered comment with pr-quality's dashboard — the **core** merges rendering;
-   the modules stay strangers (each hands content, neither knows the other exists).
-3. Identical content → no write; position leaves `needs review` → the projection resolves down.
+Missing team access, no eligible reviewer, too many changed files, rate limits, and stale pull request facts
+cause no blind request. A recommendation is lower risk than a real request because review requests generate
+notifications and can damage trust through repeated noise. The repository and organization kill switches
+must stop new requests immediately.
 
-### 3.2 Bug surface — what to test for
+## 10. Tests and sandbox proof
 
-- **Stale-approval arithmetic**: approvals dismissed by a new push must vanish from step 2 before
-  this module ever counts them — but the *dismissal race* (review event arrives before the
-  synchronize event) means step 2 must read live review state, never trust the triggering event's
-  snapshot.
-- **A reviewer in both teams** counts once, at the higher class (maintainer) — decided here; the
-  old Python cron double-counted.
-- **`changes_requested` then the same reviewer approves**: latest-per-reviewer (step 2) makes the
-  approval supersede — matches GitHub's own review model.
-- **Team membership reads** are per-observation via resolver (memoized within the pass, D-resolver
-  rules) — a member removed mid-day is seen next observation, never cached across passes.
-- **Missing business logic to decide**: do `COMMENTED` reviews affect anything? (No — noise.) Does
-  a maintainer approval also satisfy a missing *committer* approval (strict hierarchy vs distinct
-  quotas)? Proposed: a maintainer approval counts toward either quota, greedily maintainer-first —
-  the audit's Python cron implied hierarchy but never documented it. Ratify explicitly.
+Tests must cover drafts, renamed and deleted files, more than one page of files, CODEOWNERS precedence,
+private teams, outside collaborators, existing manual requests, the author appearing in an ownership group,
+duplicate events, partial multi-reviewer results, and missing permissions. Maintainers should first inspect
+dry-run recommendations and measure their accuracy before enabling notifications.
 
-## 4. Safety
+## 11. Disable, uninstall, and migration behavior
 
-None — nothing destructive.
+Disabling the capability stops recommendations and review requests. It does not remove existing review
+requests. Any older reviewer bot must stop before active request mode begins, although both systems may be
+compared safely in a no-write experiment.
 
-## 5. Projections
+## 12. Open decisions
 
-One **queue line** per PR (may merge into pr-quality's dashboard *rendering* — the core renders
-both modules' content; the modules stay strangers): current approval state · which class's approval
-is awaited · nothing to remedy (informational).
-
-## 6. Config knobs
-
-- `approvals.committers` / `approvals.maintainers`: a small repo merges on one maintainer approval;
-  a large one wants two committers plus a maintainer. Genuine either/or — this is the one place the
-  audited repos' policies actually differed by number.
-
-## 7. Tests beyond the kit
-
-Threshold arithmetic per reviewer class; approval-then-new-commits (this module's `ready to merge`
-undone by pr-quality's edge — composition test); hand-set `needs review` consumed identically to
-pr-quality's (manual-mode); derived queue rendering matches Python's cron output on recorded
-fixtures (migration fidelity).
-
-## 8. Open questions
-
-- **Q6 is answered above as a proposal** — ratified with this spec; the overturn path is named.
-- Whether `meta: open to community review` (human-applied invitation) gets a rendered nudge here or
-  stays purely a browsing signal.
+Maintainers need to confirm that they want routing, identify the authoritative ownership source, and decide
+whether advice is sufficient. The team must decide whether fairness and availability belong in scope and
+whether their operational history justifies durable storage.

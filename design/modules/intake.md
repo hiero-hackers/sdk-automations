@@ -1,223 +1,122 @@
-# intake: every new issue enters labeled, and the pool gets filled
+# Candidate Capability: Issue Intake
 
-> Spec for the `intake` module. Status: **draft** — catalogue-level, written from the audit
-> (C++ `/finalize`, `audit/services-cpp.md` §10; Python moderation/approval,
-> `audit/services-python.md`) to inform Q2 and ratification; re-worked against
-> `TEMPLATE.md` before build. The contract it implements is `design/modules/contract.md`.
+> This capability is a candidate, not an approved product commitment. The C++ and Python audits show
+> existing intake behavior, but maintainers must confirm which parts they want to keep.
 
-## 1. The job
+## 1. Maintainer need and evidence
 
-Without intake, every new issue sits unlabeled until a maintainer notices it, and the
-`ready for dev` pool fills only by hand. Intake stamps each new issue `awaiting triage` and gives
-maintainers `/finalize` — one command that validates the triage (skill label present, type set) and
-promotes the issue into the pool. One outcome: **the pool is fed, and only validly-triaged issues
-reach it.**
+Some repositories need help turning a new or edited issue into a clear next step. The C++ workflow checks
+required issue content and changes labels after a contributor finalizes the issue. The Python workflow uses
+moderation-oriented labels and messages. These are useful examples, but they do not prove that every Hiero
+repository wants the same intake process.
 
-## 2. The declaration
+## 2. The capability boundary
+
+This capability can validate configured issue requirements and publish a clear intake result. It does not
+assign contributors, measure inactivity, route reviewers, or decide contributor skill. Those concerns stay
+manual unless their own capabilities are enabled.
+
+The safe first version should advise through one managed comment. Label changes, issue locking, and issue
+closure require separate approval because they create more policy and recovery risk.
+
+## 3. Candidate declaration
 
 ```ts
 {
-  name: 'intake',
-  config: { moderation: 'boolean (default false)' },   // the lock — ships only if Q2 says so
-  consumes: ['awaiting triage'],
-  transitions: [
-    { from: 'none', to: 'awaiting triage' },           // positionless entry — the producer edge
-    { from: 'awaiting triage', to: 'ready for dev' },
-  ],
-  resolvers: ['mayPerform', 'isBot'],
-  triggers: ['issues.opened', 'issues.reopened', 'issue_comment.created', 'sweep'],
+  name: "issue-intake",
+  configSchema: IssueIntakeConfigSchema,
+  triggers: ["issues.opened", "issues.edited", "issue_comment.created"],
+  observations: ["IssueObservation", "ManagedCommentObservation"],
+  resolvers: ["mayPerform", "isAutomation"],
+  intents: ["UpsertManagedComment", "AddMappedLabel", "RemoveMappedLabel"],
+  permissions: {
+    repository: ["issues:read", "issues:write"],
+    organization: [],
+  },
+  operationalNeeds: {
+    schedule: false,
+    durableState: "none",
+    crossItemCoordination: false,
+    externalDelivery: false,
+  },
 }
 ```
 
-The declaration, drawn — this module's **entire** view of the core; anything not shown is
-inexpressible through its typed handle:
+The final event and permission list depends on whether maintainers select comments, labels, commands, or
+moderation actions.
 
-```mermaid
-flowchart LR
-    TRIG["triggers:<br/>issues.opened / .reopened ·<br/>issue_comment.created · sweep"] --> M[intake]
-    M -->|"resolve()"| RES["mayPerform · isBot"]
-    M -->|"request()"| ED["none → awaiting triage<br/>awaiting triage → ready for dev"]
-    M -->|"project()"| PJ["validation nudge ·<br/>skill guide ·<br/>lock explanation (provisional)"]
-    RES & ED & PJ --> CORE["Core&lt;D&gt; — the typed handle"] --> ADP["adapter → GitHub"]
-```
+## 4. Configuration and repository mappings
 
-## 3. Behaviour
+The capability should default to disabled. A repository may configure required issue-form fields, required
+body sections, accepted issue types, a finalization command, authorized command roles, and the output mode.
+Every rule must explain a real repository difference. The platform must not invent a universal required
+template.
 
-- **On observing a new or reopened issue with no position** (event or sweep — a reopened issue is
-  positionless after close hygiene): request `none → awaiting triage`, cause = the opened/reopened
-  event. Idempotent; a hand-placed position wins (never-revert).
-- **On `/finalize`** from an actor `mayPerform('finalize')` allows (triage and up): validate —
-  exactly one `skill:` label, issue type set (Bug/Feature/Task via native field). Pass → request
-  `awaiting triage → ready for dev`, cause = the command comment. Fail → refusal ack naming what is
-  missing; no state change.
-- **On observing hand-placed `ready for dev` with no `skill:` label**: advise, never veto
-  (`design/core/manual-edits.md` §2) — one validation-nudge projection; the state stands.
-- **Moderation lock** *(provisional — ships only if Q2 keeps it)*: on issue opened, lock the
-  conversation with an immediate explanation comment; a maintainer's approval (label edit or
-  `/finalize`) unlocks. Event-triggered preventive → explain-and-reverse, per
-  `design/core/safety.md` §1.
-- **Manual-mode story** (intake alone): the repo gets auto-stamped new issues and the `/finalize`
-  gate, nothing else. With intake *off*, maintainers hand-label `ready for dev` directly — that is
-  the designed fallback, not a degraded mode.
+If label output is enabled, internal results such as `intakeNeedsInformation` and `intakeReady` map to exact
+repository label names. Missing mappings make only the affected label intent unavailable. The App must not
+create or remove labels based on a prefix.
 
-**The skill guide survives; the body edit does not.** C++ `/finalize` rewrote the issue title with
-a skill prefix and prepended level-appropriate boilerplate to the body (what a good-first-issue
-expects of you, how to claim it, where to ask — `audit/services-cpp.md` §10). That content is
-genuinely valuable onboarding documentation and is **kept** — but as a **skill-guide projection**
-(a posted comment, level-appropriate, rendered by the core) instead of an edit of the
-human-authored body: the app never rewrites a person's text, and the comment can be re-rendered
-when the skill label changes, which a body-prepend never could. The title's skill prefix stays
-dropped — it duplicated the label (one source of truth); browsing by skill is the label's job.
-Ratifiers can overturn either half.
+## 5. Behavior
 
-### 3.1 Step by step
+When an issue is opened or edited, the capability evaluates the current issue against the configured
+requirements. It returns a managed-comment intent that lists missing information and explains the next
+step. When every requirement is satisfied, it updates or clears that comment according to configuration.
 
-The flows in one picture; the numbered steps below are authoritative for detail:
+A repository may optionally require a finalization command before it marks intake as ready. The command
+parser checks exact syntax and current actor permission. An edited comment does not execute as a new
+command. A redelivered event produces the same managed comment and does not create duplicates.
 
-```mermaid
-flowchart TB
-    OPEN["issue opened / reopened<br/>(or sweep: open + positionless)"] --> HASPOS{already has<br/>a position?}
-    HASPOS -->|yes| STOP1[stop — never revert]
-    HASPOS -->|no| STAMP["request none → awaiting triage"]
-    STAMP --> MOD{"moderation on,<br/>new issue,<br/>author not triage+?"}
-    MOD -->|yes| LOCK["lock + explanation<br/>(explain-and-reverse)"]
-    MOD -->|no| DONE1[done — stamping is silent]
-    LOCK -. maintainer approves .-> UNLOCK[unlock + resolve down]
+The capability must work when a maintainer manually assigns an intake label or performs every later step.
+It must not undo a newer human label decision because an older validation event arrived late.
 
-    CMD["/finalize comment"] --> PERM{"mayPerform:<br/>triage+?"}
-    PERM -->|no| REF1[refusal ack]
-    PERM -->|yes| VAL{"awaiting triage ·<br/>one skill label ·<br/>type set?"}
-    VAL -->|"any missing"| REF2["one ack naming<br/>every gap"]
-    VAL -->|all pass| PROMOTE["request awaiting triage<br/>→ ready for dev"]
-    PROMOTE --> GUIDE["render skill guide<br/>+ complete ack"]
+## 6. GitHub events, reads, writes, and permissions
 
-    RFD["observe ready for dev<br/>(however it got there)"] --> SKILL{skill label<br/>present?}
-    SKILL -->|yes| RESOLVE[resolve nudge down]
-    SKILL -->|no| NUDGE["render nudge —<br/>advise, never veto"]
-```
+The candidate reads the issue, issue author, labels, and configured issue-form content. It may need comment
+reads to find an App-authored managed comment. It writes only that comment in the first experiment.
+`issues:write` is required for issue comments and label effects even though the content being changed is not
+the issue body.
 
-#### Flow A — new-issue stamping
+If maintainers request lock, unlock, close, reopen, or body-edit behavior, each operation needs a separate
+permission and safety review. The default design does not edit contributor titles or bodies.
 
-1. Trigger: `issues.opened` or `issues.reopened` webhook, or the sweep observing an open,
-   positionless, non-blocked issue (the sweep is the missed-webhook backstop).
-2. Coherence is already classified by the core; blocked or quarantined items were never dispatched.
-3. The issue already carries a position (an issue-form template applied one, or a human beat the
-   bot to it) → stop. The state is legitimate; never-revert applies.
-4. Request `none → awaiting triage`; `expect` = the positionless observation; `cause` = the
-   opened/reopened event.
-5. Outcomes:
-   - `applied` → done. Stamping is silent — no comment; the label is the message.
-   - `already` → done (webhook + sweep both fired; idempotency absorbed it).
-   - `refused: stale` → someone placed a position mid-flight; re-observe, land in step 3, stop.
-   - `unknown` → nothing; the next sweep re-observes and completes.
+## 7. Compatibility without dependency
 
-#### Flow B — moderation lock *(provisional — ships only if Q2 keeps it)*
+Assignment and progression capabilities may observe an intake result through configured mappings, but
+intake never calls them. Intake remains useful by itself because a person can act on its explanation. A
+profile that combines capabilities must reject contradictory mappings, such as mapping ready and needs-
+information meanings to the same label.
 
-1. Precondition: `moderation: true` and Flow A just stamped a genuinely new issue
-   (`opened`, not `reopened` — re-locking an issue with history is noise; see §8).
-2. `mayPerform(author, 'bypass-moderation')` — triage and up are exempt: the app must not lock its
-   own maintainers' issues.
-3. Lock the conversation and render the explanation projection in the same pass (event-triggered
-   preventive: explain-and-reverse, `design/core/safety.md` §1). The explanation names the exit —
-   "a maintainer approves and this unlocks."
-4. Crash between lock and explanation → the sweep observes a locked issue with no app marker and
-   renders the missing explanation (idempotent repair).
-5. On observing approval — a maintainer's `/finalize`, or a hand edit to `ready for dev` — unlock
-   and resolve the explanation down to its one-line note.
+## 8. Operational state and recovery
 
-#### Flow C — `/finalize`
+Current issue content, current labels, and an App-authored managed comment should be enough for the first
+experiment. The managed-comment identity must be deterministic and must verify authorship. If later policy
+needs warning history, command history, or multi-step moderation, the team must decide whether a small
+durable operation record is safer than reconstructing history from comments.
 
-1. Comment created on an issue; the shell has already filtered bots (`isBot`) and per-actor
-   budgets; blocked and quarantined items are never dispatched.
-2. Parse: exact `/finalize`, case-insensitive. Near-miss (`/finalise`, `/finalize!`) → corrective
-   command ack, stop.
-3. Write the pending command record; ack reaction (👀) on the comment (D27 — from here a crash is
-   recoverable).
-4. `mayPerform(actor, 'finalize')` — triage and up. Fail → refusal ack ("this command needs triage
-   permission"), stop.
-5. Validate, cheapest first, **collecting all failures** (one ack listing everything beats three
-   round-trips):
-   - position is `awaiting triage` — a hand-moved issue is already past this gate; refuse with
-     "already `ready for dev`, nothing to do";
-   - exactly one `skill:` label present;
-   - issue type set (Bug/Feature/Task — native field).
-6. Any failure → one refusal ack naming each gap and its one-line fix, stop.
-7. Request `awaiting triage → ready for dev`; `expect` = the observed state; `cause` = the command
-   comment (dated).
-8. Outcomes:
-   - `applied` → render the **skill guide** for the issue's rung; complete the command ack.
-   - `already` → ack "was already done".
-   - `refused: stale` → re-observe once, retry once, then ack the truth.
-   - `unknown` → ack "in progress, will confirm"; the sweep completes it from the pending record.
+## 9. Failure handling and safety
 
-#### Flow D — the hand-set nudge
+Invalid configuration or missing required mappings causes no write and produces a configuration error for
+maintainers. A permission failure stops retries until permissions change. Rate limits delay advisory work.
+Unknown labels and unrelated comments remain untouched.
 
-1. Observe `ready for dev` (label webhook or sweep) — however it got there.
-2. A `skill:` label is present → resolve any standing nudge down (the gap closed), stop.
-3. No `skill:` label → render the validation-nudge projection. **No state change** — advise, never
-   veto (`design/core/manual-edits.md` §2).
-4. Identical nudge already rendered → no write (churn-free).
+The first experiment has no destructive action. Locking, closing, rewriting user content, or deleting
+comments must not be added silently to the same milestone.
 
-#### Flow E — reopen
+## 10. Tests and sandbox proof
 
-1. The issue was stripped of its position by close hygiene at close (`design/core/taxonomy.md`
-   §2.3) — a reopened issue arrives positionless by construction.
-2. `issues.reopened` enters Flow A step 1; reopened issues skip Flow B (step B1).
-3. A human may instead hand-place any position on the reopened issue first — Flow A step 3 yields
-   to them.
+Tests must cover malformed and valid issue forms, edited issues, duplicate deliveries, hostile Markdown,
+fake managed markers, command authorization, missing mappings, missing permissions, and a newer human label
+edit. A personal App installation should run before a Hiero Hackers repository receives comment-only dry
+runs. Maintainers should review both the accuracy and the tone of the resulting message.
 
-### 3.2 Bug surface — what to test for
+## 11. Disable, uninstall, and migration behavior
 
-- **Double `/finalize`** (two maintainers, seconds apart): serializer + `expect` → one `applied`,
-  one `already`. Both get truthful acks.
-- **Issue-template auto-labels**: an issue form that applies `skill:` labels at creation must not
-  confuse Flow C step 5's "exactly one" (two forms → two labels → refusal is *correct*, but the
-  ack must say which to remove).
-- **Reopen race**: reopened issue observed by sweep before the reopen webhook → both paths request
-  the same stamp; idempotency absorbs it.
-- **`/finalize` immediately after hand-placing `ready for dev`**: refusal must read as "nothing to
-  do", not as an error — the manual path is legitimate (never-revert).
-- **Missing business logic to decide**: does `/finalize` *validate* the skill label matches issue
-  difficulty? (No — that judgment is the triager's; the bot checks presence, not correctness.)
-  Does the moderation lock apply to issues opened by maintainers? (Proposed: `mayPerform` exempts
-  triage-and-up — locking your own maintainer's issue is noise.)
+Disabling intake stops every intake evaluation and write. Existing managed comments may remain as historical
+GitHub content unless configuration requests one final neutral cleanup update. Before label mode is enabled,
+maintainers must disable the old workflow that writes the same labels.
 
-## 4. Safety
+## 12. Open decisions
 
-One provisional row (already in `design/core/safety.md` §2): **lock a new issue pending approval** —
-event-triggered preventive, immediate + explanation, reversal = maintainer approves (unlock +
-`awaiting triage`). If Q2 drops the lock, this module has no destructive action.
-
-## 5. Projections
-
-Two kinds:
-
-- **Validation nudge** (one per item): what was observed (e.g. "`ready for dev` with no skill
-  label") · what awaits (nothing — advisory) · the remedy ("add one `skill:` label").
-- **Skill guide** (one per item, rendered on successful `/finalize`): the level-appropriate
-  onboarding content the old body-prepend carried — what this rung expects, how to claim
-  (`/assign`), where to ask for help. Re-rendered if the `skill:` label changes; resolved down
-  never (it stays useful for the life of the issue).
-
-The `/finalize` refusal ack is the core's command-ack kind, not module content.
-
-## 6. Config knobs
-
-- `moderation` (default `false`): repos with heavy drive-by spam lock new issues until approved;
-  repos courting first-time contributors would never lock. A genuine either/or — and the knob only
-  exists if the lock ships at all (Q2).
-
-No other knobs: what `/finalize` validates is the taxonomy's business, not per-repo preference.
-
-## 7. Tests beyond the kit
-
-Reopened-issue re-entry (close hygiene → positionless → re-stamped); `/finalize` against each
-missing-precondition case; the nudge appears once and resolves down when the skill label lands;
-moderation on/off toggle leaves approval-by-hand working.
-
-## 8. Open questions
-
-- Whether the lock ships (Q2 — decided with the module set).
-- Whether dropping the title-rewrite survives ratification (maintainers liked the uniform titles).
-- Python's triage-review-request ping (a comment tagging the triage team on beginner PRs) — here, in
-  notifications, or dropped.
+Maintainers need to decide whether the desired outcome is validation, moderation, finalization, or a smaller
+combination. They must also decide whether comments are sufficient, which labels are repository-owned, who
+may finalize an issue, and whether any close or lock action belongs in scope.
