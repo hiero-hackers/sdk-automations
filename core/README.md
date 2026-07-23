@@ -9,7 +9,33 @@ GitHub, no platform — `pnpm test` runs the whole thing in under a second.
 |---|---|---|
 | `src/taxonomy.ts` | Both workflow state diagrams as transition tables; the blocked-pause and stale-precondition invariants | `design/core/taxonomy.md` §2–§5 |
 | `src/safety.ts` | The action classes, the mechanically checkable write rules, the clock-triggered destructive gates | `design/core/safety.md` §1–§5 |
-| `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed | `design/config/schema.md` §2–§4 |
+| `src/config.ts` | Strict configuration validation: unknown keys rejected, defaults off, fail closed; optional capability-registry check | `design/config/schema.md` §2–§4; experiment 6.3 finding |
+| `src/contract.ts` | Capability declarations with per-intent idempotency class; registry that feeds `parseConfig` | `design/modules/contract.md` §1 + the D23 amendments (experiments 6.3, 6.5) |
+| `src/ids.ts` | `DeliveryId` as a branded opaque string — numeric ids are a compile error | `FINDING(delivery-id-precision)`, experiment 6.2 |
+| `src/failures.ts` | The failure catalogue as classification plus bounded retry advice, tested against observed response bodies | failure table in `design/operations/endpoint-permission-matrix.md` |
+
+The sibling `store/` package holds the owned operational store (protocol
+6.5's decision) — it does I/O, so it lives outside this no-I/O track.
+
+## How the pieces connect
+
+Four independent lanes of pure logic. The platform shell (stage five)
+supplies every input and performs every side effect; core only decides.
+
+```mermaid
+flowchart TB
+    D["Shipped capability declarations"] --> CT["contract.ts - validate and build the registry"]
+    Y["Fetched config YAML, already parsed"] --> CF["config.ts - strict parse, fail closed"]
+    CT -->|"registry names"| CF
+    CF --> EC["Effective config, or observe on any error"]
+    I["Intent and observed state"] --> TX["taxonomy.ts - transition table"]
+    TX --> SF["safety.ts - mode and grace checks"]
+    SF --> V["Allow or refuse, with the reason"]
+    F["GitHub failure response"] --> FL["failures.ts - classify by status, body, headers"]
+    FL --> RA["Retry advice, or a diagnosis to surface"]
+    R["Raw delivery id string"] --> ID["ids.ts - brand as opaque"]
+    ID --> DI["DeliveryId, safe beyond 2^53"]
+```
 
 The tests are the executable form of the design's own claims: the
 transition matrix is exhaustive (every `(from, to, cause)` triple is either

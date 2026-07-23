@@ -53,8 +53,9 @@ GitHub remains authoritative for visible repository facts. The platform may own 
 GitHub cannot safely reconstruct, including delivery identities, pending effects, retries, schedules, and
 coordination records.
 
-The storage experiment described in `design/build-plan.md` will decide the minimum owned state. Capabilities
-must not depend directly on the selected storage technology.
+The storage experiment decided the minimum owned state (protocol 6.5, 2026-07-23): four independent tables
+in one SQLite file — see `design/operations/storage-decision.md` (ratification pending) and the `store/`
+package that implements it. Capabilities must not depend directly on the selected storage technology.
 
 ## 5. Related documents
 
@@ -69,7 +70,10 @@ must not depend directly on the selected storage technology.
 ## 6. Questions that remain open
 
 - The project must decide which normalized facts and intents belong in the first implementation.
-- The project must decide the minimum operational storage and its interface.
-- The project must decide whether one or several executor processes may run at once.
+- ~~The project must decide the minimum operational storage and its interface.~~ Decided by protocol 6.5;
+  see §4 above.
+- The project must decide whether one or several executor processes may run at once. (Protocol 6.5 narrowed
+  this: even one process needs the claim table, because crash-restart overlap and redelivery race two
+  executions of the same effect.)
 - The project must decide which compatibility rules belong in the registry.
 - The first two capabilities must prove that the shared interfaces remain small and useful.

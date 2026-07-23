@@ -97,3 +97,51 @@ describe("parseConfig (design/config/schema.md)", () => {
         expect(result.ok).toBe(false);
     });
 });
+
+describe("capability registry (FINDING(config-capability-registry-gap), experiment 6.3)", () => {
+    const registry = ["prQuality", "assignment"];
+
+    it("rejects an enabled capability outside the registry, naming it and the registry", () => {
+        const result = parseConfig(
+            { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
+            { knownCapabilities: registry },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.join()).toContain('"checksGate"');
+            expect(result.errors.join()).toContain("capability registry");
+        }
+    });
+
+    it("keeps a disabled unknown capability dormant — removing a shipped capability must not break configs that still mention it", () => {
+        const result = parseConfig(
+            { schemaVersion: 1, capabilities: { retired: { enabled: false, settings: { old: 1 } } } },
+            { knownCapabilities: registry },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.capabilities.retired?.enabled).toBe(false);
+    });
+
+    it("without a registry the 6.3-observed contract is unchanged: unknown enabled capabilities pass", () => {
+        const result = parseConfig({
+            schemaVersion: 1,
+            capabilities: { checksGate: { enabled: true } },
+        });
+        expect(result.ok).toBe(true);
+    });
+
+    it("a registry rejection fails closed like every other error (§2.6)", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: {
+                    prQuality: { enabled: true }, // valid
+                    checksGate: { enabled: true }, // not shipped
+                },
+            },
+            { knownCapabilities: registry },
+        );
+        expect(result.ok).toBe(false);
+        expect("config" in result).toBe(false);
+    });
+});

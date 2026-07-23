@@ -98,6 +98,18 @@ An empty capability block must not rely on surprising defaults. A profile or def
 but it must never enable a capability. If a default can cause a workflow-changing write after enablement,
 the documentation must state it clearly.
 
+Schema validation alone cannot police capability names: capability keys are free-form and settings are
+contractually opaque to the shared validator, so a configuration enabling a misspelled or unshipped
+capability passes validation silently — observed directly in the sandbox (experiment 6.3,
+`FINDING(config-capability-registry-gap)`). The platform layer must therefore check every enabled
+capability against its registry of shipped capabilities at configuration load, and the effective-
+configuration report must name unknown capabilities and capabilities whose installation permissions are
+missing. This registry check is a platform requirement that complements, and cannot be replaced by, the
+schema in this document; it feeds the capability contract under D23. Its companion rule: registry names
+are never deleted — a retired capability is tombstoned, so configurations that enable it remain valid
+while the capability simply never activates and the effective-configuration report says so. Retirement must
+not be a breaking change; only names that never existed are validation errors.
+
 ## 6. Stable meanings and repository mappings
 
 The platform may use stable internal meanings while repositories keep their own labels and fields. For

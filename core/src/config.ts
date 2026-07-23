@@ -68,6 +68,25 @@ export type ConfigResult =
     | { readonly ok: true; readonly config: RepositoryConfig }
     | { readonly ok: false; readonly errors: readonly string[] };
 
+export interface ParseConfigOptions {
+    /**
+     * The platform's registry of shipped capability names. When supplied,
+     * an *enabled* capability outside the registry is a validation error;
+     * a disabled unknown capability stays dormant (present, inert), so
+     * removing a capability from the platform does not break configs that
+     * still mention it disabled.
+     *
+     * FINDING(config-capability-registry-gap), experiment 6.3: without
+     * this list a configuration enabling a misspelled or unshipped
+     * capability passes validation silently — the maintainer believes a
+     * behavior is on that does not exist. Callers that have a registry
+     * must pass it; the parameter is optional only because settings are
+     * contractually opaque and some callers (tests, tooling) have no
+     * registry to check against.
+     */
+    readonly knownCapabilities?: readonly string[];
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -81,7 +100,7 @@ const TOP_LEVEL_KEYS = new Set([
 ]);
 
 /** Strict parse of an already-YAML-parsed value. Pure; never throws. */
-export function parseConfig(raw: unknown): ConfigResult {
+export function parseConfig(raw: unknown, options: ParseConfigOptions = {}): ConfigResult {
     if (raw === undefined || raw === null) {
         return { ok: true, config: NO_CONFIG };
     }
@@ -130,10 +149,18 @@ export function parseConfig(raw: unknown): ConfigResult {
                     errors.push(`capability "${name}": settings must be a mapping`);
                     continue;
                 }
-                capabilities[name] = {
-                    enabled: value.enabled === true,
-                    settings,
-                };
+                const enabled = value.enabled === true;
+                if (
+                    enabled &&
+                    options.knownCapabilities !== undefined &&
+                    !options.knownCapabilities.includes(name)
+                ) {
+                    errors.push(
+                        `capability "${name}" is enabled but not in the platform's capability registry` +
+                        ` (known: ${[...options.knownCapabilities].sort().join(", ") || "none"})`,
+                    );
+                }
+                capabilities[name] = { enabled, settings };
             }
         }
     }

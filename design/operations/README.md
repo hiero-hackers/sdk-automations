@@ -41,6 +41,23 @@ The intake experiment must prove this boundary. It must test duplicate delivery 
 redelivery, delayed and out-of-order events, invalid signatures, queue saturation, process restarts, and a
 delivery that is durably accepted but initially fails during processing.
 
+The intake experiment (protocol 6.2, 2026-07-23) proved the boundary and fixed the required order. The
+ordering below is now a requirement, not a proposal; the receiver terminates GitHub's POST directly,
+because any acknowledging relay recreates the loss window in a place the process cannot fix.
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant R as Receiver (direct, no relay)
+    participant S as Owned store
+    GH->>R: POST delivery (signed, ~10 s response limit)
+    R->>R: verify HMAC over the raw body
+    R->>S: durably accept delivery id and work
+    R-->>GH: 200
+    Note over R,S: A crash after durable accept loses nothing. Reconciliation redrives the work.
+    Note over GH,R: Ack before durable accept is the demonstrated loss window. GitHub records OK and never retries.
+```
+
 Webhooks are triggers rather than an ordered source of truth. The executor reads current repository state
 before a write, and reconciliation finds work that a missing event may have delayed.
 
@@ -66,9 +83,12 @@ Production-owned records include at least the durably accepted webhook work need
 Additional candidate records include delivery deduplication status, scheduled jobs, effect plans, effect
 attempts, unclear outcomes, reconciliation cursors, installation status, and kill-switch state.
 
-The storage experiment compares GitHub reconstruction, App-authored comment metadata, and a small owned
-store. The selected technology follows from the required guarantees, expected scale, hosting support, backup
-needs, and operator capacity. The design does not choose SQLite, Postgres, or a queue before that evidence.
+The storage experiment (protocol 6.5, 2026-07-23) compared GitHub reconstruction, App-authored comment
+metadata, and a small owned store, and decided: a single-file SQLite store with four tables — seen delivery
+identifiers, an effect intent/done journal, claims, and schedules. GitHub keeps every effect outcome and
+resolves sent-but-unconfirmed writes. The grid and its citations are in `design/operations/storage-decision.md`;
+ratification is pending under the stage-four review, and hosting-driven revisits (backup, operator
+capacity, scale) remain legitimate at that review.
 
 ## 6. Rate limits and pacing
 
