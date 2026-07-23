@@ -214,8 +214,27 @@ The following work requires later approval and is not promised by November.
 - The roadmap does not permit two automation systems to write the same managed state during migration.
 - The roadmap does not permit destructive or cross-repository writes without a separate review and rollback
   rehearsal.
+- The roadmap does not test the capability-boundary principle (register P3). One capability cannot violate
+  "a capability does not call or import another capability", so the November result proves the platform and
+  the safety gates, not the decoupling. The first work after November is therefore defined now: a second
+  capability plus a toggle-matrix run — each capability alone, then both together — with the assertion that
+  enabling or disabling one does not change the behavior of the other. P3 stays a supported principle on
+  paper and an untested claim in code until that run passes.
 
-## 13. Ownership and dates
+## 13. Parallel work the gates do not block
+
+The stage gates order the platform work, but one workstream needs no platform at all. The work-item state
+machine, the safety rules, and the configuration schema are pure logic: they can be written as typed code
+with invariant tests (an item is never in two states; every destructive transition passes the safety
+check) while the stage-three experiments run, on no infrastructure and with no GitHub risk.
+
+This track exists to surface ambiguity early. `design/core/taxonomy.md` and `design/core/safety.md` still
+carry placeholder decisions, and prose tolerates ambiguity that a `canTransition(from, to)` function
+cannot. Whatever the coding surfaces feeds the decision register as evidence, the same way the sandbox
+experiments do. If the state machine survives being coded, stage five starts on proven ground; if it does
+not, the correction costs a document edit instead of a platform rework.
+
+## 14. Ownership and dates
 
 The working windows above help order the work, but they are not commitments until each row has an owner.
 
