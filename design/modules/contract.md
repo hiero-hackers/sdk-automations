@@ -31,6 +31,14 @@ interface CapabilityDeclaration {
 The declaration must be available to configuration validation, permission diagnostics, test generation, and
 operator reporting. A capability cannot request an undeclared resolver or intent.
 
+> Implemented (declaration layer only) in `core/src/contract.ts`, 2026-07-23, with two deliberate
+> divergences from the sketch above, both driven by stage-three evidence: `intents` upgraded from a name
+> list to declarations carrying a required **idempotency class** per intent (experiment 6.5 — a
+> lost-response retry duplicates comment creation but not label addition, so the executor's recovery rule
+> must be declared), and declarations compose into a **registry** whose names feed
+> `parseConfig({ knownCapabilities })` (experiment 6.3 — without it, enabling an unknown capability passes
+> validation silently). The runtime boundary in §2 remains stage-five work.
+
 ## 2. Runtime boundary
 
 The platform calls a capability with normalized facts, validated configuration, and a handle limited by the
@@ -109,8 +117,9 @@ plan. The plan records the safe call order, the expected state after each call, 
 recovery rule after a crash or unclear response.
 
 The first implementation must not assume that comment metadata can recover every plan. The personal-sandbox
-experiment will decide whether GitHub reconstruction, comment metadata, or an owned operational store records
-the plan and its progress.
+experiment decided this (protocol 6.5, 2026-07-23): the owned store's intent journal records the plan and
+its progress, GitHub state resolves sent-but-unconfirmed calls, and comment metadata serves as effect
+identity and receipt only — see `design/operations/storage-decision.md` (ratification pending).
 
 ## 6. Configuration and mapping access
 

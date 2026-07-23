@@ -64,6 +64,21 @@ principals:
   maintainerTeam: hiero-sdk-cpp-maintainers
 ```
 
+The smallest useful configuration is three lines — a repository that wants observation reports and nothing
+else:
+
+```yaml
+schemaVersion: 1
+mode: observe
+capabilities: {}
+```
+
+The recommended adoption path is a sequence of small reviewed diffs up the mode ladder: `observe` (reports
+only) → `dry-run` (explains what would happen) → `active`, with each step's blast radius already visible in
+the previous step's reports. Keeping a capability's settings in the file with `enabled: false` is the
+supported way to stage the next step: the settings are validated and dormant, and enabling later is a
+one-line, pre-reviewed diff.
+
 ## 4. Repository modes
 
 The schema should support the following repository modes.
@@ -97,6 +112,18 @@ enabling the capability later cannot silently activate an invalid value.
 An empty capability block must not rely on surprising defaults. A profile or default may fill in settings,
 but it must never enable a capability. If a default can cause a workflow-changing write after enablement,
 the documentation must state it clearly.
+
+Schema validation alone cannot police capability names: capability keys are free-form and settings are
+contractually opaque to the shared validator, so a configuration enabling a misspelled or unshipped
+capability passes validation silently — observed directly in the sandbox (experiment 6.3,
+`FINDING(config-capability-registry-gap)`). The platform layer must therefore check every enabled
+capability against its registry of shipped capabilities at configuration load, and the effective-
+configuration report must name unknown capabilities and capabilities whose installation permissions are
+missing. This registry check is a platform requirement that complements, and cannot be replaced by, the
+schema in this document; it feeds the capability contract under D23. Its companion rule: registry names
+are never deleted — a retired capability is tombstoned, so configurations that enable it remain valid
+while the capability simply never activates and the effective-configuration report says so. Retirement must
+not be a breaking change; only names that never existed are validation errors.
 
 ## 6. Stable meanings and repository mappings
 

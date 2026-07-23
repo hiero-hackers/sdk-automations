@@ -27,7 +27,10 @@ content changed, and does nothing when the content is already current. Duplicate
 unreadable comments remain explicit results for recovery.
 
 The personal-sandbox test must cover pagination, two simultaneous create attempts, a lost create response,
-an edited marker, a deleted comment, and a restart.
+an edited marker, a deleted comment, and a restart. Protocol 6.5 (2026-07-23) covered the hard middle of
+this list: two simultaneous creates duplicate without an owned claim, a lost create response is
+unrecoverable from local state alone, and restart recovery works from the marker read-back plus the owned
+journal. The edited-marker and deleted-comment cases remain for the managed-comment implementation test.
 
 ## 3. Candidate output types
 
@@ -57,8 +60,11 @@ Any metadata that the platform reads must satisfy the following rules.
 - A newer human action or current-state conflict still overrides an older pending operation.
 - The platform has a documented response when the comment is edited or deleted.
 
-The recovery experiment will decide which metadata remains in comments and which information belongs in an
-owned operational store.
+The recovery experiment decided this split (protocol 6.5, 2026-07-23): comment metadata carries effect
+identity and receipt — the marker is what makes a retry-after-check safe and cleanup findable — while
+intent, deduplication, claims, and schedules belong in the owned operational store. Metadata records nothing
+before a write lands and cannot coordinate concurrent writers, so it is not the write-ahead log. See
+`design/operations/storage-decision.md` (ratification pending).
 
 ## 5. Command acknowledgements
 

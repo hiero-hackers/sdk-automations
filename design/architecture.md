@@ -174,9 +174,10 @@ open or closed state. The system may still need owned operational storage for we
 pending effects, retries, schedules, and coordination.
 
 Comment metadata is one recovery option for comment-related work. It is not the approved database for all
-operations. A personal-sandbox experiment must compare reconstruction from GitHub, App-authored comment
-metadata, and a small owned store. The experiment will decide the minimum durable state required for safe
-recovery.
+operations. The personal-sandbox comparison has now run (protocol 6.5, 2026-07-23): recovery requires a
+small owned store as the detector and lock, with GitHub state as the resolver, and comment metadata serving
+as effect identity and receipt only. The decided minimum durable state is recorded in
+`design/operations/storage-decision.md`; ratification is pending under the stage-four review.
 
 ## 9. Permissions
 
