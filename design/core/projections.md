@@ -1,92 +1,121 @@
-# Projections: Every Comment the App Writes
+# Managed Comments and Other Human-Facing Output
 
-> **Drafted for ratification.** The projection engine is the core part that owns every comment,
-> reaction, and issue the app authors (`design/architecture.md` §4). The kinds already exist across
-> the corpus — this document assembles them under one contract and, most importantly, keeps the old
-> system's A2 disease (services reading each other's rendered text, `planning/lessons-learned.md`)
-> structurally impossible. Positions are **proposed**.
+> This document proposes how the App creates comments, reactions, and health reports. It does not decide that
+> comment metadata is the durable store for every recovery problem.
 
-## 1. The contract, five rules
+## 1. Platform ownership
 
-1. **Rendered from state, never read as input.** A projection is a pure function of
-   `(observed state, config)`. The core offers modules **no API to read any comment** — the A2 cure
-   is the absence of the operation, not a convention. The only comment-reads the core itself performs
-   are finding its own marker, plus the two registered exceptions (§3).
-2. **Single writer, marker-keyed, one per kind per item.** Every projection opens with an HTML-comment
-   marker (`<!-- hiero:<kind>:v<schema> -->`); the core finds-or-creates by marker and **updates in
-   place, never appends**. Update-in-place is also the politeness mechanism: GitHub edits do not
-   re-notify watchers, so a re-render never re-pings anyone.
-3. **Idempotent and churn-free.** A re-render that produces identical content performs no write —
-   sweeps must not cause comment-edit noise or spend write budget (`design/operations/README.md` §4).
-4. **Schema-versioned metadata.** Any machine-readable payload inside a projection carries the schema
-   version in the marker; v(n) must read v(n+1) (additive changes only within a rollout soak,
-   `design/operations/README.md` §3).
-5. **Resolved, not deleted** *(proposed)*: when the condition behind a projection clears, it is edited
-   down to a one-line resolved note rather than deleted — the thread keeps its audit trail, the noise
-   is one line, and the full record is the decision log anyway (`design/operations/README.md` §6).
-   **Overturned by:** maintainers preferring deletion; the engine supports either.
+Capabilities provide structured content and an intended audience. The platform owns the marker, authorship
+check, rendering, update, write, and audit information.
 
-## 2. The kinds
+A capability cannot read arbitrary comments or search another capability's rendered text. Shared facts must
+use normalized observations or declared resolvers instead of comment wording.
 
-| Kind | Trigger | Audience | Defined in |
-|---|---|---|---|
-| **narration** | incoherent manual state (classes 1, 2, 4) | repo maintainers | `design/core/manual-edits.md` §5 |
-| **safety warning** | clock passes warn lead | the assignee / PR author | `design/core/safety.md` |
-| **health issue** | installation-level problem (one open issue max) | repo maintainers | `design/operations/README.md` §5 |
-| **config validation** | PR touching `.github/hiero-automation.json` | the config editor | `design/operations/README.md` §5 |
-| **command ack** | slash command received / completed / refused | the commenter | `design/operations/README.md` §5 |
-| **module content** | a module requests it (pr-quality dashboard, intake validation nudge, progression recommendations, notifications) | per module | each module's spec |
+## 2. Managed comment identity
 
-The last row is the load-bearing one: **modules never write comments themselves.** A module hands the
-core structured content; the core owns the marker, the rendering, the idempotent update, and the
-write through the adapter. This is what makes rule 1 enforceable — a module *cannot* read another's
-dashboard because no module ever holds a comment at all. (The old Sibling-Conflict-reads-the-dashboard
-failure, lessons A2, is thereby unwritable.)
+A managed comment needs one short marker for its purpose on the current issue or pull request. For example:
 
-## 3. The exception register
+```html
+<!-- hiero-automation:v1:pr-quality:summary -->
+```
 
-Exactly two projections carry metadata the core later reads back. This register is the governance
-mechanism: a third exception enters by amending this section, with the same scrutiny §1 rule 1 exists
-to enforce — not by quietly reading a comment somewhere.
+The marker contains a schema version, capability, and comment kind. The repository and item are already
+known from the comment's location. A marker counts only when the GitHub App authored the comment.
 
-| Exception | What is read back | Why no alternative |
+The adapter finds the App-authored marker, creates the comment when it is missing, updates it when the
+content changed, and does nothing when the content is already current. Duplicate, edited, deleted, or
+unreadable comments remain explicit results for recovery.
+
+The personal-sandbox test must cover pagination, two simultaneous create attempts, a lost create response,
+an edited marker, a deleted comment, and a restart.
+
+## 3. Candidate output types
+
+| Output type | Intended audience | Candidate use |
 |---|---|---|
-| **safety warned-at** | warning time; before a destructive change, a pending or completed record with the item, edge, `expect`, safety fact, requested state, and plan version | the app needs this record to finish safely after a crash; a label cannot hold it, and the app has no owned store (`design/architecture.md` §4.1) |
-| **command ack marker** | whether the command was received or completed; before a change, a pending or completed record with the item, edge, `expect`, command comment ID, requested state, and plan version | after downtime, the app must tell the difference between a new command, an unfinished command, and a completed command (`design/architecture.md` §4; `design/operations/README.md` §5) |
+| Configuration report | The repository maintainer or configuration author. | The report explains invalid configuration, effective values, and missing permissions. |
+| Command acknowledgement | The person who issued a command. | The acknowledgement distinguishes receipt, refusal, completion, and an unclear result. |
+| Capability output | The repository participant who needs the result. | Examples include a pull request dashboard or an assignment explanation. |
+| Safety warning | The person affected by a later destructive action. | The warning states the observed inactivity, action time, cancellation path, and reversal path. |
+| Repository health report | The repository maintainer. | The report explains sustained configuration, permission, delivery, or processing problems. |
+| Operator record | The App operator. | The record explains failures that repository participants cannot fix. |
 
-For either exception, the core writes and reads back `pending` before making the first GitHub change. It marks
-the record `completed` only after it reads the item and sees every requested change. If a newer reason for a
-change exists, the old record is closed without another write. Modules never see this metadata and still
-cannot read comments.
+The final channel for each type depends on the permission manifest. A managed issue, pull request comment,
+check, log entry, or dashboard may be appropriate for different audiences.
 
-## 4. Voice: the templates are a product surface
+## 4. Machine-readable metadata
 
-The bot's comments are the entire contributor experience of this system, and the difference between
-a warning that reads as a countdown to punishment and one that reads as a colleague checking in is
-the difference between automation a community tolerates and automation it resents. Every template,
-every kind, follows these rules:
+Comment metadata may help identify a managed comment or recover comment-specific work. It is not automatically
+the system's write-ahead log.
 
-- **Colleague, not cop.** Every message is help: it states a fact and hands over the exits. The
-  remedy is never buried — it is the point of the message.
-- **Facts and exits, never threats.** Not *"WARNING: this issue will be unassigned in 3 days"* but
-  *"No activity here for 7 days — still on it? `/working` keeps it yours. If life happened,
-  `/unassign` sends it back to the pool and it's here when you're back; otherwise I'll do that on
-  the 21st so someone else can pick it up. Your work stays in your fork either way."* Same
-  information, opposite relationship.
-- **No blame, no exclamation marks, no bot-cutesiness.** Plain, warm, brief. Personality is
-  earned through usefulness, not emoji.
-- **Brevity budget:** warnings ≤4 sentences; acks and narrations ≤2. A bot that writes essays
-  trains people to stop reading it — and an unread warning fails `safety.md`'s first rule.
-- **The embarrassment test**, applied at template review: *would a maintainer be embarrassed to
-  have written this to a first-time contributor?* If yes, rewrite.
+Any metadata that the platform reads must satisfy the following rules.
 
-The contributor-facing summary of all behaviour, written in this voice, is
-`design/contributors.md` — the bot's own comments link to it.
+- The App verifies that it authored the comment.
+- The metadata includes a schema version and stable logical identity.
+- The parser rejects missing, malformed, oversized, or future-version data.
+- Repository users cannot cause an operation by copying a marker into their own comment.
+- A newer human action or current-state conflict still overrides an older pending operation.
+- The platform has a documented response when the comment is edited or deleted.
 
-## 5. Open
+The recovery experiment will decide which metadata remains in comments and which information belongs in an
+owned operational store.
 
-- Resolved-vs-deleted (§1 rule 5's overturn clause).
-- The exact marker namespace and schema-version format — build-time, fixed before ring 0.
-- Whether the health issue pins (GitHub pinned issues need no extra scope) — cosmetic, decide at build.
-- Per-kind render templates — build-time, against the narration format's three parts (what was
-  observed · what the app did or awaits · the one-line remedy).
+## 5. Command acknowledgements
+
+A reaction or first reply means only that the App received the command. It does not claim that all requested
+GitHub changes succeeded.
+
+The final acknowledgement states one of the following outcomes in ordinary language.
+
+- The command completed and the App verified the result.
+- The requested state was already present.
+- The current state changed before the command could apply.
+- The installation lacks a required permission.
+- GitHub asked the App to try later.
+- The App cannot yet prove whether a write happened, and recovery is continuing.
+
+The command parser dispatches only newly created comments. Editing an acknowledged comment does not repeat or
+retarget the command.
+
+## 6. Safety warnings
+
+A safety warning must state the following information.
+
+1. The warning states what the App observed and when it observed it.
+2. The warning states the exact action that may occur and the earliest action time.
+3. The warning states how the affected person can cancel the action.
+4. The warning states how a maintainer can reverse the action if it occurs.
+5. The warning states which configuration controls the timing.
+
+The effect executor, not the capability, decides whether the warning and grace period are still valid when
+the action becomes due.
+
+## 7. Content safety and tone
+
+The App writes as a project tool, not as a person pretending to know intent. Its messages use complete,
+plain sentences and describe facts, actions, and next steps.
+
+Rendered repository content must neutralize mentions and markup that came from untrusted titles, user names,
+or other input. The App does not copy issue or pull request bodies into comments. The App strips marker-like
+text from untrusted values before rendering.
+
+Messages remain concise enough for their audience, but they do not omit technical information needed to
+understand a failure or recovery step.
+
+## 8. Resolution and retention
+
+Whether a resolved managed comment is shortened, retained, or deleted remains a per-output decision. Safety,
+audit, and command outputs may require a durable visible history. A transient configuration report may be
+updated when the problem clears.
+
+The project must define retention for operator records separately from repository comments. Repository
+comments are not a substitute for an operational audit log with a documented retention policy.
+
+## 9. Questions that remain open
+
+- The project must choose the marker and metadata schema after the sandbox experiment.
+- The project must decide which output types use comments, issues, checks, or operator-only records.
+- The storage experiment must decide whether command and safety progress belongs in comments or an owned
+  store.
+- The project must decide how duplicate managed comments are repaired without deleting human content.
+- Maintainers must review the first real templates before a capability enters a pilot.

@@ -1,155 +1,148 @@
-# Manual-Edit Semantics: What Happens When a Human Touches a Status Label
+# Candidate Rules for Human Workflow Edits
 
-> **Drafted for ratification.** The core is the single app-side writer of `status:`, yet a hand-applied
-> label "is ingested as a legitimate transition" (`design/architecture.md` §4.1) — so what happens when a human
-> applies a label the state machine has no edge for? The answer follows from two commitments already
-> made: **no surprise actions** (`planning/goals.md`) and **every state has a non-module way in**
-> (`design/modules/README.md` §1). Positions are marked **proposed**. This gates the taxonomy ratification,
-> the toggle matrix, and the safety engine.
+> This document describes candidate behavior for a repository that chooses a workflow profile with
+> mapped position labels. These rules do not apply when a repository has not enabled that profile.
+> Maintainers must approve the rules before the App writes any mapped position.
 
-## 1. Two rulebooks
+The App must treat a newer human decision as more important than an older automation decision. It must
+also leave every unrelated label alone. These rules are still hypotheses because GitHub does not make
+ordinary labels mutually exclusive, and because repositories may want different conflict policies.
 
-"Illegal manual transition" is a category error: humans and modules do not play by the same rules.
+## 1. Human edits and capability requests follow different rules
 
-- **Modules request transitions** — `(position → position)`, legal only if the state machine has that
-  edge and the module declared it (`design/architecture.md` §5). The taxonomy diagram's edges are the *module*
-  rulebook, nothing else.
-- **Humans edit state** — any single coherent position they set is legitimate by definition; for
-  humans every position is reachable from every position. Anyone who can apply a label is already
-  maintainer-trusted (`design/config/schema.md` §3), and restricting hand edits to the machine's edges would
-  re-couple every module to its upstream — the toggle matrix *requires* free manual entry (a repo
-  running only inactivity needs `in progress` placed by hand).
+A person with repository permission may place an item directly into any configured position. This is
+necessary because a repository may enable only one capability and may perform every earlier step by hand.
+The App must not force a human to walk through positions that belong to disabled capabilities.
 
-A hand edit is ordinary state: modules react to it exactly as to any observed state (`design/architecture.md`
-§7). The only manual problems left are **incoherent states**, and those are enumerable (§3).
+A capability has a narrower rule. It may request only an intent that its declaration allows. The platform
+then checks the current observation, repository configuration, actor permissions, and safety policy before
+it applies that intent. A capability cannot use the adapter to bypass these checks.
 
 ```mermaid
 flowchart TB
-    subgraph HUM["human rulebook — state edits: any position, from any position"]
-        E["edit observed<br/>(webhook or sweep)"] --> Q{coherent?<br/>one position ± blocked,<br/>invariants hold}
-        Q -->|yes| OK["legitimate state —<br/>modules react normally"]
-        Q -->|"2+ positions"| C1["1 · latest wins:<br/>core removes older, narrates"]
-        Q -->|invariant broken| C2["2 · flag, don't fix:<br/>modules no-op, one narration"]
-        Q -->|unknown spelling| C3["3 · invisible:<br/>never read, never removed"]
-        Q -->|undecidable order| C4["4 · quarantine:<br/>automation pauses, self-heals"]
-        Q -->|no position| C5["5 · unmanaged:<br/>silently forgotten"]
-    end
-    subgraph MOD["module rulebook — transitions: edge-bound"]
-        R[transition requested] --> G{edge declared?<br/>position current?<br/>fact newer than human edit?}
-        G -->|target already reached| NOOP[idempotent no-op]
-        G -->|stale view · older fact| REF[refused — module re-observes]
-        G -->|yes| AP[core applies via adapter<br/>+ narration]
-    end
+    H["GitHub reports a human label edit"] --> HO["Capabilities evaluate the current observation"]
+    C["A capability returns an intent"] --> PC{"Does policy still allow it?"}
+    PC -->|"Yes"| A["The executor applies and verifies the effect"]
+    PC -->|"No"| N["The executor records a no-op or conflict"]
 ```
 
-## 2. The prime rule: the app never reverts a human
+## 2. The default rule preserves newer human intent
 
-**Proposed.** The app never removes or overwrites the most recent human-applied position — a bot that
-reverts a maintainer's gesture teaches maintainers to fight the bot. Consequences:
+The default policy must not remove a position that a human applied after the fact that caused an
+automation intent. For example, a stale scheduled evaluation must not move an issue back after a
+maintainer has deliberately changed its position.
 
-- **Validators advise, never veto.** Intake seeing hand-placed `ready for dev` with no `skill:` label
-  comments; the state stands. Intake off = nothing comments; that is what off means.
-- **Off-edge edits are ordinary.** `awaiting triage` straight to `in progress` means exactly what it
-  says; downstream modules behave normally.
-- **The one exception is completion, not reversal:** with two positions present, the core removes the
-  *older* — GitHub's UI never made status labels exclusive, so the machine supplies the exclusivity
-  the human assumed. It never touches the label just applied.
+The executor can enforce this rule only when the intent includes a dated cause and the adapter can obtain
+reliable ordering evidence. A webhook delivery time is not enough because delivery can be delayed or
+reordered. Useful evidence may include the label event timestamp, the command comment timestamp, the
+review timestamp, or a repository-owned version value.
 
-**Overturned by:** ratifiers wanting a hard gate on some position (e.g. `ready to merge`) — that would
-be a named, narrated policy veto; the default is none exists.
+If reliable ordering evidence is unavailable, the safe default is to return a conflict and do nothing.
+The App adds or updates one managed explanation only when a maintainer can act on the conflict and the
+repository enabled that output. Otherwise the conflict remains in operator diagnostics without a repository
+comment.
 
-## 3. Coherence: five observation classes
+This default does not prevent a repository from choosing a stricter policy later. Any strict gate must be
+explicitly configured, clearly explained, and tested as a separate policy. It must not appear as an
+undocumented platform default.
 
-The app reacts to state observed, not events assumed (`design/architecture.md` §2) — so semantics are defined
-over **observations**. Coherent = exactly one canonical position, optionally the `blocked` overlay,
-invariants holding. Otherwise:
+## 3. Keep the first conflict policy small
 
-| # | Observation | Semantics | App writes |
-|---|---|---|---|
-| 1 | two+ position labels | latest human-applied wins; core removes the older | stale label removal + narration |
-| 2 | invariant broken (`in progress`, no assignee) | state honoured; modules whose precondition fails no-op | narration only |
-| 3 | unknown `status:` spelling | invisible — never read, never removed | nothing |
-| 4 | class 1 with no ordering signal | quarantine until a human resolves it | narration only |
-| 5 | no position | unmanaged — the app forgets the item | nothing |
+The first version does not automatically repair combinations of mapped positions. It follows four rules.
 
-Before using this table, the core checks whether the state came from an unfinished app transition. It may
-resume an assign or unassign operation only when its saved pending record identifies the transition and
-`cause`, the issue events match the calls in that record, and no newer human edit, command, or safety fact
-exists. This finishes a change that the core had already approved; it does not repair a human edit. Without
-that match, the state remains class 1 or 2 and Q5 remains open.
+1. It leaves unknown and unrelated labels alone.
+2. It does not guess which position a person intended.
+3. It does not replace a newer human choice with an older automation decision.
+4. It changes a mapped position only when an enabled capability has a current, configured reason and every
+   write precondition still holds.
 
-- **Class 1:** the webhook names the added label; on a sweep, the core reads the item's timeline to
-  order them (the one extra API read here, on a rare path); unorderable → class 4. The narration says
-  what was kept and offers the one-line fix.
-- **Class 2:** repair would mean inventing a fact (an assignee, a PR), so the core flags instead. The
-  toggle matrix already forces modules to tolerate states without their usual precursors — this is
-  that case. The per-position invariants are the table in `design/core/taxonomy.md` §2.4. A module *may* declare a
-  repair as its job (e.g. assignment consuming native-assign events to heal the A3 pair) — that is
-  its contract's business.
-- **Class 3:** the core owns the **canonical set, not the `status:` prefix**. Maintainer-invented
-  labels are margin-notes; the app has no prefix operations at all — this retires the A1 strip loss
-  by construction.
-- **Class 4:** quarantine is *derived*, not stored (`design/architecture.md` §8): with no unique position, no
-  module's precondition holds, so automation pauses naturally; one position restored resumes it.
-- **Class 5:** removal = **forget** (silent — the gesture is explicit, and nagging an opt-out is the
-  noise bots get uninstalled over); `blocked` = **remember but pause**. Two gestures, two meanings.
+When these rules cannot prove that a write is safe, the App returns a conflict and leaves the item unchanged.
+Detailed conflict categories and automatic repairs can be added later if a selected capability demonstrates
+a need for them.
 
-**`blocked` is absolute:** it pauses everything (`design/config/schema.md` §3) *including* class-1 repairs and
-all narration. Repairs run when the overlay lifts. Hand add/remove of `blocked` is always legal, never
-narrated.
+The App owns only the exact labels listed in the selected mapping. It does not own a prefix such as
+`status:`. It must never search for a prefix and remove every matching label because that could destroy
+repository-specific information.
 
-## 4. The module rulebook, and the newer-fact rule
+## 4. An interrupted App effect is different from a human edit
 
-- **Undeclared edge** — inexpressible: compile error via the typed core handle.
-- **Target already reached** — idempotent no-op, reported as success (absorbs races and redelivery).
-- **Wrong current position** — stale observation: refused; the module re-observes. Refusal is a normal
-  outcome; persistent refusal loops surface in telemetry, never as repo comments.
+An operation that needs several GitHub calls can stop halfway. For example, an assignment operation may
+add an assignee successfully and fail before it updates a mapped position. The App may resume that effect
+only when it can prove all of the following facts:
 
-And because humans are senior:
+1. The saved operation identifies the repository, item, capability, intent, expected state, and desired
+   state.
+2. The observed partial state matches a completed step in that exact operation.
+3. No newer human edit, command, configuration revision, or safety fact changes the decision.
+4. Repeating the remaining call is idempotent or has a verified precondition.
 
-> **Proposed — the newer-fact rule.** A module may move an item off a human-set position only on the
-> strength of a fact newer than the human's edit.
+If the platform does not keep enough operational state to prove these facts, it must not guess. It must
+report the partial result and wait for a person or a later safe reconciliation. This requirement is one
+reason the storage decision remains open.
 
-Without it the stateless design oscillates: pr-quality re-derives "checks green" each sweep and
-politely re-asserts `needs review` against a maintainer's hand-set `needs revision`, forever. The core
-enforces it by comparing the triggering fact's timestamp against the position's `labeled` timestamp
-(the second timeline read, confined to recently-hand-touched items). **Overturned by:** that read
-proving too costly at sweep scale — the rule then moves into module contracts ("sweep-derived
-transitions must cite a dated fact"), weaker and policed by the toggle matrix.
+## 5. A blocked item requires an explicit policy
 
-## 5. Narration
+The Hiero contribution profile includes the internal `blocked` meaning and uses `status: blocked` as its
+expected label. A repository may explicitly map that same meaning to an existing label, but normal event
+processing does not invent or create a new blocking label.
 
-Every repair or flag above is one **narration comment** — a projection (`design/architecture.md` §4): marker-
-keyed, single-writer, updated in place (never re-posted), cleared when the incoherence resolves, never
-read back. It always carries: what was observed, what was done or is awaited, and the one-line remedy.
-This is the fail-loud cure (`audit/principles-review-cpp.md` §9) aimed at the one audience that can act.
+The profile must state whether blocking pauses every enabled capability or only named capabilities. The
+platform must not silently assume that one behavior fits every repository.
 
-## 6. Tests
+If the profile chooses a complete pause, the App performs no item-level writes while the block is present,
+including conflict repairs and managed-comment updates. Operator alerts and security controls may still
+run because they protect the installation rather than advance the item.
 
-New invariants for `design/testing/README.md` (first one corrects its earlier wording, which
-`blocked`-as-overlay violates):
+## 6. Managed explanations must be precise and quiet
 
-- **I-single-position:** never two canonical *position* labels after the app's next action.
-- **I-never-revert:** no run shows the app removing the most recent human-applied position.
-- **I-no-prefix:** every app removal names a specific canonical string.
-- **I-narrated:** every app write on an incoherent item co-occurs with a narration update.
-- **I-blocked-absolute:** zero app writes on a blocked item.
+When configured, a managed explanation should state what the App observed, what it did or refused to do,
+and what a maintainer can do next. The App should update its existing comment instead of posting the same
+message repeatedly. Marker recognition must include App authorship so that a contributor cannot create a
+fake managed comment.
 
-The toggle matrix gains an **incoherence-injection axis**: each class × each module combination,
-asserting the class's exact semantics — no revert, correct repair or flag, modules act or no-op,
-nothing crashes.
+The App must not comment when no action is useful. Removing all mapped positions is a reasonable way to
+return an item to manual management, so the default response to that edit is silence.
 
-## 7. Migration warning
+## 7. Capabilities must tolerate manual entry points
 
-This rulebook grants seniority to **any actor that is not this app** — during coexistence, that
-includes the old C++/Python bots, whose prefix strips would read as silent class-5 opt-outs. Hard
-ordering constraint for the migration protocol: **an old bot's status writers are disabled before any
-module sharing their labels is enabled.** `isBot` can refuse known old-bot actors seniority as
-belt-and-braces; the ordering is the fix.
+Every capability must be tested as if all of its input facts were created manually. It must not depend on
+an earlier capability having run. For example, an inactivity capability can observe a manually added
+in-progress mapping without importing or calling an assignment capability.
 
-## 8. Open
+Compatibility tests may enable several capabilities together. These tests prove that their declared
+intents and mappings do not conflict. They do not give one capability permission to call another.
 
-- The per-position invariant table is drafted (`design/core/taxonomy.md` §2.4) — ratified with the taxonomy.
-- Any policy veto on manual entry (§2's overturn) — default no.
-- Whether assignment's contract includes the native-assignment repair (§3, class 2).
-- The timeline-read budget at sweep scale (§4's overturn; measured at ring 0, `design/operations/README.md`).
+## 8. Required tests
+
+The conformance suite for a position-writing capability must cover at least these cases:
+
+1. A newer human position survives an older scheduled or webhook-driven intent.
+2. An unknown repository label is never read as a position and is never removed.
+3. More than one mapped position causes no automatic repair in the first version.
+4. A conflict produces at most one actionable managed explanation and no repeated comments.
+5. A missing assignee, pull request, review, or other precondition is not invented automatically.
+6. A disabled capability performs no reads or writes beyond shared event routing and configuration checks.
+7. A redelivered event produces the same final state without duplicate comments or repeated side effects.
+8. A partial multi-call effect resumes only when its saved evidence is still current.
+9. A configuration change between evaluation and execution invalidates the old intent.
+10. Coexistence with an older bot does not create two writers for the same mapped label.
+
+## 9. Migration requires one writer for each managed output
+
+Before the App manages a label or comment that an older workflow also manages, maintainers must disable
+the older writer. Actor detection can reduce accidental conflicts, but it cannot replace an ordered
+migration. The rollout plan must name the old writer, the new writer, the handover step, and the rollback
+step for every managed output.
+
+If a maintainer renames a mapped label, the affected capability stops label-changing work and reports the
+broken mapping. The App does not recreate the old label, guess the new name, or change existing items. Work
+resumes only after maintainers update the mapping and complete any required migration. Intents created under
+the old configuration revision are no longer valid.
+
+## 10. Open decisions
+
+The project still needs maintainer decisions about whether the Hiero profile pauses all or named
+capabilities while blocked, the cost of timeline reads, the evidence used to order edits, and the
+operational state required for multi-call recovery. Automatic conflict repair remains deferred until a
+selected capability demonstrates a need for it. These decisions should be tested in a Hiero Hackers sandbox
+before they become a promise to another Hiero repository.

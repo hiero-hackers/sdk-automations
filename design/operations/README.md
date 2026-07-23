@@ -1,194 +1,158 @@
-# Operations and Failure Loudness
+# Operations, Delivery, and Rollout Proposal
 
-> **Drafted for ratification.** The rest of the design describes the software; this describes the
-> system in operation — who hosts it, how releases roll out, what the rate limits permit, and where
-> every failure is heard. Written *before* the module contract is finalised because its conclusions
-> change that contract's surroundings (§7). Positions are marked **proposed**. Numbers in §4 are
-> order-of-magnitude, re-checked at build time; conclusions survive a 2× error.
+> This document records the operational requirements and experiments for the GitHub App. Hosting, process
+> count, the storage technology and full record set, retention, and the production permission manifest
+> remain open decisions.
 
-## 1. The posture: the app must be safe to be down
+## 1. Availability goal
 
-> **Proposed acceptance condition.** The app may be down or slow without losing or corrupting state. A
-> multi-call change can be built only when it can recover from a restart after any call. Downtime should delay
-> automation, not break it.
+The App should be safe when it is slow, restarted, or temporarily unavailable. Downtime may delay automation,
+but it must not corrupt repository state or cause blind repeated writes.
 
-This is the stateless reducer (`design/architecture.md` §4.1) plus the sweeper (§2) read as an availability
-story: GitHub holds all state and the next sweep repairs missed work. A multi-call transition can be used only
-after it passes the restart rules in `design/architecture.md` §4. Everything follows from it:
+An in-memory queue and a later sweep are not sufficient for a production webhook receiver. GitHub does not
+automatically redeliver every failed delivery, and the service cannot claim that it accepted work if a
+restart can erase that work. The recovery experiments must still decide which scheduled jobs,
+pending-effect records, and reconciliation checkpoints also require durable state.
 
-- **No pager.** Operator response time is business-hours; an outage costs a delay in labels moving.
-- **Exactly one active instance, with no rolling overlap** *(proposed)* — the queue exists only in the running
-  process. Two processes can both pass the same `expect` check (`design/architecture.md` §4). A deployment must
-  stop the old process before starting the new one. Before implementation, the hosting plan must say how it
-  does this and how it checks that only one process is active. If it cannot provide that guarantee, D1 must
-  change. **Overturned by:** growth or availability needs that require several processes. Shared coordination
-  would then sit behind the shell and D1 would be reviewed again.
-- **Restart plus sweep is the recovery tool.** There is no app-owned state to restore. The new process reads
-  GitHub again and resumes only the multi-call changes that meet the restart rules in
-  `design/architecture.md` §4.
-- **Safe to shed, too:** the shell's queues are bounded — an event storm (a bulk-label import, 500
-  webhooks at once) is shed past the bound and healed by the next sweep. Correctness never depends
-  on processing any particular event (`threat-model.md` §3.4).
-- **Uninstall is graceful.** Labels, comments, assignees all survive; maintainers continue by hand —
-  the light-switch rule (`design/architecture.md` §7) at system level.
-- Deliberately **not** built: HA, clustering, queue infrastructure, per-repo cadence tiers, new
-  permission scopes. Each would be state or surface to operate, and §1 makes them unnecessary.
+## 2. Hosting and operator
 
-The one real-time expectation — a contributor watching their `/assign` — is answered by
-acknowledgement (§5), not an availability target.
+The project still prefers a hosted GitHub App because one deployment can provide consistent configuration,
+permissions, adapter behavior, and upgrades across repositories. The project needs an organization-owned
+operator rather than relying on one contributor's personal account.
 
-## 2. Who hosts, who operates
+The hosting decision must identify the following responsibilities.
 
-**The vehicle — hosted app, defended.** Against the alternative (org reusable workflows /
-Actions-hosted):
+- The operator stores and rotates the App private key and webhook secret.
+- The operator controls deployment, kill switches, storage, backups, and retention.
+- The operator monitors webhook delay, queue depth, API limits, failures, and reconciliation.
+- The operator can suspend processing without uninstalling the App.
+- The operator can prove whether one or several application processes are active.
 
-| | Hosted app | Reusable workflows |
+A personal development App is separate from the eventual production App and is used only for sandbox work.
+
+## 3. Webhook intake
+
+GitHub expects the webhook endpoint to verify the signature and return a successful response within ten
+seconds. A production receiver must durably accept the delivery identity and queued work before that
+response. If it cannot durably accept the work, it must return a failure instead of silently losing an event.
+Slow evaluation and GitHub API writes run after acknowledgement.
+
+The intake experiment must prove this boundary. It must test duplicate delivery identifiers, manual
+redelivery, delayed and out-of-order events, invalid signatures, queue saturation, process restarts, and a
+delivery that is durably accepted but initially fails during processing.
+
+Webhooks are triggers rather than an ordered source of truth. The executor reads current repository state
+before a write, and reconciliation finds work that a missing event may have delayed.
+
+## 4. Process and coordination model
+
+The earlier design required exactly one active process because its queue and serializer lived only in memory.
+That requirement is now reopened.
+
+The hosting and storage experiments must decide whether the first production version runs one process or
+several. If several processes may handle the same item, the system needs shared coordination or another
+proved conflict-control mechanism. Current-state checks alone do not prevent two processes from making
+opposing decisions from the same old state.
+
+The selected model must define deployment overlap, restart behavior, poison-item handling, and how pending
+work transfers to a new process.
+
+## 5. Operational storage
+
+GitHub remains authoritative for visible repository facts. The App may own the minimum state needed for
+operational correctness.
+
+Production-owned records include at least the durably accepted webhook work needed to survive a restart.
+Additional candidate records include delivery deduplication status, scheduled jobs, effect plans, effect
+attempts, unclear outcomes, reconciliation cursors, installation status, and kill-switch state.
+
+The storage experiment compares GitHub reconstruction, App-authored comment metadata, and a small owned
+store. The selected technology follows from the required guarantees, expected scale, hosting support, backup
+needs, and operator capacity. The design does not choose SQLite, Postgres, or a queue before that evidence.
+
+## 6. Rate limits and pacing
+
+The adapter is the only component that handles GitHub rate-limit and retry behavior. Capabilities do not
+implement private retry loops.
+
+The adapter records primary and secondary rate-limit headers, uses conditional reads where supported,
+paginates every list operation, paces writes, applies bounded backoff, and stops retrying when GitHub's
+response says that waiting is required.
+
+The project will measure App installation budgets and endpoint costs in the personal sandbox and again in
+the Hiero Hackers sandbox. Sweep cadence follows measured fleet cost and product need rather than a
+repository setting.
+
+## 7. Failure audiences
+
+Every failure class has one primary audience and a clear next step.
+
+| Failure | Primary audience | Candidate channel |
 |---|---|---|
-| per-item serializer | in-process, exact | impossible (Actions groups = the accidental mutex, lessons D2) |
-| sweeper | first-class scheduler | best-effort cron, per repo |
-| fork safety | structural — webhooks never run repo code; the relay class (B1) vanishes | rebuilt per the C++ contortion |
-| cross-repo consistency | one deployment | version skew per repo |
-| ops burden | one stateless container | zero services, N repos of YAML |
+| Configuration is invalid or outdated. | The repository maintainer or configuration author. | The App uses a configuration report whose final form depends on permissions. |
+| A capability lacks an installation permission. | The repository owner or installation owner. | The effective-configuration report names the missing permission and blocked operations. |
+| A command is refused or remains unclear. | The person who issued the command. | The App updates the command acknowledgement with the current facts and safe next step. |
+| A capability repeatedly creates invalid intent. | The capability developer and operator. | Telemetry and audit records report the contract failure without posting repeated repository comments. |
+| Webhook delivery or queue delay is sustained. | The operator. | Metrics and an operator alert show the installation and delay. |
+| GitHub returns a sustained service or rate failure. | The operator, and the repository only when user-visible service is affected. | The adapter reports the failure and pauses unsafe retries. |
+| A repository item repeatedly crashes processing. | The operator. | The queue isolates the item and records enough detail for a safe replay. |
+| The executor cannot determine whether a write happened. | The operator and any directly affected command user. | The recovery record states the observed postcondition and the next reconciliation step. |
 
-**Proposed:** hosted — *because* §1 shrinks its ops cost to near the workflows level. **Overturned
-by:** no org-level operator being found; the fallback is reusable workflows, and the module contract
-should know its vehicle before finalising. This is the largest way this document could still change
-the design.
+The App must not create a new repository comment for every internal retry or temporary GitHub failure.
 
-**The operator — an org role, never a person** *(proposed)*: LFDT/Hiero project infrastructure or a
-TSC-owned account. The quantified ask: one small container, one secret store (App private key +
-webhook secret — the key is the one secret whose leak is an incident, bounded by the three scopes),
-log retention (§6), and a rotating **gardener** who checks the dashboard on business days and owns
-releases. No on-call.
+## 8. Audit information and retention
 
-## 3. Rollout: replay gate, rings, kill switches
+An audit record should connect the normalized observation, effective configuration version, capability
+decision, typed intent, policy result, adapter calls, final outcome, and recovery activity.
 
-```mermaid
-flowchart LR
-    RC[release candidate] --> RG{replay gate —<br/>replay N days of fleet events,<br/>diff emitted transitions}
-    RG -->|unexplained diff| X[blocked]
-    RG -->|clean| R0[ring 0 — sandbox repo<br/>real webhooks, E2E soak] --> R1[ring 1 —<br/>volunteer repo] --> R2[ring 2 — fleet]
-    K[["kill switches: operator per-module (global, no deploy) ·<br/>repo config block · item-level status: blocked"]] -.-> R2
-```
+The audit record must avoid secrets and unnecessary repository content. The operator and maintainers must
+decide the retention period, access control, deletion process, and whether public and private repositories
+need different handling.
 
-- **The replay gate** *(proposed)* is the purity payoff cashed in: the reducer is
-  `(state, event, config) → transitions`, so every production decision replays offline from the
-  decision log (§6). Regression testing against real traffic, no infrastructure, no risk. It joins
-  `design/testing/README.md` as a layer.
-- **Rings** are keyed by installation in the shell — one deployment, no per-repo versions. Promotion
-  is soak-time plus zero unexplained alerts. Ring 0 is the E2E sandbox doing double duty.
-- **Rollback safety** is the comment-metadata schema versioning (`design/architecture.md` §4): v(n) must read
-  v(n+1), so schema changes are additive within a soak window.
+Repository comments are user-facing output. They are not the only operational audit record.
 
-## 4. The rate-limit arithmetic
+## 9. Kill switches
 
-The shaping fact: **an App installation is per-organisation, and the rate budget belongs to the
-installation** — so every participating hiero-ledger repo draws on one shared budget (~5,000 REST
-req/hr and ~5,000 GraphQL points/hr, scaling modestly with repo count). Not per-repo, as
-`design/architecture.md` §10 first guessed.
+The system needs the following stop controls.
 
-To be precise about what "per-organisation" does and does not mean — **budget is org-level; consent
-is repo-level, twice over.** A repo that wants nothing to do with the app is untouched: the org
-installation is scoped to *selected repositories* (a repo outside the selection sends no webhooks
-and grants no access at all), and inside the selection the config file is the real switch — no
-config means safe defaults, and an absent module block means that module is off (`design/architecture.md` §3).
-What repos *cannot* have is separate budgets: opting in means drawing on the shared installation
-allowance, which is why cadence is fleet arithmetic (below) and not a per-repo knob. (Multiplying
-budget by registering one app per repo is technically possible and rejected: N keys, N webhook
-endpoints, N installations to garden — and §4's arithmetic shows it is unnecessary.)
+- A global operator switch stops all new processing.
+- An installation switch stops one organization or installation.
+- A repository mode stops workflow-changing writes for one repository.
+- A capability switch stops one capability without changing another capability.
+- An item-level pause may be supplied by a selected workflow profile.
 
-The estimate, pessimistic: ~15 repos × ~200 open items = 3,000 items; a fleet sweep ≈ 30 GraphQL
-pages ≈ **≤150 points** → hourly sweeps use ~3% of budget, 10-minute sweeps ~18%. Hourly is
-*sufficient*: webhooks are the fast path, the sweep is the backstop, and the slowest clock any module
-runs is day-granular. Follow-up reads (timelines, linked PRs) apply only to items changed within the
-interval — activity-bounded, a few percent. Writes are human-bounded; their real constraint is
-GitHub's *secondary* burst limits.
+The operator runbook must explain what happens to queued and pending work when each switch activates.
 
-The decisions this fixes:
+## 10. Rollout environments
 
-1. **Budget enforcement lives in exactly one place: the adapter** — a global token bucket plus a
-   write pacer (~1 mutation/sec sustained). Modules never see limits; their cost is *metered* at the
-   core's resolvers, not declared (a fifth contract line was considered and rejected — it would break
-   the four-declarations-for-four-tangles symmetry for something the core can measure itself).
-2. **Sweep cadence is not a config knob** — derived from fleet arithmetic, jittered across repos.
-   Joins `design/config/schema.md` §3's not-configurable list.
-3. **Saturation degrades cadence, never correctness** (§1 makes that safe); sustained saturation is
-   an operator alert.
-4. **Overturned by:** the arithmetic failing >2× at build time — escape hatches in order: ETags in
-   the adapter, longer cadence, then the owned store §4.1's overturn clause already prices in.
+The rollout uses the following environments in order.
 
-## 5. Failure loudness: every failure has exactly one audience
+1. Local tests use pure logic and an owned fake adapter without network writes.
+2. A personal sandbox uses a separate development GitHub App.
+3. A clearly named Hiero Hackers sandbox is used after organization approval.
+4. One consenting repository runs in observe or dry-run mode.
+5. One reversible capability enters an approved pilot.
+6. Destructive capabilities and broader rollout require separate decisions.
 
-> **Proposed.** Every failure class is assigned one primary audience, on a channel that audience
-> already watches. A failure class with no assigned audience is a design bug.
+Each promotion requires a clean observation period, a demonstrated kill switch, a rollback rehearsal, and a
+review of new permissions. An unexplained effect stops promotion.
 
-(The cure for the old system's grade-D silence, `audit/principles-review-cpp.md` §9.)
+## 11. Migration
 
-| Failure | Audience | Channel |
-|---|---|---|
-| config invalid (parse, schema, unknown module, bad `_extends`) | repo maintainers | PR comment at edit time + the health issue at runtime |
-| slash command failed or refused | the commenter | reaction + reply comment |
-| module refusal loop (contract bug) | developers | telemetry + decision log — never a repo comment (`design/core/manual-edits.md` §4) |
-| incoherent manual state | repo maintainers | narration comment (`design/core/manual-edits.md` §5) |
-| sustained budget saturation | operator (repo only if its cadence visibly degrades) | telemetry; health-issue line |
-| webhook outage | operator | delivery-lag metric; sweeps heal meanwhile |
-| poison item (processing crashes repeatedly) | operator | telemetry + skip; narrated only if a human is visibly waiting |
-| GitHub 5xx | nobody (retry) → operator if sustained | adapter retry + telemetry |
-| a command change is still `unknown` or incomplete | commenter | reply with the state the app can see and the safe next step |
-| a scheduled change is still `unknown` or incomplete after another sweep | operator | log it and skip the item instead of guessing |
-| the hosting system finds two active app processes | operator | fail the deployment and do not start processing items |
+The old and new automation must never write the same managed state at the same time. Every pilot repository
+needs an inventory of old triggers, permissions, state writes, effect writes, disablement controls, and
+rollback steps.
 
-The three repo-facing mechanisms, all inside the existing three scopes:
+A migration mapping may translate old repository labels or fields into the new internal meanings. The
+mapping is specific to the repository and does not turn legacy spelling into universal platform policy.
 
-- **Config PR comment** — a PR touching `.github/hiero-automation.json` gets a marker-keyed
-  validation comment: errors, or "valid; enables X, disables Y". (A check run would cost
-  `checks:write`; rejected to keep the scope promise.)
-- **One health issue** — an unhealthy installation has exactly one open app-authored issue
-  ("Automation health"): what is wrong, what runs meanwhile, the one-line fix; closed by the app when
-  clear. Degradation is scoped and loud: a broken module block disables that module; a broken top
-  level runs safe defaults. Never last-known-good — there is no memory to be good from.
-- **Command acks** — 👀 means received, not completed. Before a command that needs several GitHub calls, the
-  core saves and checks a `pending` record in the ack comment. It adds ✅ only after it reads the item and sees
-  every requested change. If the command was refused or its result is `unknown`, it replies with the reason.
-  The sweep looks for commands with no receipt and for received commands that are still pending, so a crash
-  after 👀 does not hide unfinished work (`design/architecture.md` §4).
+## 12. Questions that remain open
 
-## 6. Telemetry, secrets, retention
-
-The decision log — `(observed state, event, config slice) → transitions → adapter outcome` per
-decision — is at once the debugging story (replay any behaviour offline), the release gate (§3), and
-the audit trail `planning/goals.md` promises. Dashboard, readable in one glance: webhook lag, sweep
-staleness, budget consumption vs §4, refusal rate per module, ack latency, per-ring deltas. Alerts
-page nobody (§1); they mark the dashboard and, where §5's table says so, the health issue.
-
-The app stores no repo data at rest; what remains is the two secrets (§2) and logs holding public
-repo metadata, retained for the replay window only *(proposed: 30–90 days)*. Webhook signatures are
-verified at intake before anything runs. The full adversarial pass — command griefing, content
-injection through the app's voice, config as weapon, compromised accounts and keys — is
-`design/operations/threat-model.md`.
-
-## 7. The shape-changes this forces
-
-1. **Adapter** (`design/architecture.md` §4): token bucket, write pacer, retry policy — budgets at the one
-   door, nowhere else.
-2. **Shell** (`design/architecture.md` §2): single instance explicit; sweep jitter; command 👀-acks and the
-   scan for new and unfinished commands.
-3. **Projections** (`design/architecture.md` §4): three new kinds — health issue, config PR comment, command
-   acks (command records and safety-warning records remain the only two exceptions that the core reads).
-4. **Module contract** (`design/architecture.md` §5): *unchanged* — costs metered, not declared (§4).
-5. **Config** (`design/config/schema.md` §3): cadence joins the not-configurable list.
-6. **Tests** (`design/testing/README.md`): replay gate added; ring 0 = the E2E sandbox.
-7. **Corrected:** the rate budget is per-org, not per-repo (`design/architecture.md` §10).
-
-## 8. Open
-
-- Where hosting concretely lands (LFDT infrastructure vs TSC cloud account) — a TSC decision; the
-  ask is §2.
-- The ring-1 volunteer repo and soak durations.
-- Log retention length, set with the infrastructure owner.
-- Whether sweep-path (late) commands warrant an apology line beyond the ack.
-- Secondary-limit pacing numbers — measured at ring 0, not taken from docs.
-- Whether ring membership is visible to repos (a health-issue line?) or stays operator-side.
-- Whether the installation's repo selection stays tight or installs org-wide with the config file
-  doing the consenting — a governance choice for the TSC (selection is org-admin controlled; the
-  config file is the maintainers' own switch).
+- The project must choose the production host and operator.
+- The webhook experiment must decide the durable-intake boundary.
+- The storage experiment must decide the minimum owned state and technology.
+- The hosting experiment must decide the process and coordination model.
+- The first capability must determine the minimum permission manifest.
+- The project must define audit retention and private-repository handling.
+- The project must define the clean observation periods for each rollout gate.
+- Maintainers must choose the first volunteer repository only after the sandbox evidence is available.

@@ -1,140 +1,198 @@
-# Config Draft: `.github/hiero-automation.json`
+# Repository Configuration Proposal
 
-> **Non-normative** — a concrete object for the schema decision. Values come from the audited C++/Python
-> systems; labels are `design/core/taxonomy.md`'s set. Rule of shape: `core` is read by the core alone; each
-> `modules.<name>` block is read by that module alone, and is the whole config it can see.
+> This document describes the first configuration requirements. The first version uses YAML with strict
+> schema validation. The exact file name and final schema still need validation against real repository
+> examples before they become stable.
 
-## Goals and non-goals
+## 1. Purpose
 
-Project-level vision lives in `planning/goals.md`; these are the goals of the *config design* itself —
-the principles behind every key kept or cut.
+Configuration records a repository's reviewed intent. It answers which capabilities may run and how those
+capabilities should fit the repository's workflow.
 
-**Goals**
+Configuration does not store webhook deliveries, retries, pending API effects, audit logs, or other runtime
+state. Those concerns belong to the platform's operational components.
 
-- **Readable in one sitting.** A maintainer reads this one commented file and knows everything the
-  automation will do to their repo. If a key needs the architecture docs to understand, it is misnamed.
-- **Scales down to nothing and up gradually.** No file = nothing destructive. An empty module block is a
-  complete, working adoption of that module. Knobs refine; they are never required.
-- **A knob only where repos genuinely differ.** Every remaining knob answers a real either/or between two
-  reasonable repos (pool capacity, patience). A key that would be `true` in every sane config is not a
-  choice — it is the module's behaviour, and lives in code.
-- **One source of truth per fact.** Labels for lifecycle state, native fields for what GitHub already
-  models, config for numbers and the canonical sets — no fact stored twice.
+## 2. Required behavior
 
-**Non-goals**
+The configuration system must follow these rules.
 
-- **Duplicating GitHub's permission model.** No role tiers, no team management — the platform already
-  decides who may act directly; the app only serves those who cannot.
-- **Configurable safety.** Warnings, the command surface, and the meaning of `status: blocked` are policy.
-  A config that could switch them off would be a config that breaks the promises in `planning/goals.md`.
-- **Completeness.** This file will never hold a key for every behaviour. The default posture for a new
-  setting proposal is *no* — it enters only by the either/or test above.
+1. The App reads active configuration from the repository's default branch.
+2. No configuration causes no workflow-changing writes.
+3. A capability runs only when the repository explicitly enables it.
+4. Every user-facing capability is optional and defaults to disabled.
+5. A capability receives only its own validated configuration block and the shared values that its contract
+   declares.
+6. Invalid or outdated configuration fails closed and reports a clear error.
+7. Unknown keys are rejected so that misspellings do not silently change behavior.
+8. The App can report the active configuration revision and effective value of every setting.
+9. Configuration changes in a pull request do not become active until they reach the default branch.
+10. A repository can disable all writes without uninstalling the App.
 
-## 1. The repo file
+## 3. Candidate shape
 
-```jsonc
-{
-  "_extends": "hiero-ledger/.github",   // start from the org defaults; anything here overrides them
+The following YAML example shows the concepts that the first schema needs. It does not decide every
+capability key.
 
-  "core": {
-    "teams": {
-      "maintainers": "@hiero-ledger/hiero-sdk-cpp-maintainers"   // who the app pings and trusts
-    },
-    "labels": {
-      // The complete label set — a label not listed here does not exist.
-      "status": [
-        "status: awaiting triage",      // new, nobody has looked yet
-        "status: ready for dev",        // triaged, free to pick up
-        "status: in progress",          // assigned, being worked
-        "status: needs review",         // PR open, checks passed
-        "status: needs revision",       // reviewer asked for changes
-        "status: ready to merge",       // approvals met
-        "status: blocked"               // pause flag on top of any of the above
-      ],
-      "skill": [
-        "skill: good first issue",
-        "skill: beginner",
-        "skill: intermediate",
-        "skill: advanced"
-      ],
-      "meta": [
-        "meta: open to community review"   // human signal to browsers; automation never touches it
-      ]
-    },
-    "skillLadder": {
-      // What /assign checks before giving someone an issue at each level:
-      // e.g. to take a "beginner" issue you must have completed 2 good first issues.
-      "skill: beginner":     { "requires": "skill: good first issue", "count": 2 },
-      "skill: intermediate": { "requires": "skill: beginner",         "count": 3 },
-      "skill: advanced":     { "requires": "skill: intermediate",     "count": 3 }
-    }
-  },
+```yaml
+schemaVersion: 1
+mode: observe
 
-  "modules": {
-    // A module listed here is on. Not listed = off. No file at all = nothing destructive runs.
+capabilities:
+  prQuality:
+    enabled: true
+    settings:
+      checks:
+        dco: true
+        mergeConflict: true
+        linkedIssue: true
+        gpg: false
 
-    "intake": {},
-    // Labels every new issue "awaiting triage". When an issue reaches "ready for dev"
-    // (however that happened), checks it has a skill label and comments if not.
+  assignment:
+    enabled: false
+    settings:
+      maxOpenAssignments: 2
+      policyProfile: hiero-contributor-ladder
 
-    "assignment": {
-      "maxOpenAssignments": 2           // caps /assign users only — i.e. contributors
-    },
-    // Handles /assign and /unassign, checking the ladder above. People with repo
-    // permissions (triage and up) assign natively in GitHub and are never limited:
-    // the cap exists to keep the ready-for-dev pool from being hoarded by
-    // contributors, not to manage the team.
+mappings:
+  labels:
+    ready: "status: ready for dev"
+    inProgress: "status: in progress"
+    needsReview: "status: needs review"
+    needsRevision: "status: needs revision"
 
-    "inactivity": {
-      "issue": { "warnAfterDays": 7,  "unassignAfterDays": 21 },  // assigned, but no PR yet
-      "pr":    { "warnAfterDays": 10, "closeAfterDays": 60 }      // changes requested, no response
-    }
-    // The clock runs ONLY while the contributor holds the ball: "in progress" (no PR)
-    // and "needs revision" (changes requested). It NEVER runs in "needs review" or
-    // "ready to merge" — waiting on maintainers is not the contributor's inactivity —
-    // and "blocked" pauses it like everything else. Closing real code gets far more
-    // patience (60d) than releasing an untouched issue (21d).
-    // Silence = no commit, push, or comment from the assignee; any of those resets the clock.
-  }
-}
+principals:
+  maintainerTeam: hiero-sdk-cpp-maintainers
 ```
 
-## 2. The org defaults it extends
+## 4. Repository modes
 
-```jsonc
-// hiero-ledger/.github → .github/hiero-automation.json
-{
-  "core": { "labels": { /* the one canonical set, so every repo agrees */ } },
-  "modules": {
-    "inactivity": {
-      "issue": { "warnAfterDays": 7,  "unassignAfterDays": 28 },  // gentler org-wide defaults,
-      "pr":    { "warnAfterDays": 14, "closeAfterDays": 90 }      // same keys as the repo file
-    }
-  }
-}
-```
+The schema should support the following repository modes.
 
-Repo values override org values, key by key. **Turning a module on is repo-local**: the org file can set
-defaults for a module but never enables it — a module runs only if the repo's own file lists it.
+| Mode | Required behavior |
+|---|---|
+| `disabled` | The App performs no capability reads or writes beyond the minimum work required to explain that it is disabled. |
+| `observe` | The App reads and evaluates current state but produces only operator-visible findings. |
+| `dry-run` | The App records the exact effects it would request but does not apply them. |
+| `active` | The App may apply effects for capabilities that are enabled and fully valid. |
 
-## 3. What is deliberately not configurable
+A global or installation-level kill switch always overrides repository mode.
 
-- **Commands.** The full set is `/assign`, `/unassign`, `/working` — commands exist only for contributors,
-  who cannot act directly; maintainers use the label picker. No command has a config key.
-- **Warnings before destructive actions.** Always on; only the timing is a knob.
-- **`status: blocked` pauses everything** — transitions and the inactivity clock. It is the one
-  "automation, leave this alone" flag, and a maintainer applies it by hand.
-- **Whose turn it is.** The inactivity clock only ever runs in the contributor-ball states
-  (`in progress`, `needs revision`). No configuration can make it act on an item that is waiting on
-  maintainers — a review backlog must never cost a contributor their assignment.
-- **Priority and effort.** Native GitHub fields, read through the core when a module needs them — nothing
-  to configure until one does.
-- **Role tiers.** There are none. Limits apply to command users (contributors); anyone with repo
-  permissions acts natively and is outside them by construction — GitHub's permission model is the tier
-  system, and the config does not duplicate it.
-- **Sweep cadence.** Derived from fleet arithmetic by the operator (`design/operations/README.md` §4) — a repo
-  cannot buy more polling.
+## 5. Capability configuration
 
-Every knob that remains answers a question two repos would genuinely answer differently: how many issues
-one person may hold, and how patient the two inactivity clocks are. Everything else is behaviour the module
-either does or, switched off, doesn't.
+Every capability schema must declare the following information.
+
+- The schema declares whether the capability is enabled. Omitted capabilities and capabilities with
+  `enabled: false` are off.
+- The schema declares every key that the capability may read.
+- The schema provides safe ranges for numbers and time periods.
+- The schema identifies required mappings and principals.
+- The schema rejects incompatible settings before activation.
+- The schema declares the capability version when migration may change behavior.
+
+Settings live under the capability's `settings` key so that enablement is easy to distinguish from policy.
+Settings under a disabled capability are dormant: they may remain in the file, but the capability performs
+no capability-specific evaluation, read, or write. The validator still rejects malformed settings so that
+enabling the capability later cannot silently activate an invalid value.
+
+An empty capability block must not rely on surprising defaults. A profile or default may fill in settings,
+but it must never enable a capability. If a default can cause a workflow-changing write after enablement,
+the documentation must state it clearly.
+
+## 6. Stable meanings and repository mappings
+
+The platform may use stable internal meanings while repositories keep their own labels and fields. For
+example, assignment may require internal meanings named `ready` and `inProgress`. The repository maps those
+meanings to its actual labels.
+
+The validator must check the following conditions before a capability becomes active.
+
+- Every required meaning has exactly one supported mapping.
+- Two incompatible meanings do not map to the same label or field.
+- The configured label or field exists when the platform requires pre-provisioning.
+- The installation has permission to read or write the mapped representation.
+- A mapping change has a clear migration and rollback path when existing items still use the old value.
+
+The App removes only the configured value that belongs to the requested meaning. It never removes values by
+matching a namespace prefix.
+
+In the first version, maintainers create required labels before activation. The App validates each mapped
+label and reports a missing or renamed label. It does not create a replacement, guess which label was
+renamed, or continue label-changing work for the affected capability.
+
+## 7. Workflow profiles
+
+A workflow profile is a reviewed collection of settings, mappings, and compatibility rules. A profile may
+describe the current Hiero contribution workflow, including its suggested labels and skill policy.
+
+A profile does not automatically enable its capabilities. A repository still chooses the capabilities that
+it wants. Every user-facing capability remains optional.
+
+The skill ladder is an optional policy profile. A repository that does not enable it does not need skill
+labels, contribution history queries, or ladder thresholds.
+
+The Hiero contribution profile includes the internal `blocked` meaning and suggests `status: blocked` as its
+expected mapping. A repository may explicitly map the same meaning to an existing label, but it cannot
+replace `blocked` with a different meaning or ask the App to create an arbitrary new label during normal
+event processing.
+
+## 8. Effective configuration and later inheritance
+
+The first version does not inherit configuration from another repository or organization. Each repository's
+default-branch YAML file is its complete source of configuration truth.
+
+The App validates that file and computes an effective configuration in memory. An evaluation records the
+repository configuration revision and a hash of the validated effective configuration so that an operator
+can tell which configuration produced a decision. A cache may keep the validated result, but the cache is
+not the source of truth.
+
+Inheritance may be considered later if several repositories demonstrate a real need for shared settings.
+Any later design must pin inherited values to an immutable revision, reject missing sources and cycles,
+show the complete merge result, and never enable a capability through inherited defaults.
+
+## 9. Invalid configuration
+
+Invalid configuration must fail closed and must remain visible to repository maintainers.
+
+While a pull request edits configuration, the App reports validation through one configuration check on
+that pull request. If invalid configuration reaches the default branch, the App publishes or updates one
+repository configuration-health result for maintainers. The report names the path, rejected value, reason,
+and last behavior that remains safe.
+
+If missing permissions prevent repository reporting, the App sends the failure to its operator diagnostics.
+The sandbox experiment must confirm the exact GitHub check or health-report surface and the permission it
+requires.
+
+## 10. Permission mismatch
+
+Valid configuration is not enough to authorize a capability. The installation must also have every required
+GitHub permission.
+
+When a permission is missing, the capability remains inactive. The App reports the missing permission, the
+operations that are blocked, and the action an installation owner must take. The App does not repeatedly try
+an operation that the current installation cannot perform.
+
+## 11. Migration and rollback
+
+The schema must define how repositories move between versions.
+
+- The system must reject unsupported future versions.
+- The system must explain deprecated keys before removing support for them.
+- A missing or renamed mapped label disables label-changing work for the affected capability and produces a
+  maintainer-visible configuration error.
+- The App does not recreate the old label, guess the replacement, or migrate existing items during ordinary
+  event processing.
+- A mapping change must account for items that still use the previous label or field through an explicit
+  migration and rollback plan.
+- A repository must be able to return to `observe` or `disabled` mode before a risky migration.
+- Configuration rollback must not cause the App to reverse newer human changes.
+- An intent evaluated under an older configuration revision becomes invalid when the mapping changes.
+
+## 12. Questions that remain open
+
+The following questions require maintainer review and sandbox evidence.
+
+- The project must choose the final YAML path under `.github/`.
+- The project must choose the first workflow profile and its ownership rules.
+- The sandbox experiment must confirm the configuration check, repository health-report surface, and
+  permissions they require.
+- The project must define schema retention, migration, and rollback support.

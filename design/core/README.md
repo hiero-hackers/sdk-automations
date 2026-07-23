@@ -1,85 +1,75 @@
-# The Core
+# Shared Platform Services
 
-> Index of the core's component-level design. The core is the shared middle every module talks to —
-> `design/architecture.md` §4 sets its frame and its one rule (**domain vocabulary, never service
-> vocabulary**: every public core operation must be describable without naming any module). This
-> directory holds the detail.
+> The shared platform contains technical services used by every enabled capability. It does not impose one
+> workflow, label system, or skill policy on every repository.
 
-## The core's anatomy
+## 1. Responsibilities
 
-How a module's transition request flows through the four parts — and where each rule lives:
+The shared platform provides the following services.
 
-```mermaid
-flowchart TB
-    M["module — request transition<br/>(position → position')"] --> GATE
-    OBS["observation (webhook / sweep)<br/>coherence classes 1–5 first<br/>(manual-edits.md §3)"] -.->|"state, as observed"| M
-    subgraph CORE["the core"]
-        GATE{"mayPerform(actor, action)?<br/>(resolvers)"} --> SM{"state machine guard —<br/>edge declared? position current?<br/>newer-fact rule (manual-edits.md §4)"}
-        SM -->|target already reached| NOOP["idempotent no-op"]
-        SM -->|stale view · older fact| REF["refused — module re-observes"]
-        SM -->|legal| SAFE{"safety —<br/>destructive?"}
-        SAFE -->|"yes: warn · grace · cooldown<br/>(timers derived from timestamps)"| APPLY
-        SAFE -->|no| APPLY["apply label change<br/>+ render projection"]
-    end
-    APPLY --> ADP["adapter — the one door<br/>(token bucket · write pacer,<br/>design/operations/README.md §4)"]
-    ADP --> GH[("GitHub — the database")]
-```
+| Service | Responsibility |
+|---|---|
+| Configuration | The service loads, validates, projects, and explains repository configuration. |
+| Observation | The service converts GitHub events and current state into normalized facts. |
+| Resolvers | The service answers shared read-only questions through one documented mechanism. |
+| Policy | The service checks repository mode, actor authority, permissions, mappings, and safety rules. |
+| Effect execution | The service plans, applies, verifies, and reconciles approved GitHub changes. |
+| Managed output | The service owns App-authored comment identity, safe rendering, and updates. |
+| Operations | The service records audit information, metrics, recovery state, and kill-switch status. |
 
-Observations travel the reverse path: the shell serialises them per item, the core classifies
-coherence (`manual-edits.md` §3) — repairing, flagging, or quarantining — before any module reacts.
+Each service has a small interface and its own tests. A capability receives only the part of the platform
+that its declaration allows.
 
-## Not a black box: the four structural rules
-
-Hub-and-spoke's classic failure is trading module-to-module coupling for everyone-coupled-to-one-
-blob. Four rules keep this core from becoming that blob — the picture first, then the rules:
+## 2. Request flow
 
 ```mermaid
-flowchart TB
-    A[assignment] -->|"slice: 2 resolvers · 2 edges"| CORE
-    I[inactivity] -->|"slice: 2 resolvers · 3 edges"| CORE
-    T["tomorrow's module?"] -->|"only its declared slice"| CORE
-    subgraph CORE["the core — four independent parts · no shared state (state lives in GitHub)"]
-        direction LR
-        SM["machines<br/>pure table"]
-        RES["resolvers<br/>read-only"]
-        SAFE["safety<br/>interceptor"]
-        PROJ["projections<br/>render-only"]
-    end
-    NEW["new shared fact"] --> GATE{"the gate:<br/>≥2 modules? earns its place?"}
-    GATE -->|"enters smallest: resolver · row · kind"| CORE
-    GATE -.->|"service-shaped ask"| REJ["refused"]
-    CORE --> LOG["glass box — decision log ·<br/>narrations · invariants"]
-    CORE --> ADP["adapter — the one door"] --> GH[("GitHub")]
+flowchart LR
+    OBS["Normalized observation"] --> CAP["Enabled capability"]
+    CFG["Validated capability configuration"] --> CAP
+    CAP --> INT["Typed intent"]
+    INT --> POL["Policy checks"]
+    POL --> EXEC["Effect executor"]
+    EXEC --> ADP["Narrow GitHub adapter"]
+    ADP --> GH["GitHub"]
+    EXEC --> REC["Verification and recovery"]
 ```
 
-1. **No module ever sees "the core."** Each holds `Core<D>` — the handle typed by its own
-   declaration (`design/modules/contract.md` §2). Assignment's view is two resolvers, two edges,
-   and `project()`. The union of views is large; every individual view is small, and an undeclared
-   operation is not hidden but *inexpressible*.
-2. **Inside: four independent parts, a thin pipeline, no shared mutable state.** The state machines
-   are pure functions over (position, edge, invariants) — no I/O; the resolvers are read-only and
-   touch only the adapter; safety is an interceptor that knows timing, not domain edges;
-   projections render from state and nothing depends on them. No cycles — and since state lives in
-   GitHub (`design/architecture.md` §4.1), the core owns no state to be a god object *of*. In code:
-   four independently-tested packages plus a page of composition (the anatomy diagram above), which
-   is what `design/testing/README.md`'s "pure logic, mocks nothing" row assumes.
-3. **Glass box at runtime.** Every core decision is observable three ways: the decision log records
-   `(state, event, config) → transitions` and replays offline (`design/operations/README.md` §6);
-   the projection discipline means the core explains itself in the repo whenever it acts; and the
-   invariants make its guarantees executable. The core cannot act invisibly by construction.
-4. **The only way in is fact-promotion.** A capability enters the core only when two or more
-   modules must agree on a fact (`design/modules/contract.md` §6), as the smallest thing carrying
-   that fact — a resolver, a table row, a projection kind — past the earn-its-place test
-   (`design/architecture.md` §8). Review corollary: **the core's public surface must stay
-   enumerable on this page** — the table below is that page, and a change that makes it not fit is
-   the smell that something service-shaped is leaking in.
+The platform reloads current state before a write when the operation depends on mutable facts. It refuses an
+intent when current state no longer matches the capability's expectation. It verifies the requested
+postcondition after a write and reports an explicit result.
 
-## The design docs
+## 3. Growth rule
 
-| Part | Owns | Designed in |
-|---|---|---|
-| **state machines** | positions and edges (one machine per entity), per-position invariants, close hygiene | `taxonomy.md` §2 |
-| **manual-edit semantics** | the two rulebooks, the five coherence classes, never-revert, the newer-fact rule | `manual-edits.md` |
-| **resolvers** | `linkedIssues` · `eligibleLevel` · `isBot` · `mayPerform` · `priorityOf` | `resolvers.md` — incl. the ladder-scope decision (§3) |
-| **safety** | the per-destructive-action table: trigger class, warn lead, grace, reversal, cooldown | `safety.md` |
-| **projections** | narration comments, the health issue, config PR comments, command acks, module content — single-writer, never inputs | `projections.md` |
+A shared operation or resolver enters the platform only when at least two capabilities need the same fact or
+when central ownership is necessary for permissions, safety, recovery, or audit consistency.
+
+A service-shaped request remains in the capability. For example, the platform may expose a general operation
+that assigns a user when an issue is still unassigned. It should not expose an operation named after the
+assignment capability's policy.
+
+## 4. State boundary
+
+GitHub remains authoritative for visible repository facts. The platform may own operational records that
+GitHub cannot safely reconstruct, including delivery identities, pending effects, retries, schedules, and
+coordination records.
+
+The storage experiment described in `design/build-plan.md` will decide the minimum owned state. Capabilities
+must not depend directly on the selected storage technology.
+
+## 5. Related documents
+
+- `taxonomy.md` describes a candidate Hiero contribution workflow profile.
+- `manual-edits.md` describes candidate behavior when humans change mapped workflow labels.
+- `resolvers.md` describes shared read-only questions.
+- `safety.md` describes requirements for destructive actions.
+- `projections.md` describes managed comments and other human-facing output.
+- `../modules/contract.md` describes the capability boundary.
+- `../operations/README.md` describes hosting, delivery, recovery, and rollout questions.
+
+## 6. Questions that remain open
+
+- The project must decide which normalized facts and intents belong in the first implementation.
+- The project must decide the minimum operational storage and its interface.
+- The project must decide whether one or several executor processes may run at once.
+- The project must decide which compatibility rules belong in the registry.
+- The first two capabilities must prove that the shared interfaces remain small and useful.
