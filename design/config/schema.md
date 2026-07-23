@@ -64,6 +64,21 @@ principals:
   maintainerTeam: hiero-sdk-cpp-maintainers
 ```
 
+The smallest useful configuration is three lines — a repository that wants observation reports and nothing
+else:
+
+```yaml
+schemaVersion: 1
+mode: observe
+capabilities: {}
+```
+
+The recommended adoption path is a sequence of small reviewed diffs up the mode ladder: `observe` (reports
+only) → `dry-run` (explains what would happen) → `active`, with each step's blast radius already visible in
+the previous step's reports. Keeping a capability's settings in the file with `enabled: false` is the
+supported way to stage the next step: the settings are validated and dormant, and enabling later is a
+one-line, pre-reviewed diff.
+
 ## 4. Repository modes
 
 The schema should support the following repository modes.
