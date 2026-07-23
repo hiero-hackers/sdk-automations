@@ -65,6 +65,20 @@ that older text cannot be mistaken for approval.
 | D26 | The twelve GitHub label strings are fixed in code and cannot be configured. | `replaced` | P7 replaces this proposal. Code may keep stable meanings, while repositories configure mappings or select a profile. |
 | D27 | Comment metadata is the App's write-ahead log and only durable operational state. | `reopened` | The storage and recovery experiment must compare GitHub reconstruction, comment metadata, and a small owned store. |
 
+### Hypotheses surfaced by the pure-logic implementation
+
+Coding the taxonomy, safety, and configuration prose into `core/` forced four ambiguities into concrete
+choices. Each choice is tagged `FINDING(...)` in the source at the exact place the assumption was made, and
+the invariant tests in `core/test/` exercise the chosen behavior. The code is evidence that the choice is
+*coherent*, not that it is *right* — each row still needs the named review.
+
+| Identifier | Choice the code had to make | Current status | Required next evidence |
+|---|---|---|---|
+| D28 | `blocked` is an orthogonal pause flag, not a workflow position: an item keeps its position while blocked, and unblocking restores it unchanged. `taxonomy.md` §2 lists `blocked` as a meaning, but neither state diagram contains it, and `safety.md` treats it as a pause. (`core/src/taxonomy.ts`, `FINDING(taxonomy-blocked)`.) | `hypothesis` | Maintainers must confirm the flag model when reviewing the workflow profile, or the diagrams must gain explicit `blocked` positions. |
+| D29 | Manual entry into any state is recorded as observed reality to reconcile, not as a requestable transition: the exhaustive transition matrix rejects module requests for edges the diagrams do not contain, while human edits may still land anywhere. The prose rule "every state has a non-module way in" implies edges the diagrams omit. (`core/src/taxonomy.ts`, `FINDING(taxonomy-manual-entry)`.) | `hypothesis` | The manual-edit scenarios under D6/D8 must confirm reconciliation matches maintainer expectations for each profile state. |
+| D30 | Grace periods have a floor of one day (`MIN_GRACE_DAYS = 1`): a destructive clock-triggered action cannot be configured to warn and act in the same instant. `safety.md` §4 requires "safe" bounds but names none. (`core/src/safety.ts`, `FINDING(safety-grace-floor)`.) | `hypothesis` | Maintainers must ratify the floor value (or a different one) when the first destructive capability is reviewed under D10. |
+| D31 | The no-configuration mode is named `observe`: with no reviewed configuration, the App reads and reports but performs no workflow-changing writes. `schema.md` §2.2 requires the behavior but does not name the mode; `observe` was chosen over `disabled` because the platform still watches and audits. (`core/src/config.ts`, `FINDING(config-no-config-mode)`.) | `hypothesis` | The configuration review under Q14 must confirm the mode name and that fail-closed validation always lands in it. |
+
 ## 4. Open product and engineering questions
 
 | Identifier | Question | Decision owner or evidence | What the answer blocks |

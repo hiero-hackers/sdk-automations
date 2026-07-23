@@ -1,0 +1,15 @@
+{
+    "name": "@hiero-hackers/automation-core",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Pure-logic core of the maintainer-automation platform: workflow state machine, safety engine, configuration validation. No I/O, no GitHub — see design/build-plan.md, the parallel track.",
+    "type": "module",
+    "scripts": {
+        "test": "tsc --noEmit && vitest run",
+        "test:watch": "vitest"
+    },
+    "devDependencies": {
+        "typescript": "^5.6.0",
+        "vitest": "^4.0.0"
+    }
+}
