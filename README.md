@@ -18,7 +18,7 @@ stage-four ratification of the decisions they encode:
   intent-to-plan translator
 - [`probes/`](probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
   load-test the seam between the other three and give P3 its first run in code
-- `checks/` — tests about the repository rather than any package: docs, examples, and design documents
+- [`checks/`](checks/README.md) — tests about the repository rather than any package: docs, examples, and design documents
   held to the code they describe
 - [`lab/`](lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
   can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
