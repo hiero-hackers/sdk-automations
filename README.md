@@ -2,6 +2,8 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, DCO sign-off, and ground rules.
+
 The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
 A repository enables only the capabilities it wants and maps them to its own workflow. The shared platform
 handles GitHub access, configuration, safety, recovery, and audit information.
