@@ -33,8 +33,18 @@ the other tiers are
 [intermediate](https://github.com/hiero-hackers/sdk-automations/labels/intermediate),
 and [advanced](https://github.com/hiero-hackers/sdk-automations/labels/advanced).
 
+## Ways to contribute
+
+Contributing is not limited to pull requests. Reviewing open PRs, reproducing
+reported issues, and writing well-scoped issues all help maintainers keep the
+queue moving.
+
 ## Ground rules
 
+- **Wait for assignment.** Comment on an issue if you plan to work on it, then
+  wait for a maintainer to assign it before opening a PR.
+- **Do not take too many issues at once.** Leave open issues for other
+  contributors; one at a time keeps reviews healthy and the queue fair.
 - **One fact, one place.** When a change copies a value another file owns, it
   links the owner instead. See the register in
   [design/decisions.md](design/decisions.md).
