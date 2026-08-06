@@ -4,10 +4,17 @@ name: ci
 # no secrets and a read-only token. The mutation job below executes Stryker
 # against configuration a fork can edit, so the workflow must never hand that
 # code anything it could exfiltrate.
+#
+# The weekly and manual runs separate "the world changed" from "your change
+# broke it": dependency advisories and environment rot otherwise wait for
+# someone to push.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 * * 1"
 
 # Goal 4 applied to ourselves: the smallest practical permission set. Nothing
 # here writes to the repository.
@@ -71,3 +78,34 @@ jobs:
       # lose its tests to another package, without a single test failing —
       # both have happened, and only the score showed it.
       - run: pnpm --filter @hiero-hackers/automation-core exec stryker run
+
+  scheduled-failure-report:
+    name: report scheduled failure
+    if: github.event_name == 'schedule' && failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update an issue naming the failed job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          failed_jobs="$(
+            gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --json jobs \
+              --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")' 2>/dev/null \
+              || echo "unknown"
+          )"
+          title="Scheduled CI failed"
+          body="Scheduled CI run $GITHUB_RUN_ID failed in: ${failed_jobs:-unknown}."
+          existing="$(
+            gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+              --search '"Scheduled CI failed"' \
+              --json number --jq '.[0].number // empty'
+          )"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
