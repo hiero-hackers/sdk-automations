@@ -81,6 +81,9 @@ jobs:
 
   scheduled-failure-report:
     name: report scheduled failure
+    # `needs` keeps this from racing the three jobs above; `failure()` only
+    # sees a meaningful result after they finish.
+    needs: [test, audit, mutation]
     if: github.event_name == 'schedule' && failure()
     runs-on: ubuntu-latest
     permissions:
