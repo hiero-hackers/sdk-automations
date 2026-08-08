@@ -26,9 +26,7 @@ const LINK = /\]\(([^)\s]+)/g;
 /** Links this check cannot resolve: the web, anchors, mail. */
 function isLocal(target: string): boolean {
     return (
-        !/^[a-z][a-z0-9+.-]*:/i.test(target) &&
-        !target.startsWith("#") &&
-        !target.startsWith("//")
+        !/^[a-z][a-z0-9+.-]*:/i.test(target) && !target.startsWith("#") && !target.startsWith("//")
     );
 }
 
@@ -58,10 +56,7 @@ describe("markdown links resolve from the document that carries them", () => {
 
     it("finds documents and links to check", () => {
         expect(docs.length).toBeGreaterThan(5);
-        const total = docs.reduce(
-            (n, d) => n + [...d.text.matchAll(LINK)].length,
-            0,
-        );
+        const total = docs.reduce((n, d) => n + [...d.text.matchAll(LINK)].length, 0);
         expect(total).toBeGreaterThan(20);
     });
 
@@ -80,9 +75,7 @@ describe("markdown links resolve from the document that carries them", () => {
         // Resolution is relative to this file's own directory, so the
         // sibling resolves and the invented parent does not.
         const bad = danglingLinks("packages/checks/test/links.test.ts", fake);
-        expect(bad).toEqual([
-            "packages/checks/test/links.test.ts -> ../nowhere/absent.md",
-        ]);
+        expect(bad).toEqual(["packages/checks/test/links.test.ts -> ../nowhere/absent.md"]);
     });
 
     it("normalizes the way the other repository checks do", () => {

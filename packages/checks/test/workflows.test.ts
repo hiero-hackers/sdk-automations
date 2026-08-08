@@ -92,30 +92,30 @@ describe("workflow hygiene stays a checked invariant", () => {
      * claim in this repository becomes an invariant.
      */
     it("never persists the token past checkout", () => {
-        const missing: string[] = []
+        const missing: string[] = [];
         for (const path of workflows) {
-            const body = workflowLines(path)
+            const body = workflowLines(path);
             body.forEach((line, i) => {
-                if (!/uses:\s+actions\/checkout@/.test(line)) return
+                if (!/uses:\s+actions\/checkout@/.test(line)) return;
                 // The `with:` block belongs to this step: scan forward until
                 // the next step (`- `) at the same or shallower indentation.
-                const indent = line.search(/\S/)
-                let persists = false
+                const indent = line.search(/\S/);
+                let persists = false;
                 for (let j = i + 1; j < body.length; j++) {
-                    const next = body[j]!
-                    if (next.trim() === "") continue
-                    if (next.search(/\S/) <= indent && /^\s*-\s/.test(next)) break
-                    if (next.search(/\S/) <= indent && next.trim() !== "") break
+                    const next = body[j]!;
+                    if (next.trim() === "") continue;
+                    if (next.search(/\S/) <= indent && /^\s*-\s/.test(next)) break;
+                    if (next.search(/\S/) <= indent && next.trim() !== "") break;
                     if (/persist-credentials:\s*false/.test(next)) {
-                        persists = true
-                        break
+                        persists = true;
+                        break;
                     }
                 }
-                if (!persists) missing.push(`${path}:${String(i + 1)}`)
-            })
+                if (!persists) missing.push(`${path}:${String(i + 1)}`);
+            });
         }
-        expect(missing).toEqual([])
-    })
+        expect(missing).toEqual([]);
+    });
 
     it("proves the pin check can fail in both directions", () => {
         const pin = (ref: string): boolean => /^[0-9a-f]{40}$/.test(ref);

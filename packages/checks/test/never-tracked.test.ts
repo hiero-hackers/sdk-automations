@@ -103,9 +103,7 @@ describe("the local-only layers stay out of the repository", () => {
         // The same commands on a tracked, non-ignored path answer the other
         // way, so an empty result above means "nothing tracked", not
         // "command broken".
-        expect(tracked("packages/core/package.json")).toEqual([
-            "packages/core/package.json",
-        ]);
+        expect(tracked("packages/core/package.json")).toEqual(["packages/core/package.json"]);
         expect(ignored("packages/core/package.json")).toBe(false);
     });
 });

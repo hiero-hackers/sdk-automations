@@ -28,10 +28,7 @@ import { normalizeNewlines } from "./helpers.js";
 
 const page = (name: string): string =>
     normalizeNewlines(
-        readFileSync(
-            fileURLToPath(new URL(`../../../docs/${name}`, import.meta.url)),
-            "utf8",
-        ),
+        readFileSync(fileURLToPath(new URL(`../../../docs/${name}`, import.meta.url)), "utf8"),
     );
 
 /** The first backtick-quoted token of each table row in one `## section`. */
@@ -102,9 +99,7 @@ describe("docs/quickstart.md", () => {
         )
             .filter((f) => f.endsWith(".yml"))
             .sort();
-        const linked = [
-            ...quickstart.matchAll(/\]\(examples\/([a-z-]+\.yml)\)/g),
-        ]
+        const linked = [...quickstart.matchAll(/\]\(examples\/([a-z-]+\.yml)\)/g)]
             .map((m) => m[1]!)
             .sort();
         expect(linked).toEqual(shipped);

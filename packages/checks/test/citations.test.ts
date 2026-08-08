@@ -84,8 +84,7 @@ describe("documents cite files that exist", () => {
     it("proves the check can fail", () => {
         // Negative control, both directions: the matcher must find a path and
         // the existence check must reject one that is not there.
-        const fake =
-            "see `packages/core/src/nonexistent.ts` and `design/audit/nope.md`";
+        const fake = "see `packages/core/src/nonexistent.ts` and `design/audit/nope.md`";
         expect([...fake.matchAll(PATH)].map((m) => m[1])).toEqual([
             "packages/core/src/nonexistent.ts",
         ]);

@@ -16,9 +16,11 @@ import { normalizeRepoPath, repoRoot } from "./helpers.js";
  * by reading, which is not a method that scales. This finds the next one.
  */
 describe("enumerations are declared once", () => {
-    const sources = (readdirSync(join(repoRoot, "packages", "core", "src"), {
-        recursive: true,
-    }) as string[])
+    const sources = (
+        readdirSync(join(repoRoot, "packages", "core", "src"), {
+            recursive: true,
+        }) as string[]
+    )
         .filter((rel) => rel.endsWith(".ts"))
         .map((rel) => ({
             file: `src/${normalizeRepoPath(rel)}`,

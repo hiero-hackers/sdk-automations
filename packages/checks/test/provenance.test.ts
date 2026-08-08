@@ -22,17 +22,13 @@ import { lines, normalizeNewlines } from "./helpers.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const tracked = (path: string): string[] =>
-    lines(execSync(`git ls-files -- ${path}`, { cwd: repoRoot, encoding: "utf8" })).filter(
-        Boolean,
-    );
+    lines(execSync(`git ls-files -- ${path}`, { cwd: repoRoot, encoding: "utf8" })).filter(Boolean);
 
 describe("the perishable-facts provenance table matches the code", () => {
     const readme = normalizeNewlines(
         readFileSync(join(repoRoot, "packages/core/src/github/README.md"), "utf8"),
     );
-    const row = readme
-        .split("\n")
-        .find((line) => line.startsWith("| `failures.ts` |"));
+    const row = readme.split("\n").find((line) => line.startsWith("| `failures.ts` |"));
 
     it("has a row for failures.ts", () => {
         expect(row).toBeDefined();
@@ -45,9 +41,7 @@ describe("the perishable-facts provenance table matches the code", () => {
     });
 
     it("the row credits every experiment the code cites, and no other", () => {
-        const inCode = new Set(
-            Object.values(BODY_PATTERNS).map((entry) => entry.experiment),
-        );
+        const inCode = new Set(Object.values(BODY_PATTERNS).map((entry) => entry.experiment));
         const inRow = new Set(
             [...(row ?? "").matchAll(/\b(\d+\.\d+)\b/g)]
                 .map((m) => m[1]!)
@@ -58,9 +52,7 @@ describe("the perishable-facts provenance table matches the code", () => {
     });
 
     it("every file the table names exists in src/github", () => {
-        const named = [...readme.matchAll(/^\| `([a-z-]+\.ts)` \|/gm)].map(
-            (m) => m[1]!,
-        );
+        const named = [...readme.matchAll(/^\| `([a-z-]+\.ts)` \|/gm)].map((m) => m[1]!);
         expect(named.length).toBeGreaterThan(2);
         for (const name of named) {
             expect(
