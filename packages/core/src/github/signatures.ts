@@ -43,8 +43,5 @@ export function verifyBody(
     if (header === undefined) return false;
     const expected = Buffer.from(signBody(secret, body));
     const presented = Buffer.from(header);
-    return (
-        presented.length === expected.length &&
-        timingSafeEqual(presented, expected)
-    );
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
 }

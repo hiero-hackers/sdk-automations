@@ -6,12 +6,7 @@
  * `validate.ts`; the entry point that runs them lives in `parse.ts`.
  */
 
-export const REPOSITORY_MODES = [
-    "disabled",
-    "observe",
-    "dry-run",
-    "active",
-] as const;
+export const REPOSITORY_MODES = ["disabled", "observe", "dry-run", "active"] as const;
 
 /**
  * Derived, never restated. `MAPPABLE_MEANINGS` two declarations below has
@@ -115,7 +110,7 @@ export interface CapabilityConfig {
 }
 
 export interface RepositoryConfig {
-        /**
+    /**
      * Which version of the reviewed file this is — the sha the shell fetched.
      *
      * The executor guards every in-flight effect on this string and D45 rules
@@ -140,7 +135,9 @@ export interface RepositoryConfig {
  * truthy for an unconfigured name — inherited Object.prototype
  * members must never masquerade as configuration.
  */
-export function cleanRecord<V>(entries: readonly (readonly [string, V])[]): Readonly<Record<string, V>> {
+export function cleanRecord<V>(
+    entries: readonly (readonly [string, V])[],
+): Readonly<Record<string, V>> {
     const record: Record<string, V> = Object.create(null);
     for (const [key, value] of entries) record[key] = value;
     return record;
@@ -210,7 +207,7 @@ export type ConfigResult =
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */
     readonly revision: string;
-        /**
+    /**
      * The platform's shipped capability names. An ENABLED capability outside
      * this list is a validation error; a disabled unknown one stays dormant,
      * so retiring a capability never breaks a config that still mentions it.

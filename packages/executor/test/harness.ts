@@ -32,9 +32,7 @@ export function fixtureCommand(
             meaningsAbsent: [] as const,
             closed: false,
         },
-        configuredLabels: [
-            { meaning: "inProgress" as const, label: "status: doing" },
-        ],
+        configuredLabels: [{ meaning: "inProgress" as const, label: "status: doing" }],
     };
     switch (operation) {
         case "postManagedComment": {
@@ -122,10 +120,7 @@ export class CrashingPort implements EffectPort {
         }
     }
 
-    async readBack(
-        plan: EffectPlan,
-        call: PlannedCall,
-    ): Promise<"present" | "absent"> {
+    async readBack(plan: EffectPlan, call: PlannedCall): Promise<"present" | "absent"> {
         this.readBacks.push(`${String(call.seq)}:${call.command.operation}`);
         return this.world.present(plan, call) ? "present" : "absent";
     }

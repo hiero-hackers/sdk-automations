@@ -19,10 +19,7 @@
 
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import {
-    asDeliveryGuid,
-    type DeliveryGuid,
-} from "@hiero-hackers/automation-core";
+import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
 
 export type DeliveryState = "pending" | "processing" | "done";
 
@@ -63,12 +60,10 @@ export interface ClaimedDelivery {
 }
 
 export type CompleteDeliveryResult =
-    | { readonly outcome: "completed" }
-    | { readonly outcome: "notOwned" };
+    { readonly outcome: "completed" } | { readonly outcome: "notOwned" };
 
 export type ReleaseDeliveryResult =
-    | { readonly outcome: "released" }
-    | { readonly outcome: "notOwned" };
+    { readonly outcome: "released" } | { readonly outcome: "notOwned" };
 
 export type EffectState =
     | { readonly state: "neverStarted" }
@@ -194,11 +189,13 @@ export class Store {
             this.db.exec("PRAGMA journal_mode = DELETE");
             this.db.exec("PRAGMA synchronous = FULL");
             const existingDeliveryTable = this.db
-                .prepare(`
+                .prepare(
+                    `
                     SELECT 1
                     FROM sqlite_schema
                     WHERE type = 'table' AND name = 'seen_delivery'
-                `)
+                `,
+                )
                 .get();
             if (existingDeliveryTable !== undefined) {
                 this.assertDeliverySchema();
@@ -276,9 +273,9 @@ export class Store {
     }
 
     private assertDeliverySchema(): void {
-        const columns = this.db
-            .prepare("PRAGMA table_info(seen_delivery)")
-            .all() as { name: string }[];
+        const columns = this.db.prepare("PRAGMA table_info(seen_delivery)").all() as {
+            name: string;
+        }[];
         const names = new Set(columns.map((column) => column.name));
         const required = [
             "delivery_id",
@@ -319,21 +316,17 @@ export class Store {
         this.db.exec("BEGIN IMMEDIATE");
         try {
             const inserted = this.db
-                .prepare(`
+                .prepare(
+                    `
                     INSERT INTO seen_delivery (
                         delivery_id, event_name, payload, payload_digest,
                         received_at, state, claim_worker, claim_token,
                         claimed_at, completed_at
                     ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
                     ON CONFLICT(delivery_id) DO NOTHING
-                `)
-                .run(
-                    input.deliveryId,
-                    input.eventName,
-                    input.payload,
-                    digest,
-                    input.receivedAt,
-                );
+                `,
+                )
+                .run(input.deliveryId, input.eventName, input.payload, digest, input.receivedAt);
 
             let result: AcceptDeliveryResult;
             if (inserted.changes === 1) {
@@ -344,11 +337,13 @@ export class Store {
                 };
             } else {
                 const existing = this.db
-                    .prepare(`
+                    .prepare(
+                        `
                         SELECT event_name, payload_digest, state
                         FROM seen_delivery
                         WHERE delivery_id = ?
-                    `)
+                    `,
+                    )
                     .get(input.deliveryId) as StoredDeliveryIdentity | undefined;
                 if (existing === undefined) {
                     throw new Error("delivery conflict lookup did not find its durable row");
@@ -356,18 +351,19 @@ export class Store {
 
                 const eventNameMismatch = existing.event_name !== input.eventName;
                 const payloadMismatch = existing.payload_digest !== digest;
-                result = eventNameMismatch || payloadMismatch
-                    ? {
-                          outcome: "conflict",
-                          state: existing.state,
-                          eventNameMismatch,
-                          payloadMismatch,
-                      }
-                    : {
-                          outcome: "duplicate",
-                          state: existing.state,
-                          payloadDigest: existing.payload_digest,
-                      };
+                result =
+                    eventNameMismatch || payloadMismatch
+                        ? {
+                              outcome: "conflict",
+                              state: existing.state,
+                              eventNameMismatch,
+                              payloadMismatch,
+                          }
+                        : {
+                              outcome: "duplicate",
+                              state: existing.state,
+                              payloadDigest: existing.payload_digest,
+                          };
             }
 
             this.db.exec("COMMIT");
@@ -397,7 +393,8 @@ export class Store {
         assertUtcInstant(now, "now");
         assertUtcInstant(staleBefore, "staleBefore");
         const row = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE seen_delivery
                 SET state = 'processing',
                     claim_worker = ?,
@@ -413,7 +410,8 @@ export class Store {
                 )
                 RETURNING delivery_id, event_name, payload, payload_digest,
                           received_at, claim_token
-            `)
+            `,
+            )
             .get(worker, now, staleBefore) as ClaimedDeliveryRow | undefined;
         if (row === undefined) return undefined;
         return {
@@ -438,49 +436,48 @@ export class Store {
         assertNonEmpty(claimToken, "claimToken");
         assertUtcInstant(completedAt, "completedAt");
         const result = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE seen_delivery
                 SET state = 'done', payload = NULL, claim_worker = NULL,
                     claim_token = NULL, claimed_at = NULL, completed_at = ?
                 WHERE delivery_id = ? AND state = 'processing' AND claim_token = ?
-            `)
+            `,
+            )
             .run(completedAt, deliveryId, claimToken);
-        return result.changes === 1
-            ? { outcome: "completed" }
-            : { outcome: "notOwned" };
+        return result.changes === 1 ? { outcome: "completed" } : { outcome: "notOwned" };
     }
 
     /** Return only this token's in-flight work to the pending queue. */
-    releaseDelivery(
-        deliveryId: DeliveryGuid,
-        claimToken: string,
-    ): ReleaseDeliveryResult {
+    releaseDelivery(deliveryId: DeliveryGuid, claimToken: string): ReleaseDeliveryResult {
         assertDeliveryGuid(deliveryId);
         assertNonEmpty(claimToken, "claimToken");
         const result = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE seen_delivery
                 SET state = 'pending', claim_worker = NULL,
                     claim_token = NULL, claimed_at = NULL
                 WHERE delivery_id = ? AND state = 'processing' AND claim_token = ?
-            `)
+            `,
+            )
             .run(deliveryId, claimToken);
-        return result.changes === 1
-            ? { outcome: "released" }
-            : { outcome: "notOwned" };
+        return result.changes === 1 ? { outcome: "released" } : { outcome: "notOwned" };
     }
 
     /** Requeue stale processing rows without exposing their payloads. */
     requeueStuckDeliveries(claimedBefore: string): DeliveryGuid[] {
         assertUtcInstant(claimedBefore, "claimedBefore");
         const rows = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE seen_delivery
                 SET state = 'pending', claim_worker = NULL,
                     claim_token = NULL, claimed_at = NULL
                 WHERE state = 'processing' AND claimed_at <= ?
                 RETURNING delivery_id
-            `)
+            `,
+            )
             .all(claimedBefore) as { delivery_id: string }[];
         return rows
             .map((row) => row.delivery_id as DeliveryGuid)
@@ -513,7 +510,8 @@ export class Store {
     ): void {
         assertUtcInstant(at, "at");
         this.db
-            .prepare(`
+            .prepare(
+                `
                 INSERT INTO effect_journal VALUES (?, ?, ?, 'sent', ?, 1, ?)
                 ON CONFLICT(effect_id, call_seq) DO UPDATE
                     SET attempt = attempt + 1,
@@ -521,7 +519,8 @@ export class Store {
                         intent = excluded.intent,
                         revision = excluded.revision
                     WHERE effect_journal.status != 'done'
-            `)
+            `,
+            )
             .run(effectId, seq, intent, at, revision);
     }
 
@@ -533,7 +532,9 @@ export class Store {
     done(effectId: string, seq: number, at: string): boolean {
         assertUtcInstant(at, "at");
         const result = this.db
-            .prepare("UPDATE effect_journal SET status = 'done', at = ? WHERE effect_id = ? AND call_seq = ?")
+            .prepare(
+                "UPDATE effect_journal SET status = 'done', at = ? WHERE effect_id = ? AND call_seq = ?",
+            )
             .run(at, effectId, seq);
         return result.changes === 1;
     }
@@ -551,8 +552,16 @@ export class Store {
      */
     effectState(effectId: string, planLength: number): EffectState {
         const rows = this.db
-            .prepare("SELECT call_seq, intent, status, attempt, revision FROM effect_journal WHERE effect_id = ? ORDER BY call_seq DESC LIMIT 1")
-            .all(effectId) as { call_seq: number; intent: string; status: string; attempt: number; revision: string }[];
+            .prepare(
+                "SELECT call_seq, intent, status, attempt, revision FROM effect_journal WHERE effect_id = ? ORDER BY call_seq DESC LIMIT 1",
+            )
+            .all(effectId) as {
+            call_seq: number;
+            intent: string;
+            status: string;
+            attempt: number;
+            revision: string;
+        }[];
         const last = rows[0];
         if (last === undefined) return { state: "neverStarted" };
         if (last.status === "sent") {
@@ -587,12 +596,20 @@ export class Store {
     openIntents(before: string): OpenIntent[] {
         assertUtcInstant(before, "before");
         const rows = this.db
-            .prepare(`
+            .prepare(
+                `
                 SELECT effect_id, call_seq, intent, attempt, at FROM effect_journal
                 WHERE status = 'sent' AND at <= ?
                 ORDER BY at
-            `)
-            .all(before) as { effect_id: string; call_seq: number; intent: string; attempt: number; at: string }[];
+            `,
+            )
+            .all(before) as {
+            effect_id: string;
+            call_seq: number;
+            intent: string;
+            attempt: number;
+            at: string;
+        }[];
         return rows.map((r) => ({
             effectId: r.effect_id,
             seq: r.call_seq,
@@ -620,11 +637,13 @@ export class Store {
         assertUtcInstant(now, "now");
         assertUtcInstant(staleBefore, "staleBefore");
         const result = this.db
-            .prepare(`
+            .prepare(
+                `
                 INSERT INTO effect_claim VALUES (?, ?, ?)
                 ON CONFLICT(effect_id) DO UPDATE SET worker = excluded.worker, at = excluded.at
                 WHERE effect_claim.at <= ?
-            `)
+            `,
+            )
             .run(effectId, worker, now, staleBefore);
         return result.changes === 1;
     }
@@ -663,15 +682,22 @@ export class Store {
     claimDue(now: string): ClaimedScheduleRow[] {
         assertUtcInstant(now, "now");
         const rows = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE schedule
                 SET status = 'running',
                     claimed_at = ?,
                     claim_token = lower(hex(randomblob(16)))
                 WHERE status = 'pending' AND due_at <= ?
                 RETURNING schedule_id, due_at, effect, claim_token
-            `)
-            .all(now, now) as { schedule_id: string; due_at: string; effect: string; claim_token: string }[];
+            `,
+            )
+            .all(now, now) as {
+            schedule_id: string;
+            due_at: string;
+            effect: string;
+            claim_token: string;
+        }[];
         return rows.map((r) => ({
             scheduleId: r.schedule_id,
             dueAt: r.due_at,
@@ -692,12 +718,14 @@ export class Store {
     requeueStuck(claimedBefore: string): ScheduleRow[] {
         assertUtcInstant(claimedBefore, "claimedBefore");
         const rows = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE schedule
                 SET status = 'pending', claimed_at = NULL, claim_token = NULL
                 WHERE status = 'running' AND claimed_at <= ?
                 RETURNING schedule_id, due_at, effect
-            `)
+            `,
+            )
             .all(claimedBefore) as { schedule_id: string; due_at: string; effect: string }[];
         return rows.map((r) => ({
             scheduleId: r.schedule_id,
@@ -708,11 +736,13 @@ export class Store {
 
     scheduleDone(scheduleId: string, claimToken: string): boolean {
         const result = this.db
-            .prepare(`
+            .prepare(
+                `
                 UPDATE schedule
                 SET status = 'done', claimed_at = NULL, claim_token = NULL
                 WHERE schedule_id = ? AND status = 'running' AND claim_token = ?
-            `)
+            `,
+            )
             .run(scheduleId, claimToken);
         return result.changes === 1;
     }
@@ -727,10 +757,12 @@ export class Store {
     pruneCompletedDeliveries(before: string): number {
         assertUtcInstant(before, "before");
         return this.db
-            .prepare(`
+            .prepare(
+                `
                 DELETE FROM seen_delivery
                 WHERE state = 'done' AND completed_at <= ?
-            `)
+            `,
+            )
             .run(before).changes as number;
     }
 

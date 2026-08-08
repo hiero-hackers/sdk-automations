@@ -29,10 +29,7 @@ interface PostOverrides {
 }
 
 /** One request against a real listening socket; the server lives per call. */
-async function post(
-    handler: RequestHandler,
-    overrides: PostOverrides = {},
-): Promise<number> {
+async function post(handler: RequestHandler, overrides: PostOverrides = {}): Promise<number> {
     const server = createServer(handler);
     await new Promise<void>((resolve) => server.listen(0, resolve));
     try {
@@ -40,9 +37,7 @@ async function post(
         const body = overrides.body ?? BODY;
         const headers: Record<string, string> = {};
         const signature =
-            overrides.signature === undefined
-                ? signBody(SECRET, body)
-                : overrides.signature;
+            overrides.signature === undefined ? signBody(SECRET, body) : overrides.signature;
         if (signature !== null) headers[SIGNATURE_HEADER] = signature;
         const guid = overrides.guid === undefined ? GUID : overrides.guid;
         if (guid !== null) headers["x-github-delivery"] = guid;

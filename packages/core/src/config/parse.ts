@@ -3,12 +3,7 @@
  * their mistakes in.
  */
 
-import {
-    cleanRecord,
-    NO_CONFIG,
-    type ConfigResult,
-    type ParseConfigOptions,
-} from "./schema.js";
+import { cleanRecord, NO_CONFIG, type ConfigResult, type ParseConfigOptions } from "./schema.js";
 import {
     checkSchemaVersion,
     err,

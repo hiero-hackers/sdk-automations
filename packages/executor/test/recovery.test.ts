@@ -16,12 +16,7 @@ import {
     type EffectPort,
     type EffectPlan,
 } from "../src/recovery.js";
-import {
-    FakeWorld,
-    CrashingPort,
-    fixtureCommand,
-    LEASE_MS,
-} from "./harness.js";
+import { FakeWorld, CrashingPort, fixtureCommand, LEASE_MS } from "./harness.js";
 
 const PLAN: EffectPlan = {
     effectId: "e1",
@@ -62,7 +57,9 @@ describe("flowchart branches", () => {
         const store = new Store(path);
         const world = new FakeWorld();
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({
+            outcome: "complete",
+        });
         for (const call of PLAN.calls) expect(world.applications(PLAN, call)).toBe(1);
         // Released: a new worker could claim immediately, no staleness needed.
         expect(store.claim("e1", "w2", T, "2026-07-25T11:55:00.000Z")).toBe(true);
@@ -74,24 +71,22 @@ describe("flowchart branches", () => {
         const world = new FakeWorld();
         await executor(store, new CrashingPort(world, new Map())).runEffect(PLAN);
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port, "w2").runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port, "w2").runEffect(PLAN)).resolves.toEqual({
+            outcome: "complete",
+        });
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1); // still once
         store.close();
     });
 
     it("midSequence resumes after the last done call", async () => {
         const store = new Store(path);
-        store.intent(
-            "e1",
-            1,
-            commandIdentity(PLAN.calls[0]!.command),
-            T,
-            PLAN.revision,
-        );
+        store.intent("e1", 1, commandIdentity(PLAN.calls[0]!.command), T, PLAN.revision);
         store.done("e1", 1, T);
         const world = new FakeWorld();
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({
+            outcome: "complete",
+        });
         expect(world.applications(PLAN, PLAN.calls[0]!)).toBe(0); // not re-run
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
         expect(world.applications(PLAN, PLAN.calls[2]!)).toBe(1);
@@ -102,24 +97,14 @@ describe("flowchart branches", () => {
         const store = new Store(path);
         const world = new FakeWorld();
         // The 6.5 lost-response case: the create landed, the response died.
-        store.intent(
-            "e1",
-            1,
-            commandIdentity(PLAN.calls[0]!.command),
-            T,
-            PLAN.revision,
-        );
+        store.intent("e1", 1, commandIdentity(PLAN.calls[0]!.command), T, PLAN.revision);
         store.done("e1", 1, T);
-        store.intent(
-            "e1",
-            2,
-            commandIdentity(PLAN.calls[1]!.command),
-            T,
-            PLAN.revision,
-        );
+        store.intent("e1", 2, commandIdentity(PLAN.calls[1]!.command), T, PLAN.revision);
         world.apply(PLAN, PLAN.calls[1]!); // landed on GitHub
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({
+            outcome: "complete",
+        });
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1); // NOT duplicated
         expect(port.readBacks).toEqual(["2:postManagedComment"]); // resolved, not guessed
         store.close();
@@ -132,7 +117,9 @@ describe("flowchart branches", () => {
         store.done("e1", 1, T);
         store.intent("e1", 2, commandIdentity(PLAN.calls[1]!.command), T, PLAN.revision); // died before the request left
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({
+            outcome: "complete",
+        });
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
         store.close();
         const reopened = new Store(path);
@@ -217,9 +204,9 @@ describe("surfaced stops", () => {
             })),
         };
         const port = new CrashingPort(world, new Map());
-        await expect(
-            executor(store, port, "w2").runEffect(afterConfigEdit),
-        ).resolves.toEqual({ outcome: "complete" });
+        await expect(executor(store, port, "w2").runEffect(afterConfigEdit)).resolves.toEqual({
+            outcome: "complete",
+        });
         // And nothing was re-performed to reach that answer.
         expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
         expect(port.readBacks).toEqual([]);
@@ -262,7 +249,9 @@ describe("surfaced stops", () => {
         store.claim("e1", "other", T, "2026-07-25T11:55:00.000Z");
         const world = new FakeWorld();
         const port = new CrashingPort(world, new Map());
-        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({ outcome: "anotherWorker" });
+        await expect(executor(store, port).runEffect(PLAN)).resolves.toEqual({
+            outcome: "anotherWorker",
+        });
         for (const call of PLAN.calls) expect(world.applications(PLAN, call)).toBe(0);
         store.close();
     });
@@ -352,14 +341,7 @@ describe("asynchronous adapter boundary", () => {
         expect(store.effectState(oneCall.effectId, 1)).toMatchObject({
             state: "sentUnknown",
         });
-        expect(
-            store.claim(
-                oneCall.effectId,
-                "w2",
-                T,
-                "2026-07-25T11:55:00.000Z",
-            ),
-        ).toBe(false);
+        expect(store.claim(oneCall.effectId, "w2", T, "2026-07-25T11:55:00.000Z")).toBe(false);
 
         settle();
         await expect(run).resolves.toEqual({ outcome: "complete" });

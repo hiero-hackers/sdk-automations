@@ -56,7 +56,7 @@ const validConfig = fc
                 minLength: meanings.length,
                 maxLength: meanings.length,
             })
-            .map((labels) => Object.fromEntries(meanings.map((m, i) => [m, labels[i]])))
+            .map((labels) => Object.fromEntries(meanings.map((m, i) => [m, labels[i]]))),
     )
     .chain((labels) =>
         fc.record(
@@ -94,44 +94,54 @@ describe("parseConfig properties", () => {
         );
     });
 
-    it("valid-by-construction configs parse ok", () => {
-        fc.assert(
-            fc.property(validConfig, (raw) => {
-                const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: Object.keys(raw.capabilities ?? {}),
-                });
-                if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
-            }),
-            { seed: SEED, numRuns: 300 },
-        );
-    }, PROPERTY_TIMEOUT_MS);
+    it(
+        "valid-by-construction configs parse ok",
+        () => {
+            fc.assert(
+                fc.property(validConfig, (raw) => {
+                    const result = parseConfig(raw, {
+                        revision: "rev-test",
+                        knownCapabilities: Object.keys(raw.capabilities ?? {}),
+                    });
+                    if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
+                }),
+                { seed: SEED, numRuns: 300 },
+            );
+        },
+        PROPERTY_TIMEOUT_MS,
+    );
 
-    it("is a fixed point: re-parsing an accepted config yields the identical config", () => {
-        // Catches silent normalization drift — whatever parseConfig
-        // outputs must be exactly what it would output again.
-        fc.assert(
-            fc.property(validConfig, (raw) => {
-                const knownCapabilities = Object.keys(raw.capabilities ?? {});
-                const first = parseConfig(raw, { revision: "rev-test", knownCapabilities });
-                if (!first.ok) return; // covered by the property above
-                /**
-                 * `revision` is metadata ABOUT the document, not a key IN
-                 * it (D77), so a parsed configuration is no longer a valid
-                 * document — it carries a field a maintainer never writes.
-                 * Stripping it keeps the property meaningful: what parsing
-                 * produces, minus the identity stamped on it, must parse
-                 * back to the same thing.
-                 */
-                const { revision: _stamped, ...asDocument } = first.config;
-                const second = parseConfig(asDocument as unknown, {
-                    revision: "rev-test",
-                    knownCapabilities,
-                });
-                expect(second.ok).toBe(true);
-                if (second.ok) expect(second.config).toEqual(first.config);
-            }),
-            { seed: SEED, numRuns: 300 },
-        );
-    }, PROPERTY_TIMEOUT_MS);
+    it(
+        "is a fixed point: re-parsing an accepted config yields the identical config",
+        () => {
+            // Catches silent normalization drift — whatever parseConfig
+            // outputs must be exactly what it would output again.
+            fc.assert(
+                fc.property(validConfig, (raw) => {
+                    const knownCapabilities = Object.keys(raw.capabilities ?? {});
+                    const first = parseConfig(raw, { revision: "rev-test", knownCapabilities });
+                    if (!first.ok) return; // covered by the property above
+                    /**
+                     * `revision` is metadata ABOUT the document, not a key IN
+                     * it (D77), so a parsed configuration is no longer a valid
+                     * document — it carries a field a maintainer never writes.
+                     * Stripping it keeps the property meaningful: what parsing
+                     * produces, minus the identity stamped on it, must parse
+                     * back to the same thing.
+                     */
+                    const { revision: _stamped, ...asDocument } = first.config;
+                    const second = parseConfig(asDocument as unknown, {
+                        revision: "rev-test",
+                        knownCapabilities,
+                    });
+                    expect(second.ok).toBe(true);
+                    if (second.ok) expect(second.config).toEqual(first.config);
+                }),
+                { seed: SEED, numRuns: 300 },
+            );
+        },
+        PROPERTY_TIMEOUT_MS,
+    );
 });
 
 describe("classifyFailure properties", () => {

@@ -45,10 +45,7 @@ export interface ReceiverOptions {
     readonly onAccepted?: () => void;
 }
 
-export type RequestHandler = (
-    request: IncomingMessage,
-    response: ServerResponse,
-) => void;
+export type RequestHandler = (request: IncomingMessage, response: ServerResponse) => void;
 
 export function createReceiver(options: ReceiverOptions): RequestHandler {
     return (request, response) => {
@@ -84,10 +81,7 @@ async function handle(
 }
 
 /** Collect the exact bytes, capped; answers the 413 itself. */
-function readBody(
-    request: IncomingMessage,
-    response: ServerResponse,
-): Promise<Buffer | null> {
+function readBody(request: IncomingMessage, response: ServerResponse): Promise<Buffer | null> {
     return new Promise((resolve) => {
         const chunks: Buffer[] = [];
         let size = 0;
@@ -112,17 +106,9 @@ function readBody(
 
 /** Station 1's gate: the HMAC of the raw bytes, checked before anything
  * else is even read. Total — a missing header is `false`, never a throw. */
-function verifiedDelivery(
-    request: IncomingMessage,
-    body: Buffer,
-    secret: string,
-): boolean {
+function verifiedDelivery(request: IncomingMessage, body: Buffer, secret: string): boolean {
     const signature = request.headers[SIGNATURE_HEADER];
-    return verifyBody(
-        secret,
-        body,
-        typeof signature === "string" ? signature : undefined,
-    );
+    return verifyBody(secret, body, typeof signature === "string" ? signature : undefined);
 }
 
 /**
@@ -134,14 +120,9 @@ function deliveryIdentity(
     request: IncomingMessage,
 ): { deliveryId: DeliveryGuid; eventName: string } | null {
     const rawGuid = request.headers["x-github-delivery"];
-    const deliveryId =
-        typeof rawGuid === "string" ? asDeliveryGuid(rawGuid) : undefined;
+    const deliveryId = typeof rawGuid === "string" ? asDeliveryGuid(rawGuid) : undefined;
     const eventName = request.headers["x-github-event"];
-    if (
-        deliveryId === undefined ||
-        typeof eventName !== "string" ||
-        eventName === ""
-    ) {
+    if (deliveryId === undefined || typeof eventName !== "string" || eventName === "") {
         return null;
     }
     return { deliveryId, eventName };

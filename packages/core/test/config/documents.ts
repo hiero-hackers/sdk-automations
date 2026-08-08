@@ -68,9 +68,7 @@ export const REJECTIONS: readonly RejectionCase[] = [
         code: "documentUnparseable",
         why: "twenty aliases — inside the library's default budget, outside ours",
         synthesised: true,
-        yaml:
-            `a: &a observe\n` +
-            `b: [${Array.from({ length: 20 }, () => "*a").join(",")}]\n`,
+        yaml: `a: &a observe\n` + `b: [${Array.from({ length: 20 }, () => "*a").join(",")}]\n`,
     },
 
     /**
@@ -91,7 +89,11 @@ export const REJECTIONS: readonly RejectionCase[] = [
     },
 
     // ---- the document parsed, but is not a mapping ----
-    { code: "notAMapping", why: "a sequence at the top level", yaml: `- schemaVersion: 1\n- mode: observe\n` },
+    {
+        code: "notAMapping",
+        why: "a sequence at the top level",
+        yaml: `- schemaVersion: 1\n- mode: observe\n`,
+    },
     { code: "notAMapping", why: "a bare scalar", yaml: `observe\n` },
     { code: "notAMapping", why: "a number", yaml: `1\n` },
 
@@ -114,7 +116,7 @@ export const REJECTIONS: readonly RejectionCase[] = [
     },
     {
         code: "schemaVersionUnsupported",
-        why: "the version is quoted, so it is the string \"1\"",
+        why: 'the version is quoted, so it is the string "1"',
         yaml: `schemaVersion: "1"\nmode: observe\n${VALID_TAIL}`,
     },
     {

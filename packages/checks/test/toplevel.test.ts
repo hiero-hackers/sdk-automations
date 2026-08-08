@@ -22,15 +22,10 @@ function topLevelOffenders(
     knowledge: ReadonlySet<string>,
 ): string[] {
     const roots = new Set(
-        files
-            .filter((path) => path.includes("/"))
-            .map((path) => path.split("/", 1)[0]!),
+        files.filter((path) => path.includes("/")).map((path) => path.split("/", 1)[0]!),
     );
     return [...roots].filter(
-        (name) =>
-            !name.startsWith(".") &&
-            !packages.has(name) &&
-            !knowledge.has(name),
+        (name) => !name.startsWith(".") && !packages.has(name) && !knowledge.has(name),
     );
 }
 

@@ -21,9 +21,7 @@ function typescriptFiles(): string[] {
                 continue; // a package need not have both directories
             }
             found.push(
-                ...entries
-                    .filter((rel) => rel.endsWith(".ts"))
-                    .map((rel) => join(root, rel)),
+                ...entries.filter((rel) => rel.endsWith(".ts")).map((rel) => join(root, rel)),
             );
         }
     }

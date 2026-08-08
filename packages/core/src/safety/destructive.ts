@@ -9,16 +9,8 @@
  */
 
 import type { RepositoryConfig } from "../config/index.js";
-import {
-    evaluateGeneralRulesAfterPreflight,
-    evaluatePreflight,
-} from "./rules.js";
-import type {
-    ActionClass,
-    SafetyVerdict,
-    WriteContext,
-    WriteRequest,
-} from "./types.js";
+import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
+import type { ActionClass, SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
 // ─── Clock-triggered destructive actions (safety.md §3) ──────────────
 
@@ -71,9 +63,7 @@ export interface DestructiveWarning {
  * Capture authority at warning time. Numeric timestamps and copied strings
  * avoid aliases to mutable request targets and mutable Date internal state.
  */
-export function createDestructiveWarning(
-    input: DestructiveWarningInput,
-): DestructiveWarning {
+export function createDestructiveWarning(input: DestructiveWarningInput): DestructiveWarning {
     const requestSnapshot: DestructiveRequestSnapshot = Object.freeze({
         actionClass: input.request.actionClass,
         capability: input.request.capability,
@@ -185,11 +175,9 @@ export function evaluateDestructive(
             reason: `grace period ${plan.warning.gracePeriodDays}d is below the ${MIN_GRACE_DAYS}d floor (§4)`,
         };
     }
-    const minimumActionAt =
-        plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
+    const minimumActionAt = plan.warning.warnedAtMs + plan.warning.gracePeriodDays * DAY_MS;
     if (
-        plan.warning.warnedAtMs <
-            plan.warning.requestSnapshot.causeObservedAtMs ||
+        plan.warning.warnedAtMs < plan.warning.requestSnapshot.causeObservedAtMs ||
         plan.warning.earliestActionAtMs < minimumActionAt
     ) {
         return {

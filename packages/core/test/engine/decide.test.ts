@@ -26,10 +26,7 @@ import {
 
 const payload = (name: string): unknown =>
     JSON.parse(
-        readFileSync(
-            fileURLToPath(new URL(`../github/fixtures/${name}`, import.meta.url)),
-            "utf8",
-        ),
+        readFileSync(fileURLToPath(new URL(`../github/fixtures/${name}`, import.meta.url)), "utf8"),
     );
 
 const declaration = declareCapability({
@@ -115,7 +112,12 @@ const delivery = (name: string) =>
 
 describe("the apply path, on a real delivery", () => {
     it("an unpositioned issue yields one approved intent and a clean report", async () => {
-        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [triage], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [triage],
+            externals,
+        );
         expect(decision.approved).toHaveLength(1);
         expect(decision.approved[0]).toMatchObject({
             operation: "applyMappedLabel",
@@ -132,7 +134,12 @@ describe("the apply path, on a real delivery", () => {
     });
 
     it("dry-run tells the same story and approves nothing", async () => {
-        const decision = await decide(delivery("issues.opened.json"), configIn("dry-run"), [triage], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("dry-run"),
+            [triage],
+            externals,
+        );
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings.map((f) => `${f.code}:${f.severity}`)).toEqual([
             "capabilityExplained:info",
@@ -141,7 +148,12 @@ describe("the apply path, on a real delivery", () => {
     });
 
     it("an already-positioned issue invites nothing — the capability's own restraint", async () => {
-        const decision = await decide(delivery("issues.labeled.json"), configIn("active"), [triage], externals);
+        const decision = await decide(
+            delivery("issues.labeled.json"),
+            configIn("active"),
+            [triage],
+            externals,
+        );
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings).toEqual([]);
     });
@@ -149,7 +161,12 @@ describe("the apply path, on a real delivery", () => {
 
 describe("the gates, each visible in the report", () => {
     it("a disabled capability is never consulted", async () => {
-        const decision = await decide(delivery("issues.opened.json"), configIn("active", false), [triage], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active", false),
+            [triage],
+            externals,
+        );
         expect(decision.report.findings).toEqual([]);
         expect(decision.approved).toEqual([]);
     });
@@ -190,7 +207,11 @@ describe("the gates, each visible in the report", () => {
             declaration,
             async evaluate(observation: never): Promise<readonly AnyIntent[]> {
                 const o = observation as Parameters<typeof triage.evaluate>[0] extends never
-                    ? { repository: { owner: string; repo: string }; item: { kind: "issue"; number: number }; observedAt: Date }
+                    ? {
+                          repository: { owner: string; repo: string };
+                          item: { kind: "issue"; number: number };
+                          observedAt: Date;
+                      }
                     : never;
                 const draft = {
                     capability: "triage",
@@ -199,7 +220,11 @@ describe("the gates, each visible in the report", () => {
                     operation: "applyMappedLabel",
                     actionClass: "reversibleStateChange",
                     // The lie: claims no triage label, on a labeled issue.
-                    expected: { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false },
+                    expected: {
+                        meaningsPresent: [],
+                        meaningsAbsent: ["awaitingTriage"],
+                        closed: false,
+                    },
                     desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
                     cause: { cause: "issueWithoutPosition", observedAt: o.observedAt },
                     explanation: { capability: "triage", summary: "s", detail: [] },
@@ -207,7 +232,12 @@ describe("the gates, each visible in the report", () => {
                 return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) }];
             },
         };
-        const decision = await decide(delivery("issues.labeled.json"), configIn("active"), [eager], externals);
+        const decision = await decide(
+            delivery("issues.labeled.json"),
+            configIn("active"),
+            [eager],
+            externals,
+        );
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings.map((f) => f.code)).toContain("preconditionStale");
     });
@@ -232,7 +262,12 @@ describe("the gates, each visible in the report", () => {
                 ];
             },
         };
-        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [rogue], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [rogue],
+            externals,
+        );
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings.map((f) => f.code)).toEqual(["foreignCapability"]);
     });
@@ -244,7 +279,9 @@ describe("the gates, each visible in the report", () => {
                 const handle = platform as {
                     resolve(q: string, i: unknown): Promise<{ ok: boolean }>;
                 };
-                const answer = await handle.resolve("linkedIssues", { item: { kind: "issue", number: 1 } });
+                const answer = await handle.resolve("linkedIssues", {
+                    item: { kind: "issue", number: 1 },
+                });
                 expect(answer).toMatchObject({
                     ok: false,
                     reason: "notConfigured",
@@ -253,7 +290,12 @@ describe("the gates, each visible in the report", () => {
                 return [];
             },
         };
-        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [nosy], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [nosy],
+            externals,
+        );
         expect(decision.report.findings).toEqual([
             {
                 severity: "problem",
@@ -288,7 +330,12 @@ describe("deliveries that never reach a capability", () => {
 
     it("a malformed delivery is a problem carrying the normalizer's code", async () => {
         const decision = await decide(
-            { kind: "delivery", repository: { owner: "o", repo: "r" }, event: "issues", payload: null },
+            {
+                kind: "delivery",
+                repository: { owner: "o", repo: "r" },
+                event: "issues",
+                payload: null,
+            },
             configIn("active"),
             [triage],
             externals,
@@ -309,7 +356,12 @@ describe("deliveries that never reach a capability", () => {
 
 describe("paths the delivery tests never walk", () => {
     it("an observation-kind input skips normalization and decides identically", async () => {
-        const viaDelivery = await decide(delivery("issues.opened.json"), configIn("active"), [triage], externals);
+        const viaDelivery = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [triage],
+            externals,
+        );
         const normalized = (await import("../../src/index.js")).normalizeDelivery(
             "issues",
             payload("issues.opened.json"),
@@ -343,7 +395,12 @@ describe("paths the delivery tests never walk", () => {
                 return [];
             },
         };
-        const decision = await decide(delivery("pull_request.opened.json"), configIn("active"), [watcher], externals);
+        const decision = await decide(
+            delivery("pull_request.opened.json"),
+            configIn("active"),
+            [watcher],
+            externals,
+        );
         expect(decision.report.findings).toEqual([
             expect.objectContaining({ code: "capabilityExplained", severity: "info" }),
         ]);
@@ -360,7 +417,9 @@ describe("paths the delivery tests never walk", () => {
                 const handle = platform as {
                     resolve(q: string, i: unknown): Promise<{ ok: boolean; value?: unknown }>;
                 };
-                const answer = await handle.resolve("linkedIssues", { item: { kind: "issue", number: 164 } });
+                const answer = await handle.resolve("linkedIssues", {
+                    item: { kind: "issue", number: 164 },
+                });
                 expect(answer).toEqual({ ok: true, value: [] });
                 return [];
             },
@@ -388,7 +447,9 @@ describe("paths the delivery tests never walk", () => {
                 const handle = platform as {
                     resolve(q: string, i: unknown): Promise<{ ok: boolean; reason?: string }>;
                 };
-                const answer = await handle.resolve("linkedIssues", { item: { kind: "issue", number: 164 } });
+                const answer = await handle.resolve("linkedIssues", {
+                    item: { kind: "issue", number: 164 },
+                });
                 expect(answer).toMatchObject({
                     ok: false,
                     reason: "unavailable",
@@ -397,7 +458,12 @@ describe("paths the delivery tests never walk", () => {
                 return [];
             },
         };
-        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [asker], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [asker],
+            externals,
+        );
         expect(decision.report.findings).toEqual([]);
     });
 
@@ -410,7 +476,7 @@ describe("paths the delivery tests never walk", () => {
         } as const;
         const sweeper = (expected: {
             meaningsPresent: readonly never[];
-            meaningsAbsent: readonly ("awaitingTriage")[];
+            meaningsAbsent: readonly "awaitingTriage"[];
             closed: boolean | null;
         }): EngineCapability => ({
             declaration: declareCapability({
@@ -429,9 +495,7 @@ describe("paths the delivery tests never walk", () => {
                     cause: { cause: "sweep", observedAt: observation.observedAt },
                     explanation: { capability: "triage", summary: "s", detail: [] },
                 } as const;
-                return [
-                    { ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never,
-                ];
+                return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never];
             },
         });
         /**
@@ -468,7 +532,12 @@ describe("paths the delivery tests never walk", () => {
                 throw new Error("must not run");
             },
         };
-        const decision = await decide(delivery("issues.opened.json"), configIn("active"), [prOnly], externals);
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            configIn("active"),
+            [prOnly],
+            externals,
+        );
         expect(decision.report.findings).toEqual([]);
     });
 });
@@ -482,10 +551,7 @@ describe("the destructive gate, through the engine (D92 3c)", () => {
         observedAt: WARNED,
     } as const;
 
-    const reclaimer = (over: {
-        causeDrift?: boolean;
-        activity?: boolean;
-    }): EngineCapability => ({
+    const reclaimer = (over: { causeDrift?: boolean; activity?: boolean }): EngineCapability => ({
         declaration: declareCapability({
             ...declaration,
             observations: ["staleItemsDue"],
@@ -522,9 +588,7 @@ describe("the destructive gate, through the engine (D92 3c)", () => {
                 },
                 explanation: { capability: "triage", summary: "s", detail: [] },
             } as const;
-            return [
-                { ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never,
-            ];
+            return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never];
         },
     });
 
@@ -552,10 +616,7 @@ describe("the destructive gate, through the engine (D92 3c)", () => {
     });
 
     it("cancels on qualifying activity during the grace period", async () => {
-        const { codes } = await codesOf(
-            reclaimer({ activity: true }),
-            at("2026-08-03T00:00:00Z"),
-        );
+        const { codes } = await codesOf(reclaimer({ activity: true }), at("2026-08-03T00:00:00Z"));
         expect(codes).toEqual(["activityCancelled"]);
     });
 
@@ -581,31 +642,37 @@ describe("describeChange — §2.6's exact item and value, pinned", () => {
             observedAt: new Date("2026-08-07T00:00:00Z"),
         });
         expect(
-            describeChange(base({
-                operation: "postManagedComment",
-                actionClass: "humanFacingOutput",
-                desired: { marker: "<!-- m -->", body: "b" },
-                cause: "c",
-                explain: { summary: "s" },
-            })),
+            describeChange(
+                base({
+                    operation: "postManagedComment",
+                    actionClass: "humanFacingOutput",
+                    desired: { marker: "<!-- m -->", body: "b" },
+                    cause: "c",
+                    explain: { summary: "s" },
+                }),
+            ),
         ).toBe("managed comment <!-- m -->");
         expect(
-            describeChange(base({
-                operation: "applyMappedLabel",
-                actionClass: "reversibleStateChange",
-                desired: { meaning: "ready", cause: "triageCompleted" },
-                cause: "c",
-                explain: { summary: "s" },
-            })),
+            describeChange(
+                base({
+                    operation: "applyMappedLabel",
+                    actionClass: "reversibleStateChange",
+                    desired: { meaning: "ready", cause: "triageCompleted" },
+                    cause: "c",
+                    explain: { summary: "s" },
+                }),
+            ),
         ).toBe("set mapped position ready");
         expect(
-            describeChange(base({
-                operation: "unassign",
-                actionClass: "reversibleStateChange",
-                desired: { login: "someone" },
-                cause: "c",
-                explain: { summary: "s" },
-            })),
+            describeChange(
+                base({
+                    operation: "unassign",
+                    actionClass: "reversibleStateChange",
+                    desired: { login: "someone" },
+                    cause: "c",
+                    explain: { summary: "s" },
+                }),
+            ),
         ).toBe("unassign someone");
     });
 });

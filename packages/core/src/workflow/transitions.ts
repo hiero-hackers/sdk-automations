@@ -49,11 +49,11 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: null, to: "needsReview", causes: ["checksPassed"] },
     { from: null, to: "needsRevision", causes: ["checksFailed"] },
     /**
- * Three corrections found by reading these tables against `design/audit/` rather than
- * against the prose: the missing `readyToMerge → needsRevision` edge, the added
- * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
- * that bundled a trigger with its consequence (D48).
- */
+     * Three corrections found by reading these tables against `design/audit/` rather than
+     * against the prose: the missing `readyToMerge → needsRevision` edge, the added
+     * `reviewRequestedChanges` cause, and `approvalInvalidated` replacing a name
+     * that bundled a trigger with its consequence (D48).
+     */
     {
         from: "needsReview",
         to: "needsRevision",
@@ -85,7 +85,6 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: "needsRevision", to: null, causes: ["humanClosed", "merged"] },
     { from: "readyToMerge", to: null, causes: ["humanClosed", "merged"] },
 ];
-
 
 export const PROFILE_EDGES: {
     readonly [K in EntityKind]: readonly {

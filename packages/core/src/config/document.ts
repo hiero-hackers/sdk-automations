@@ -67,10 +67,7 @@ function documentError(error: YAMLError): ConfigError {
  * parse is never handed onward: there is nothing to validate, and guessing at
  * a half-read file is how a fail-closed parser accidentally fails open.
  */
-export function parseConfigDocument(
-    text: string,
-    options: ParseConfigOptions,
-): ConfigResult {
+export function parseConfigDocument(text: string, options: ParseConfigOptions): ConfigResult {
     const document = parseDocument(text);
 
     if (document.errors.length > 0) {

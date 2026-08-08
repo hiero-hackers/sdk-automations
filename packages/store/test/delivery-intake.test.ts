@@ -1,20 +1,10 @@
-import {
-    existsSync,
-    mkdirSync,
-    mkdtempSync,
-    readFileSync,
-    rmSync,
-    writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import {
-    asDeliveryGuid,
-    type DeliveryGuid,
-} from "@hiero-hackers/automation-core";
+import { asDeliveryGuid, type DeliveryGuid } from "@hiero-hackers/automation-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as ts from "typescript";
 import { Store } from "../src/store.js";
@@ -106,10 +96,9 @@ function buildWorkerStoreModule(): string {
     const storeModule = join(buildDir, "store.js");
     writeFileSync(
         storeModule,
-        ts.transpileModule(storeSource, { compilerOptions }).outputText.replace(
-            "@hiero-hackers/automation-core",
-            "./ids.js",
-        ),
+        ts
+            .transpileModule(storeSource, { compilerOptions })
+            .outputText.replace("@hiero-hackers/automation-core", "./ids.js"),
     );
     return pathToFileURL(storeModule).href;
 }
@@ -121,42 +110,48 @@ async function runConcurrent(operation: ConcurrentOperation): Promise<unknown[]>
     let ready = 0;
     let completed = 0;
     const values: unknown[] = new Array(2);
-    const workers = [0, 1].map((index) => new Worker(CONTENDER_SOURCE, {
-        eval: true,
-        workerData: {
-            operation,
-            storeModule,
-            databasePath: path,
-            gate,
-            deliveryId: FIRST_ID,
-            receivedAt: `2026-08-01T10:00:0${String(index)}.000Z`,
-            worker: `worker-${String(index)}`,
-        },
-    }));
+    const workers = [0, 1].map(
+        (index) =>
+            new Worker(CONTENDER_SOURCE, {
+                eval: true,
+                workerData: {
+                    operation,
+                    storeModule,
+                    databasePath: path,
+                    gate,
+                    deliveryId: FIRST_ID,
+                    receivedAt: `2026-08-01T10:00:0${String(index)}.000Z`,
+                    worker: `worker-${String(index)}`,
+                },
+            }),
+    );
 
     try {
         await new Promise<void>((resolve, reject) => {
             workers.forEach((worker, index) => {
                 worker.on("error", reject);
-                worker.on("message", (message: {
-                    type: "ready" | "result" | "error";
-                    value?: unknown;
-                    message?: string;
-                }) => {
-                    if (message.type === "ready") {
-                        ready++;
-                        if (ready === workers.length) {
-                            Atomics.store(gateView, 0, 1);
-                            Atomics.notify(gateView, 0, workers.length);
+                worker.on(
+                    "message",
+                    (message: {
+                        type: "ready" | "result" | "error";
+                        value?: unknown;
+                        message?: string;
+                    }) => {
+                        if (message.type === "ready") {
+                            ready++;
+                            if (ready === workers.length) {
+                                Atomics.store(gateView, 0, 1);
+                                Atomics.notify(gateView, 0, workers.length);
+                            }
+                        } else if (message.type === "error") {
+                            reject(new Error(message.message ?? "worker failed"));
+                        } else {
+                            values[index] = message.value;
+                            completed++;
+                            if (completed === workers.length) resolve();
                         }
-                    } else if (message.type === "error") {
-                        reject(new Error(message.message ?? "worker failed"));
-                    } else {
-                        values[index] = message.value;
-                        completed++;
-                        if (completed === workers.length) resolve();
-                    }
-                });
+                    },
+                );
             });
         });
         return values;
@@ -207,15 +202,23 @@ describe("durable delivery acceptance", () => {
 
     it("makes an identity-only pending row impossible even below the typed API", () => {
         const store = new Store(path);
-        const db = (store as unknown as {
-            db: { prepare(sql: string): { run(...values: unknown[]): unknown } };
-        }).db;
-        expect(() => db.prepare(`
+        const db = (
+            store as unknown as {
+                db: { prepare(sql: string): { run(...values: unknown[]): unknown } };
+            }
+        ).db;
+        expect(() =>
+            db
+                .prepare(
+                    `
             INSERT INTO seen_delivery (
                 delivery_id, event_name, payload, payload_digest,
                 received_at, state
             ) VALUES (?, ?, NULL, ?, ?, 'pending')
-        `).run(FIRST_ID, "issues", "0".repeat(64), RECEIVED)).toThrow();
+        `,
+                )
+                .run(FIRST_ID, "issues", "0".repeat(64), RECEIVED),
+        ).toThrow();
         store.close();
     });
 
@@ -223,7 +226,7 @@ describe("durable delivery acceptance", () => {
         const setup = new Store(path);
         setup.close();
 
-        const acceptanceResults = await runConcurrent("accept") as {
+        const acceptanceResults = (await runConcurrent("accept")) as {
             outcome: string;
             state: string;
         }[];
@@ -262,11 +265,13 @@ describe("durable delivery acceptance", () => {
         );
         expect(claim?.eventName).toBe("issues");
         expect(Buffer.from(claim!.payload)).toEqual(original);
-        expect(store.claimNextDelivery(
-            "worker-b",
-            "2026-08-01T10:01:00.000Z",
-            "2026-08-01T09:00:00.000Z",
-        )).toBeUndefined();
+        expect(
+            store.claimNextDelivery(
+                "worker-b",
+                "2026-08-01T10:01:00.000Z",
+                "2026-08-01T09:00:00.000Z",
+            ),
+        ).toBeUndefined();
         store.close();
     });
 });
@@ -286,11 +291,13 @@ describe("delivery claims and recovery", () => {
                 "2026-08-01T09:00:00.000Z",
             );
             order.push(claim!.deliveryId);
-            expect(store.completeDelivery(
-                claim!.deliveryId,
-                claim!.claimToken,
-                `2026-08-01T10:02:0${String(index)}.000Z`,
-            )).toEqual({ outcome: "completed" });
+            expect(
+                store.completeDelivery(
+                    claim!.deliveryId,
+                    claim!.claimToken,
+                    `2026-08-01T10:02:0${String(index)}.000Z`,
+                ),
+            ).toEqual({ outcome: "completed" });
         }
         expect(order).toEqual([FIRST_ID, SECOND_ID, THIRD_ID]);
         store.close();
@@ -307,11 +314,13 @@ describe("delivery claims and recovery", () => {
         before.close();
 
         const restarted = new Store(path);
-        expect(restarted.claimNextDelivery(
-            "worker-b",
-            "2026-08-01T10:04:00.000Z",
-            "2026-08-01T10:00:00.000Z",
-        )).toBeUndefined();
+        expect(
+            restarted.claimNextDelivery(
+                "worker-b",
+                "2026-08-01T10:04:00.000Z",
+                "2026-08-01T10:00:00.000Z",
+            ),
+        ).toBeUndefined();
         const second = restarted.claimNextDelivery(
             "worker-b",
             "2026-08-01T10:10:00.000Z",
@@ -319,16 +328,20 @@ describe("delivery claims and recovery", () => {
         )!;
         expect(second.deliveryId).toBe(first.deliveryId);
         expect(second.claimToken).not.toBe(first.claimToken);
-        expect(restarted.completeDelivery(
-            first.deliveryId,
-            first.claimToken,
-            "2026-08-01T10:11:00.000Z",
-        )).toEqual({ outcome: "notOwned" });
-        expect(restarted.completeDelivery(
-            second.deliveryId,
-            second.claimToken,
-            "2026-08-01T10:11:00.000Z",
-        )).toEqual({ outcome: "completed" });
+        expect(
+            restarted.completeDelivery(
+                first.deliveryId,
+                first.claimToken,
+                "2026-08-01T10:11:00.000Z",
+            ),
+        ).toEqual({ outcome: "notOwned" });
+        expect(
+            restarted.completeDelivery(
+                second.deliveryId,
+                second.claimToken,
+                "2026-08-01T10:11:00.000Z",
+            ),
+        ).toEqual({ outcome: "completed" });
         restarted.close();
     });
 
@@ -350,11 +363,9 @@ describe("delivery claims and recovery", () => {
         )!;
         expect(store.requeueStuckDeliveries("2026-08-01T10:01:59.999Z")).toEqual([]);
         expect(store.requeueStuckDeliveries("2026-08-01T10:02:00.000Z")).toEqual([FIRST_ID]);
-        expect(store.completeDelivery(
-            FIRST_ID,
-            second.claimToken,
-            "2026-08-01T10:03:00.000Z",
-        )).toEqual({ outcome: "notOwned" });
+        expect(
+            store.completeDelivery(FIRST_ID, second.claimToken, "2026-08-01T10:03:00.000Z"),
+        ).toEqual({ outcome: "notOwned" });
         store.close();
     });
 });
@@ -369,21 +380,28 @@ describe("delivery completion and retention", () => {
             "2026-08-01T10:01:00.000Z",
             "2026-08-01T09:00:00.000Z",
         )!;
-        expect(store.completeDelivery(
-            FIRST_ID,
-            claim.claimToken,
-            "2026-08-01T10:02:00.000Z",
-        )).toEqual({ outcome: "completed" });
+        expect(
+            store.completeDelivery(FIRST_ID, claim.claimToken, "2026-08-01T10:02:00.000Z"),
+        ).toEqual({ outcome: "completed" });
 
-        const db = (store as unknown as {
-            db: { prepare(sql: string): { get(id: string): Record<string, unknown> } };
-        }).db;
-        expect(db.prepare(`
+        const db = (
+            store as unknown as {
+                db: { prepare(sql: string): { get(id: string): Record<string, unknown> } };
+            }
+        ).db;
+        expect(
+            db
+                .prepare(
+                    `
             SELECT payload, payload_digest, state, completed_at
             FROM seen_delivery WHERE delivery_id = ?
-        `).get(FIRST_ID)).toEqual({
+        `,
+                )
+                .get(FIRST_ID),
+        ).toEqual({
             payload: null,
-            payload_digest: accepted.outcome === "accepted" ? accepted.payloadDigest : "unreachable",
+            payload_digest:
+                accepted.outcome === "accepted" ? accepted.payloadDigest : "unreachable",
             state: "done",
             completed_at: "2026-08-01T10:02:00.000Z",
         });
@@ -424,19 +442,19 @@ describe("delivery completion and retention", () => {
             "2025-01-01T00:00:00.000Z",
         )!;
         expect(done.deliveryId).toBe(SECOND_ID);
-        expect(store.completeDelivery(
-            done.deliveryId,
-            done.claimToken,
-            "2026-02-01T00:00:00.000Z",
-        )).toEqual({ outcome: "completed" });
+        expect(
+            store.completeDelivery(done.deliveryId, done.claimToken, "2026-02-01T00:00:00.000Z"),
+        ).toEqual({ outcome: "completed" });
 
         expect(store.pruneCompletedDeliveries("2026-01-31T23:59:59.999Z")).toBe(0);
         expect(store.pruneCompletedDeliveries("2026-02-01T00:00:00.000Z")).toBe(1);
-        expect(store.claimNextDelivery(
-            "worker-c",
-            "2026-03-01T00:00:00.000Z",
-            "2025-01-01T00:00:00.000Z",
-        )?.deliveryId).toBe(THIRD_ID);
+        expect(
+            store.claimNextDelivery(
+                "worker-c",
+                "2026-03-01T00:00:00.000Z",
+                "2025-01-01T00:00:00.000Z",
+            )?.deliveryId,
+        ).toBe(THIRD_ID);
         expect(accept(store, FIRST_ID, "issues", Buffer.from("pending"))).toMatchObject({
             outcome: "duplicate",
             state: "processing",
@@ -452,15 +470,18 @@ describe("delivery intake boundaries", () => {
         const store = new Store(path);
         expect(() => accept(store, "" as DeliveryGuid)).toThrow(TypeError);
         expect(() => accept(store, FIRST_ID, " ")).toThrow(TypeError);
-        expect(() => store.acceptDelivery({
-            deliveryId: FIRST_ID,
-            eventName: "issues",
-            // @ts-expect-error Runtime callers can violate the typed boundary.
-            payload: "not bytes",
-            receivedAt: RECEIVED,
-        })).toThrow(TypeError);
-        expect(() => accept(store, FIRST_ID, "issues", Buffer.from("secret-payload"), "invalid"))
-            .toThrowError(/receivedAt/);
+        expect(() =>
+            store.acceptDelivery({
+                deliveryId: FIRST_ID,
+                eventName: "issues",
+                // @ts-expect-error Runtime callers can violate the typed boundary.
+                payload: "not bytes",
+                receivedAt: RECEIVED,
+            }),
+        ).toThrow(TypeError);
+        expect(() =>
+            accept(store, FIRST_ID, "issues", Buffer.from("secret-payload"), "invalid"),
+        ).toThrowError(/receivedAt/);
         try {
             accept(store, FIRST_ID, "issues", Buffer.from("secret-payload"), "invalid");
         } catch (error) {

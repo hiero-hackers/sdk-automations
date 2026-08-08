@@ -129,19 +129,11 @@ export function projectPrObservation(
  * closed item as open. This exists because that mistake was made the first
  * time a capability consumed the projection.
  */
-export function closureOf<M>(
-    projection: ObservationProjection<M>,
-): ClosureReason | null {
-    return projection.kind === "position"
-        ? projection.state.closedBy
-        : projection.closedBy;
+export function closureOf<M>(projection: ObservationProjection<M>): ClosureReason | null {
+    return projection.kind === "position" ? projection.state.closedBy : projection.closedBy;
 }
 
 /** Is this item paused, whichever branch the projection took? See `closureOf`. */
-export function isPausedByProjection<M>(
-    projection: ObservationProjection<M>,
-): boolean {
-    return projection.kind === "position"
-        ? projection.state.blocked
-        : projection.blocked;
+export function isPausedByProjection<M>(projection: ObservationProjection<M>): boolean {
+    return projection.kind === "position" ? projection.state.blocked : projection.blocked;
 }

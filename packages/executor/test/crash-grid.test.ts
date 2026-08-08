@@ -11,12 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "@hiero-hackers/automation-store";
 import type { EffectPlan } from "../src/recovery.js";
-import {
-    fixtureCommand,
-    runToConvergence,
-    prng,
-    type CrashMode,
-} from "./harness.js";
+import { fixtureCommand, runToConvergence, prng, type CrashMode } from "./harness.js";
 
 const PLAN: EffectPlan = {
     effectId: "assign-issue-7",
@@ -53,11 +48,7 @@ async function assertConverged(
     path: string,
     schedule: ReadonlyMap<number, CrashMode>,
 ): Promise<number> {
-    const { result, world, triggeredCrashes } = await runToConvergence(
-        path,
-        PLAN,
-        schedule,
-    );
+    const { result, world, triggeredCrashes } = await runToConvergence(path, PLAN, schedule);
     expect(result).toEqual({ outcome: "complete" });
     for (const call of PLAN.calls) {
         expect(world.applications(PLAN, call)).toBeGreaterThanOrEqual(1);
@@ -67,18 +58,21 @@ async function assertConverged(
     expect(world.applications(PLAN, PLAN.calls[1]!)).toBe(1);
     // And the journal agrees the effect is closed.
     const store = new Store(path);
-    expect(store.effectState(PLAN.effectId, PLAN.calls.length)).toMatchObject({ state: "complete" });
+    expect(store.effectState(PLAN.effectId, PLAN.calls.length)).toMatchObject({
+        state: "complete",
+    });
     store.close();
     return triggeredCrashes.length;
 }
 
 describe("single crash at every point", () => {
     const modes: CrashMode[] = ["beforeApply", "afterApply"];
-    it.each(
-        [1, 2, 3].flatMap((p) => modes.map((m) => [p, m] as const)),
-    )("crash %i/%s converges with no duplicate", async (invocation, mode) => {
-        await inTmp((path) => assertConverged(path, new Map([[invocation, mode]])));
-    });
+    it.each([1, 2, 3].flatMap((p) => modes.map((m) => [p, m] as const)))(
+        "crash %i/%s converges with no duplicate",
+        async (invocation, mode) => {
+            await inTmp((path) => assertConverged(path, new Map([[invocation, mode]])));
+        },
+    );
 });
 
 describe("64 scheduled two-point histories across incarnations", () => {
@@ -89,37 +83,30 @@ describe("64 scheduled two-point histories across incarnations", () => {
             for (let p2 = p1 + 1; p2 <= p1 + 4; p2++)
                 for (const m2 of modes) pairs.push([p1, m1, p2, m2]);
 
-    it(
-        `all ${String(pairs.length)} pairs converge with no duplicate`,
-        async () => {
-            const triggeredCounts = new Map<number, number>();
-            for (const [p1, m1, p2, m2] of pairs) {
-                const triggered = await inTmp((path) =>
-                    assertConverged(
-                        path,
-                        new Map([
-                            [p1, m1],
-                            [p2, m2],
-                        ]),
-                    ),
-                );
-                triggeredCounts.set(
-                    triggered,
-                    (triggeredCounts.get(triggered) ?? 0) + 1,
-                );
-            }
-            // The old test called all 64 schedules "crash pairs", but
-            // many later invocation numbers are unreachable after the
-            // effect completes. Preserve all cases while making the
-            // actual exercised evidence explicit.
-            expect(Object.fromEntries(triggeredCounts)).toEqual({
-                0: 16,
-                1: 30,
-                2: 18,
-            });
-        },
-        20_000,
-    );
+    it(`all ${String(pairs.length)} pairs converge with no duplicate`, async () => {
+        const triggeredCounts = new Map<number, number>();
+        for (const [p1, m1, p2, m2] of pairs) {
+            const triggered = await inTmp((path) =>
+                assertConverged(
+                    path,
+                    new Map([
+                        [p1, m1],
+                        [p2, m2],
+                    ]),
+                ),
+            );
+            triggeredCounts.set(triggered, (triggeredCounts.get(triggered) ?? 0) + 1);
+        }
+        // The old test called all 64 schedules "crash pairs", but
+        // many later invocation numbers are unreachable after the
+        // effect completes. Preserve all cases while making the
+        // actual exercised evidence explicit.
+        expect(Object.fromEntries(triggeredCounts)).toEqual({
+            0: 16,
+            1: 30,
+            2: 18,
+        });
+    }, 20_000);
 });
 
 describe("seeded multi-crash histories", () => {

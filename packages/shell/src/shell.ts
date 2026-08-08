@@ -6,10 +6,7 @@
  */
 
 import { createServer, type Server } from "node:http";
-import type {
-    EngineCapability,
-    RepositoryRef,
-} from "@hiero-hackers/automation-core";
+import type { EngineCapability, RepositoryRef } from "@hiero-hackers/automation-core";
 import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";

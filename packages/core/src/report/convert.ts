@@ -9,10 +9,7 @@
  */
 
 import type { ConfigResult } from "../config/index.js";
-import type {
-    SafetyRefusalCode,
-    SafetyVerdict,
-} from "../safety/index.js";
+import type { SafetyRefusalCode, SafetyVerdict } from "../safety/index.js";
 import type { IntentScreen, StructuredExplanation } from "../capability/index.js";
 import { finding, type Finding, type Severity, type Subject } from "./finding.js";
 
@@ -60,22 +57,14 @@ const REFUSAL_SEVERITY: { readonly [K in SafetyRefusalCode]: Severity } = {
 };
 
 /** A safety verdict as a finding. */
-export function verdictFinding(
-    verdict: SafetyVerdict,
-    subject: Subject,
-): Finding {
+export function verdictFinding(verdict: SafetyVerdict, subject: Subject): Finding {
     if (verdict.outcome === "apply") {
         return finding("info", "applied", "The write was permitted.", subject);
     }
     if (verdict.outcome === "record-only") {
         return finding("notice", verdict.code, verdict.reason, subject);
     }
-    return finding(
-        REFUSAL_SEVERITY[verdict.code],
-        verdict.code,
-        verdict.reason,
-        subject,
-    );
+    return finding(REFUSAL_SEVERITY[verdict.code], verdict.code, verdict.reason, subject);
 }
 
 /**
@@ -94,17 +83,8 @@ export function screenFinding(screen: IntentScreen, subject: Subject): Finding {
  * the capability's place to decide how loud its output is, and a capability
  * that could mark itself `problem` could drown the ones that are.
  */
-export function explanationFinding(
-    explanation: StructuredExplanation,
-    subject: Subject,
-): Finding {
-    return finding(
-        "info",
-        "capabilityExplained",
-        explanation.summary,
-        subject,
-        explanation.detail,
-    );
+export function explanationFinding(explanation: StructuredExplanation, subject: Subject): Finding {
+    return finding("info", "capabilityExplained", explanation.summary, subject, explanation.detail);
 }
 
 /**

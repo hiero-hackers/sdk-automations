@@ -24,19 +24,12 @@ import type {
     ObservationName,
     ResolverName,
 } from "./catalogue.js";
-import {
-    INTENT_OPERATIONS,
-    OBSERVATION_NAMES,
-    RESOLVER_NAMES,
-} from "./catalogue.js";
-
-
+import { INTENT_OPERATIONS, OBSERVATION_NAMES, RESOLVER_NAMES } from "./catalogue.js";
 
 /** contract.md §1 triggers, split into the two real shapes. */
 export type Trigger =
     | { readonly kind: "event"; readonly event: string }
     | { readonly kind: "schedule"; readonly description: string };
-
 
 export interface IntentDeclaration {
     readonly name: string;
@@ -77,7 +70,6 @@ export interface CapabilityDeclaration {
     readonly operationalNeeds: OperationalNeeds;
 }
 
-
 function duplicates(values: readonly string[]): string[] {
     const seen = new Set<string>();
     const dup = new Set<string>();
@@ -94,10 +86,14 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
     const at = `capability "${d.name}"`;
 
     if (!CAPABILITY_NAME_PATTERN.test(d.name)) {
-        errors.push(`declaration name ${JSON.stringify(d.name)} must be a camelCase configuration key`);
+        errors.push(
+            `declaration name ${JSON.stringify(d.name)} must be a camelCase configuration key`,
+        );
     }
     if (d.triggers.length === 0) {
-        errors.push(`${at}: at least one trigger (event or schedule) is required — an untriggerable capability is dead code`);
+        errors.push(
+            `${at}: at least one trigger (event or schedule) is required — an untriggerable capability is dead code`,
+        );
     }
     if (d.triggers.some((t) => t.kind === "schedule") && !d.operationalNeeds.schedule) {
         errors.push(`${at}: declares a schedule trigger but operationalNeeds.schedule is false`);
@@ -123,10 +119,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
      * any org-scoped capability (`progression` needs org-wide data by
      * its own module document).
      */
-    const declared = new Set<string>([
-        ...d.permissions.repository,
-        ...d.permissions.organization,
-    ]);
+    const declared = new Set<string>([...d.permissions.repository, ...d.permissions.organization]);
     for (const grant of [...d.permissions.repository, ...d.permissions.organization]) {
         if (!isPermissionGrant(grant)) {
             errors.push(`${at}: permission "${grant}" is not in scope:level form`);
@@ -137,7 +130,7 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
             if (!declared.has(grant)) {
                 errors.push(
                     `${at}: intent "${intent.name}" requires "${grant}" which the capability does not declare — ` +
-                    `an intent cannot exceed its capability's permissions`,
+                        `an intent cannot exceed its capability's permissions`,
                 );
             }
         }
@@ -155,31 +148,23 @@ function isIntentOperation(name: string): name is IntentOperation {
  * Exported for focused diagnostics; `createRegistry` is the trusted operation
  * that always combines this with structural validation.
  */
-export function checkAgainstCatalogue(
-    declaration: CapabilityDeclaration,
-): readonly string[] {
+export function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
     const at = `capability "${declaration.name}"`;
 
     for (const observation of declaration.observations) {
         if (!OBSERVATION_NAMES.some((name) => name === observation)) {
-            errors.push(
-                `${at}: observation "${observation}" is not in the observation catalogue`,
-            );
+            errors.push(`${at}: observation "${observation}" is not in the observation catalogue`);
         }
     }
     for (const resolver of declaration.resolvers) {
         if (!RESOLVER_NAMES.some((name) => name === resolver)) {
-            errors.push(
-                `${at}: resolver "${resolver}" is not in the resolver catalogue`,
-            );
+            errors.push(`${at}: resolver "${resolver}" is not in the resolver catalogue`);
         }
     }
     for (const intent of declaration.intents) {
         if (!isIntentOperation(intent.name)) {
-            errors.push(
-                `${at}: intent "${intent.name}" is not in the operation catalogue`,
-            );
+            errors.push(`${at}: intent "${intent.name}" is not in the operation catalogue`);
             continue;
         }
         const facts = INTENT_OPERATIONS[intent.name];
@@ -190,9 +175,7 @@ export function checkAgainstCatalogue(
             );
         }
         if (!intent.requiredPermissions.includes(facts.permission)) {
-            errors.push(
-                `${at}: intent "${intent.name}" must require "${facts.permission}"`,
-            );
+            errors.push(`${at}: intent "${intent.name}" must require "${facts.permission}"`);
         }
     }
     return errors;
@@ -272,7 +255,7 @@ export function createRegistry(declarations: readonly CapabilityDeclaration[]): 
                 const found = byName.get(name);
                 return found?.retired === true
                     ? undefined
-                    : found as ActiveCapabilityDeclaration | undefined;
+                    : (found as ActiveCapabilityDeclaration | undefined);
             },
         },
     };

@@ -113,10 +113,7 @@ export function checkSchemaVersion(raw: Record<string, unknown>): readonly Confi
  * and was how this file used to do it.
  */
 function isRepositoryMode(value: unknown): value is RepositoryMode {
-    return (
-        typeof value === "string" &&
-        (REPOSITORY_MODES as readonly string[]).includes(value)
-    );
+    return typeof value === "string" && (REPOSITORY_MODES as readonly string[]).includes(value);
 }
 
 export function parseMode(raw: Record<string, unknown>): Checked<RepositoryMode> {
@@ -161,26 +158,56 @@ export function parseCapabilities(
         // rejecting it loses nothing and closes the hostile-key
         // hole (`__proto__`, dotted paths, etc.).
         if (!CAPABILITY_NAME_PATTERN.test(name)) {
-            errors.push(err("capabilityNameInvalid", `capability name ${JSON.stringify(name)} is not a valid configuration key (camelCase)`, `capabilities.${name}`));
+            errors.push(
+                err(
+                    "capabilityNameInvalid",
+                    `capability name ${JSON.stringify(name)} is not a valid configuration key (camelCase)`,
+                    `capabilities.${name}`,
+                ),
+            );
             continue;
         }
         if (!isPlainObject(value)) {
-            errors.push(err("notAMapping", `capability "${name}" must be a mapping`, `capabilities.${name}`));
+            errors.push(
+                err(
+                    "notAMapping",
+                    `capability "${name}" must be a mapping`,
+                    `capabilities.${name}`,
+                ),
+            );
             continue;
         }
         for (const key of Object.keys(value)) {
             if (key !== "enabled" && key !== "settings") {
-                errors.push(err("unknownKey", `capability "${name}": unknown key "${key}"`, `capabilities.${name}.${key}`));
+                errors.push(
+                    err(
+                        "unknownKey",
+                        `capability "${name}": unknown key "${key}"`,
+                        `capabilities.${name}.${key}`,
+                    ),
+                );
             }
         }
         // §2.4 — every capability defaults to disabled; only an
         // explicit boolean true enables ("truthy" is not consent).
         if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
-            errors.push(err("capabilityEnabledNotBoolean", `capability "${name}": enabled must be a boolean`, `capabilities.${name}.enabled`));
+            errors.push(
+                err(
+                    "capabilityEnabledNotBoolean",
+                    `capability "${name}": enabled must be a boolean`,
+                    `capabilities.${name}.enabled`,
+                ),
+            );
         }
         const settings = value.settings ?? {};
         if (!isPlainObject(settings)) {
-            errors.push(err("notAMapping", `capability "${name}": settings must be a mapping`, `capabilities.${name}.settings`));
+            errors.push(
+                err(
+                    "notAMapping",
+                    `capability "${name}": settings must be a mapping`,
+                    `capabilities.${name}.settings`,
+                ),
+            );
             continue;
         }
         const enabled = value.enabled === true;
@@ -220,7 +247,8 @@ export function parseMappings(
     }
 
     for (const key of Object.keys(raw.mappings)) {
-        if (key !== "labels") errors.push(err("unknownKey", `mappings: unknown key "${key}"`, `mappings.${key}`));
+        if (key !== "labels")
+            errors.push(err("unknownKey", `mappings: unknown key "${key}"`, `mappings.${key}`));
     }
     const rawLabels = raw.mappings.labels ?? {};
     if (!isPlainObject(rawLabels)) {
@@ -231,11 +259,23 @@ export function parseMappings(
     const labelOwner = new Map<string, { meaning: string; label: string }>();
     for (const [meaning, label] of Object.entries(rawLabels)) {
         if (!MAPPABLE_MEANINGS.includes(meaning as MappableMeaning)) {
-            errors.push(err("meaningNotMappable", `mappings.labels: "${meaning}" is not a mappable meaning`, `mappings.labels.${meaning}`));
+            errors.push(
+                err(
+                    "meaningNotMappable",
+                    `mappings.labels: "${meaning}" is not a mappable meaning`,
+                    `mappings.labels.${meaning}`,
+                ),
+            );
             continue;
         }
         if (typeof label !== "string" || label.trim() === "") {
-            errors.push(err("labelInvalid", `mappings.labels.${meaning}: label must be a non-empty string`, `mappings.labels.${meaning}`));
+            errors.push(
+                err(
+                    "labelInvalid",
+                    `mappings.labels.${meaning}: label must be a non-empty string`,
+                    `mappings.labels.${meaning}`,
+                ),
+            );
             continue;
         }
         const key = labelKey(label);
@@ -243,13 +283,15 @@ export function parseMappings(
         if (owner !== undefined) {
             const sameSpelling = owner.label === label;
             errors.push(
-                err("labelNotInjective",
-                `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner.meaning}" and "${meaning}"` +
-                (sameSpelling
-                    ? ""
-                    : ` (differing only in case or surrounding space from ${JSON.stringify(owner.label)}, which GitHub treats as the same label)`) +
-                ` — label mappings must be injective (schema.md §3)`,
-                `mappings.labels.${meaning}`),
+                err(
+                    "labelNotInjective",
+                    `mappings.labels: label ${JSON.stringify(label)} is mapped to both "${owner.meaning}" and "${meaning}"` +
+                        (sameSpelling
+                            ? ""
+                            : ` (differing only in case or surrounding space from ${JSON.stringify(owner.label)}, which GitHub treats as the same label)`) +
+                        ` — label mappings must be injective (schema.md §3)`,
+                    `mappings.labels.${meaning}`,
+                ),
             );
             continue;
         }
@@ -271,7 +313,13 @@ export function parsePrincipals(raw: Record<string, unknown>): Checked<[string, 
     }
     for (const [key, value] of Object.entries(raw.principals)) {
         if (typeof value !== "string") {
-            errors.push(err("principalNotAString", `principals.${key}: must be a string`, `principals.${key}`));
+            errors.push(
+                err(
+                    "principalNotAString",
+                    `principals.${key}: must be a string`,
+                    `principals.${key}`,
+                ),
+            );
             continue;
         }
         entries.push([key, value]);

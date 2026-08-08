@@ -138,8 +138,7 @@ export const inactivity: Capability<InactivityDeclaration> = {
                         reversesWith: "reassigning the item to the same person",
                         qualifyingActivitySinceWarning:
                             entry.lastHumanActivityAt !== null &&
-                            entry.lastHumanActivityAt.getTime() >
-                                entry.warnedAt.getTime(),
+                            entry.lastHumanActivityAt.getTime() > entry.warnedAt.getTime(),
                         warnedCause,
                         warnedCauseObservedAt: entry.warnedAt,
                     },

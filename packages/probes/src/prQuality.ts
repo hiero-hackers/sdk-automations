@@ -79,9 +79,7 @@ export const prQuality: Capability<PrQualityDeclaration> = {
         if (linked.value.length > 0) return [];
 
         const marker =
-            typeof config.settings.marker === "string"
-                ? config.settings.marker
-                : DEFAULT_MARKER;
+            typeof config.settings.marker === "string" ? config.settings.marker : DEFAULT_MARKER;
 
         const make = intentFactoryFor(prQualityDeclaration, {
             repository: observation.repository,

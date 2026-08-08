@@ -49,13 +49,17 @@ describe("timestamp boundary — lexicographic order must BE chronological order
         expect(() => s.schedule("x", "2026-07-24T00:00:00+01:00", "sweep")).toThrow(TypeError);
         expect(() => s.claimDue("24 Jul 2026 12:00")).toThrow(TypeError);
         expect(() => s.intent("e1", 1, "read", "2026-07-23", "rev-1")).toThrow(TypeError);
-        expect(() => s.acceptDelivery({
-            deliveryId: id("00000000-0000-0000-0000-000000000001"),
-            eventName: "issues",
-            payload: Buffer.from("{}"),
-            receivedAt: "",
-        })).toThrow(TypeError);
-        expect(() => s.claim("e1", "w1", "2026-07-23T12:00:00.000Z", "not-a-time")).toThrow(TypeError);
+        expect(() =>
+            s.acceptDelivery({
+                deliveryId: id("00000000-0000-0000-0000-000000000001"),
+                eventName: "issues",
+                payload: Buffer.from("{}"),
+                receivedAt: "",
+            }),
+        ).toThrow(TypeError);
+        expect(() => s.claim("e1", "w1", "2026-07-23T12:00:00.000Z", "not-a-time")).toThrow(
+            TypeError,
+        );
         // Seconds-only Z is ALSO rejected: mixed precision breaks
         // lexicographic ordering ("…00Z" > "…00.500Z" as strings but
         // earlier in time). Exactly the Date.toISOString() shape.
@@ -66,12 +70,12 @@ describe("timestamp boundary — lexicographic order must BE chronological order
 
     it("rejects canonical-looking strings that are not real calendar instants", () => {
         const s = new Store(path);
-        expect(() =>
-            s.schedule("impossible", "2026-02-31T00:00:00.000Z", "sweep"),
-        ).toThrow(TypeError);
-        expect(() =>
-            s.intent("e1", 1, "read", "2026-99-99T99:99:99.999Z", "rev-1"),
-        ).toThrow(TypeError);
+        expect(() => s.schedule("impossible", "2026-02-31T00:00:00.000Z", "sweep")).toThrow(
+            TypeError,
+        );
+        expect(() => s.intent("e1", 1, "read", "2026-99-99T99:99:99.999Z", "rev-1")).toThrow(
+            TypeError,
+        );
         s.close();
     });
 });
@@ -84,7 +88,10 @@ describe("effect journal — the 6.5 crash grid, restated as instance reopening"
         before.close(); // crash at kill point e1-after-call-1
 
         const recovered = new Store(path);
-        expect(recovered.effectState("e1", 2)).toMatchObject({ state: "midSequence", lastDoneSeq: 1 });
+        expect(recovered.effectState("e1", 2)).toMatchObject({
+            state: "midSequence",
+            lastDoneSeq: 1,
+        });
         recovered.close();
     });
 
@@ -196,7 +203,13 @@ describe("openIntents — the sweep's journal worklist", () => {
 
         const open = s.openIntents("2026-07-23T10:30:00.000Z");
         expect(open).toEqual([
-            { effectId: "e2", seq: 1, intent: "create-comment", attempt: 1, at: "2026-07-23T10:05:00.000Z" },
+            {
+                effectId: "e2",
+                seq: 1,
+                intent: "create-comment",
+                attempt: 1,
+                at: "2026-07-23T10:05:00.000Z",
+            },
         ]);
         s.close();
     });
@@ -220,7 +233,12 @@ describe("claims — the two-worker race serialized (6.5 scenario 6), now as a l
 
         const restarted = new Store(path);
         expect(
-            restarted.claim("effect-x", "w3", "2026-07-23T12:01:00.000Z", "2026-07-23T11:56:00.000Z"),
+            restarted.claim(
+                "effect-x",
+                "w3",
+                "2026-07-23T12:01:00.000Z",
+                "2026-07-23T11:56:00.000Z",
+            ),
         ).toBe(false);
         restarted.close();
     });
@@ -234,7 +252,12 @@ describe("claims — the two-worker race serialized (6.5 scenario 6), now as a l
         const restarted = new Store(path);
         // 12:10, five-minute lease: the 12:00 claim is stale (<= 12:05).
         expect(
-            restarted.claim("effect-x", "w2", "2026-07-23T12:10:00.000Z", "2026-07-23T12:05:00.000Z"),
+            restarted.claim(
+                "effect-x",
+                "w2",
+                "2026-07-23T12:10:00.000Z",
+                "2026-07-23T12:05:00.000Z",
+            ),
         ).toBe(true);
         // The takeover replaced the row — w1's ghost cannot release it.
         expect(restarted.release("effect-x", "w1")).toBe(false);
@@ -271,9 +294,7 @@ describe("claims — the two-worker race serialized (6.5 scenario 6), now as a l
         // effect silently never run.
         const s = new Store(path);
         s.close();
-        expect(() =>
-            s.claim("effect-x", "w1", T0, "2026-07-23T11:55:00.000Z"),
-        ).toThrow();
+        expect(() => s.claim("effect-x", "w1", T0, "2026-07-23T11:55:00.000Z")).toThrow();
     });
 });
 

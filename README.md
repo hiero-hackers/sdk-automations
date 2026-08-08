@@ -73,3 +73,13 @@ JavaScript SDK automation read at pinned commits, with `file:line` citations —
 every commit needs, how the difficulty ladder works, and the ground rules — each one linked to the
 decision or check that earned it. Participation is under the
 [Code of Conduct](CODE_OF_CONDUCT.md); security reports go through [`SECURITY.md`](SECURITY.md).
+
+## Tooling
+
+Code style is enforced by [Prettier](https://prettier.io) (formatter-only) across all TypeScript
+packages; markdown, YAML, and JSON files are excluded — see `.prettierignore`. Run `pnpm format` to
+apply it, or `pnpm format:check` to verify without writing (CI runs the latter).
+
+ESLint enforces code quality separately — the two do not overlap. If you're wondering whether a new
+ESLint rule should be added: the answer is which defect class it catches, and whether a dedicated
+check in `checks/` would fit better than a rule catalogue entry.

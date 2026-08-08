@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-    asDeliveryGuid,
-    asDeliveryRecordId,
-} from "../../src/github/ids.js";
+import { asDeliveryGuid, asDeliveryRecordId } from "../../src/github/ids.js";
 
 describe("delivery identifier separation (experiment 6.2)", () => {
     it("accepts the X-GitHub-Delivery GUID used to deduplicate webhook deliveries", () => {
@@ -18,7 +15,14 @@ describe("delivery identifier separation (experiment 6.2)", () => {
     });
 
     it("rejects the corrupted forms a number round-trip produces", () => {
-        for (const bad of ["3.832900504397021e18", "3832900504397021000.0", "", "  ", "12a4", "-5"]) {
+        for (const bad of [
+            "3.832900504397021e18",
+            "3832900504397021000.0",
+            "",
+            "  ",
+            "12a4",
+            "-5",
+        ]) {
             expect(asDeliveryRecordId(bad)).toBeUndefined();
         }
     });

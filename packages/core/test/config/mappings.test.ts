@@ -65,26 +65,25 @@ describe("meaningOfLabel", () => {
 
 describe("meaningsOfLabels", () => {
     it("translates a delivery's label list, dropping the unmapped", () => {
-        expect(
-            meaningsOfLabels(config, ["bug", "status: triage", "status: blocked"]),
-        ).toEqual(["awaitingTriage", "blocked"]);
+        expect(meaningsOfLabels(config, ["bug", "status: triage", "status: blocked"])).toEqual([
+            "awaitingTriage",
+            "blocked",
+        ]);
     });
 
     it("normalizes independently of input order and duplication", () => {
         const a = meaningsOfLabels(config, ["status: blocked", "status: triage"]);
-        const b = meaningsOfLabels(config, [
-            "status: triage",
-            "STATUS: BLOCKED",
-            "status: triage",
-        ]);
+        const b = meaningsOfLabels(config, ["status: triage", "STATUS: BLOCKED", "status: triage"]);
         expect(a).toEqual(b);
         expect(a).toEqual(["awaitingTriage", "blocked"]);
     });
 
     it("orders by the platform vocabulary, not the wire", () => {
         // `blocked` is last in MAPPABLE_MEANINGS; wherever it arrives, it sorts last.
-        expect(meaningsOfLabels(config, ["status: blocked", "status: ready for dev"]))
-            .toEqual(["ready", "blocked"]);
+        expect(meaningsOfLabels(config, ["status: blocked", "status: ready for dev"])).toEqual([
+            "ready",
+            "blocked",
+        ]);
     });
 
     it("round-trips every mapped meaning through its own label", () => {
@@ -104,9 +103,7 @@ describe("meaningsOfLabels", () => {
                     const mapped = config.mappings.labels[meaning];
                     expect(mapped).toBeDefined();
                     expect(
-                        labels.some(
-                            (l) => l.trim().toLowerCase() === mapped!.trim().toLowerCase(),
-                        ),
+                        labels.some((l) => l.trim().toLowerCase() === mapped!.trim().toLowerCase()),
                     ).toBe(true);
                 }
             }),

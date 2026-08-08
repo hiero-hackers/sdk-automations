@@ -10,11 +10,7 @@
 
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type {
-    AnyIntent,
-    ConfigError,
-    Report,
-} from "@hiero-hackers/automation-core";
+import type { AnyIntent, ConfigError, Report } from "@hiero-hackers/automation-core";
 
 interface RecordBase {
     readonly deliveryId: string;

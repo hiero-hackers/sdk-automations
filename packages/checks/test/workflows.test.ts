@@ -13,8 +13,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { lines, repoRoot, trackedFiles } from "./helpers.js";
 
-const workflows = trackedFiles().filter((path) =>
-    path.startsWith(".github/workflows/") && /\.ya?ml$/.test(path),
+const workflows = trackedFiles().filter(
+    (path) => path.startsWith(".github/workflows/") && /\.ya?ml$/.test(path),
 );
 
 /**
@@ -35,56 +35,55 @@ function workflowLines(path: string): string[] {
 }
 
 function permissionWrites(path: string): string[] {
-    const writes: string[] = []
-    let inPermissions = false
+    const writes: string[] = [];
+    let inPermissions = false;
     for (const line of workflowLines(path)) {
         if (/^\s*permissions:\s*$/.test(line)) {
-            inPermissions = true
-            continue
+            inPermissions = true;
+            continue;
         }
         if (inPermissions) {
-            const match = /^\s+([A-Za-z_-]+):\s*(read|write|none)\s*(?:#.*)?$/.exec(line)
+            const match = /^\s+([A-Za-z_-]+):\s*(read|write|none)\s*(?:#.*)?$/.exec(line);
             if (match) {
-                if (match[2] === "write") writes.push(`${path}:${match[1]}`)
-                continue
+                if (match[2] === "write") writes.push(`${path}:${match[1]}`);
+                continue;
             }
-            if (/^\S/.test(line)) inPermissions = false
+            if (/^\S/.test(line)) inPermissions = false;
         }
     }
-    return writes
+    return writes;
 }
 
 describe("workflow hygiene stays a checked invariant", () => {
     it("reads every workflow file", () => {
-        expect(workflows.length).toBeGreaterThan(0)
-    })
+        expect(workflows.length).toBeGreaterThan(0);
+    });
 
     it("pins every action to a full commit SHA with a version comment", () => {
         for (const path of workflows) {
             for (const line of workflowLines(path)) {
-                if (!line.includes("uses:")) continue
-                const match =
-                    /^\s*(?:-\s+)?uses:\s+([^\s#]+)\s+#\s*v.+$/.exec(line)
-                expect(match, `${path}: ${line}`).not.toBeNull()
-                const ref = match![1]!.split("@").at(-1)!
-                expect(ref, `${path}: ${line}`).toMatch(/^[0-9a-f]{40}$/)
+                if (!line.includes("uses:")) continue;
+                const match = /^\s*(?:-\s+)?uses:\s+([^\s#]+)\s+#\s*v.+$/.exec(line);
+                expect(match, `${path}: ${line}`).not.toBeNull();
+                const ref = match![1]!.split("@").at(-1)!;
+                expect(ref, `${path}: ${line}`).toMatch(/^[0-9a-f]{40}$/);
             }
         }
-    })
+    });
 
     it("never uses pull_request_target", () => {
         for (const path of workflows) {
             expect(
                 workflowLines(path).join("\n"),
                 `${path} must not contain pull_request_target`,
-            ).not.toContain("pull_request_target")
+            ).not.toContain("pull_request_target");
         }
-    })
+    });
 
     it("keeps permissions read-only outside the explicit write allowlist", () => {
-        const actual = workflows.flatMap(permissionWrites)
-        expect([...actual].sort()).toEqual([...WRITE_ALLOWLIST].sort())
-    })
+        const actual = workflows.flatMap(permissionWrites);
+        expect([...actual].sort()).toEqual([...WRITE_ALLOWLIST].sort());
+    });
 
     /**
      * The other half of `permissions: contents: read`. Without this flag the
@@ -93,36 +92,34 @@ describe("workflow hygiene stays a checked invariant", () => {
      * claim in this repository becomes an invariant.
      */
     it("never persists the token past checkout", () => {
-        const missing: string[] = []
+        const missing: string[] = [];
         for (const path of workflows) {
-            const body = workflowLines(path)
+            const body = workflowLines(path);
             body.forEach((line, i) => {
-                if (!/uses:\s+actions\/checkout@/.test(line)) return
+                if (!/uses:\s+actions\/checkout@/.test(line)) return;
                 // The `with:` block belongs to this step: scan forward until
                 // the next step (`- `) at the same or shallower indentation.
-                const indent = line.search(/\S/)
-                let persists = false
+                const indent = line.search(/\S/);
+                let persists = false;
                 for (let j = i + 1; j < body.length; j++) {
-                    const next = body[j]!
-                    if (next.trim() === "") continue
-                    if (next.search(/\S/) <= indent && /^\s*-\s/.test(next)) break
-                    if (next.search(/\S/) <= indent && next.trim() !== "") break
+                    const next = body[j]!;
+                    if (next.trim() === "") continue;
+                    if (next.search(/\S/) <= indent && /^\s*-\s/.test(next)) break;
+                    if (next.search(/\S/) <= indent && next.trim() !== "") break;
                     if (/persist-credentials:\s*false/.test(next)) {
-                        persists = true
-                        break
+                        persists = true;
+                        break;
                     }
                 }
-                if (!persists) missing.push(`${path}:${String(i + 1)}`)
-            })
+                if (!persists) missing.push(`${path}:${String(i + 1)}`);
+            });
         }
-        expect(missing).toEqual([])
-    })
+        expect(missing).toEqual([]);
+    });
 
     it("proves the pin check can fail in both directions", () => {
-        const pin = (ref: string): boolean => /^[0-9a-f]{40}$/.test(ref)
-        expect(pin("v4")).toBe(false)
-        expect(
-            pin("3d3c42e5aac5ba805825da76410c181273ba90b1"),
-        ).toBe(true)
-    })
-})
+        const pin = (ref: string): boolean => /^[0-9a-f]{40}$/.test(ref);
+        expect(pin("v4")).toBe(false);
+        expect(pin("3d3c42e5aac5ba805825da76410c181273ba90b1")).toBe(true);
+    });
+});

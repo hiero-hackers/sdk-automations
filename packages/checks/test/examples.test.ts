@@ -19,9 +19,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseConfigDocument } from "@hiero-hackers/automation-core";
 
-const examplesDir = fileURLToPath(
-    new URL("../../../docs/examples/", import.meta.url),
-);
+const examplesDir = fileURLToPath(new URL("../../../docs/examples/", import.meta.url));
 
 /**
  * The registry the examples are read against. Deliberately small and fixed:
@@ -56,9 +54,7 @@ describe("the shipped examples", () => {
 
     it.each(files)("%s parses", (file) => {
         const result = parse(file);
-        expect(
-            result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`),
-        ).toEqual([]);
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([]);
     });
 
     it("the file with nothing in it is a repository in observe", () => {

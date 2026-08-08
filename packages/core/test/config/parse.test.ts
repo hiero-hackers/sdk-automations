@@ -57,86 +57,125 @@ describe("parseConfig (design/config/schema.md)", () => {
     });
 
     it("rejects unknown top-level keys (§2.7 — misspellings must not silently change behavior)", () => {
-        const result = parseConfig({ schemaVersion: 1, mode: "observe", capabilties: {} }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            { schemaVersion: 1, mode: "observe", capabilties: {} },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain('unknown key "capabilties"');
+        if (!result.ok)
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                'unknown key "capabilties"',
+            );
     });
 
     it("rejects unknown capability keys and unknown mapping meanings", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: { intake: { enable: true } },
-            mappings: { labels: { readyForDev: "status: ready" } },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { intake: { enable: true } },
+                mappings: { labels: { readyForDev: "status: ready" } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.map((e) => e.message).join()).toContain('unknown key "enable"');
-            expect(result.errors.map((e) => e.message).join()).toContain('"readyForDev" is not a mappable meaning');
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                '"readyForDev" is not a mappable meaning',
+            );
         }
     });
 
     it("fails closed: one error yields no config at all (§2.6)", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mode: "actively", // invalid
-            capabilities: { prQuality: { enabled: true } }, // valid
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mode: "actively", // invalid
+                capabilities: { prQuality: { enabled: true } }, // valid
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
         // The message lists the legal modes, readably separated.
-        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("disabled, observe, dry-run, active");
+        if (!result.ok)
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                "disabled, observe, dry-run, active",
+            );
         // No partially-applied config object exists on the failure arm.
         expect("config" in result).toBe(false);
     });
 
     it("rejects unknown keys under mappings", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mappings: { fields: {} },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: { fields: {} },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain('mappings: unknown key "fields"');
+        if (!result.ok)
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                'mappings: unknown key "fields"',
+            );
     });
 
     it("only boolean true enables a capability — truthiness is not consent (§2.4)", () => {
         for (const enabled of [1, "true", "yes"]) {
-            const result = parseConfig({
-                schemaVersion: 1,
-                capabilities: { intake: { enabled } },
-            }, { revision: "rev-test", knownCapabilities: [] });
+            const result = parseConfig(
+                {
+                    schemaVersion: 1,
+                    capabilities: { intake: { enabled } },
+                },
+                { revision: "rev-test", knownCapabilities: [] },
+            );
             expect(result.ok).toBe(false);
         }
-        const omitted = parseConfig({
-            schemaVersion: 1,
-            capabilities: { intake: { settings: {} } },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const omitted = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { intake: { settings: {} } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(omitted.ok).toBe(true);
         if (omitted.ok) expect(omitted.config.capabilities.intake?.enabled).toBe(false);
     });
 
     it("rejects a wrong or missing schemaVersion", () => {
-        expect(parseConfig({ mode: "observe" }, { revision: "rev-test", knownCapabilities: [] }).ok).toBe(false);
-        expect(parseConfig({ schemaVersion: 2 }, { revision: "rev-test", knownCapabilities: [] }).ok).toBe(false);
+        expect(
+            parseConfig({ mode: "observe" }, { revision: "rev-test", knownCapabilities: [] }).ok,
+        ).toBe(false);
+        expect(
+            parseConfig({ schemaVersion: 2 }, { revision: "rev-test", knownCapabilities: [] }).ok,
+        ).toBe(false);
     });
 
     it("rejects empty label mappings", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mappings: { labels: { ready: "  " } },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: { labels: { ready: "  " } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
     });
 
     // FINDING(config-label-injectivity)
     it("rejects two meanings mapped to one label — label→meaning must be unambiguous (§3)", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mappings: {
-                labels: {
-                    ready: "status: wip",
-                    inProgress: "status: wip",
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: {
+                    labels: {
+                        ready: "status: wip",
+                        inProgress: "status: wip",
+                    },
                 },
             },
-        }, { revision: "rev-test", knownCapabilities: [] });
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.map((e) => e.message).join()).toContain('"status: wip"');
@@ -145,15 +184,18 @@ describe("parseConfig (design/config/schema.md)", () => {
     });
 
     it("injectivity applies across entities too — the strict reading, pending D34", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            mappings: {
-                labels: {
-                    ready: "attention",
-                    needsReview: "attention",
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                mappings: {
+                    labels: {
+                        ready: "attention",
+                        needsReview: "attention",
+                    },
                 },
             },
-        }, { revision: "rev-test", knownCapabilities: [] });
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
     });
 });
@@ -186,7 +228,10 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
 
     it("keeps a disabled unknown capability dormant — removing a shipped capability must not break configs that still mention it", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { retired: { enabled: false, settings: { old: 1 } } } },
+            {
+                schemaVersion: 1,
+                capabilities: { retired: { enabled: false, settings: { old: 1 } } },
+            },
             { revision: "rev-test", knownCapabilities: registry },
         );
         expect(result.ok).toBe(true);
@@ -200,12 +245,16 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
      * argument. Omission is a compile error; `[]` is a stated choice.
      */
     it("an empty registry fails closed instead of bypassing the authority boundary", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: { checksGate: { enabled: true } },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { checksGate: { enabled: true } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("(known: none)");
+        if (!result.ok)
+            expect(result.errors.map((e) => e.message).join()).toContain("(known: none)");
     });
 
     it("a registry rejection fails closed like every other error (§2.6)", () => {
@@ -245,7 +294,9 @@ describe("audit findings, pinned (D55-D56)", () => {
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.map((e) => e.message).join()).toContain("injective");
-            expect(result.errors.map((e) => e.message).join()).toContain("GitHub treats as the same label");
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                "GitHub treats as the same label",
+            );
         }
     });
 
@@ -253,7 +304,9 @@ describe("audit findings, pinned (D55-D56)", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
-                mappings: { labels: { ready: "Status: Ready", needsReview: "status: needs review" } },
+                mappings: {
+                    labels: { ready: "Status: Ready", needsReview: "status: needs review" },
+                },
             },
             { revision: "rev-test", knownCapabilities: [] },
         );
@@ -264,15 +317,24 @@ describe("audit findings, pinned (D55-D56)", () => {
 
     // D56 — absent defaults; present-but-empty is an error.
     it("an absent mode defaults to observe", () => {
-        const result = parseConfig({ schemaVersion: 1 }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            { schemaVersion: 1 },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(true);
         if (result.ok) expect(result.config.mode).toBe("observe");
     });
 
-    it.each([null, ""])("a present but empty mode (%s) is rejected, not silently chosen", (mode) => {
-        const result = parseConfig({ schemaVersion: 1, mode }, { revision: "rev-test", knownCapabilities: [] });
-        expect(result.ok).toBe(false);
-    });
+    it.each([null, ""])(
+        "a present but empty mode (%s) is rejected, not silently chosen",
+        (mode) => {
+            const result = parseConfig(
+                { schemaVersion: 1, mode },
+                { revision: "rev-test", knownCapabilities: [] },
+            );
+            expect(result.ok).toBe(false);
+        },
+    );
 
     it("rejects inherited configuration properties instead of activating them", () => {
         const raw = Object.assign(Object.create({ mode: "active" }), { schemaVersion: 1 });
@@ -309,7 +371,12 @@ describe("every error names its kind and its place (D75)", () => {
 
     it.each([
         ["top-level key", { ...base, stray: 1 }, "unknownKey", "stray"],
-        ["schema version", { ...base, schemaVersion: 2 }, "schemaVersionUnsupported", "schemaVersion"],
+        [
+            "schema version",
+            { ...base, schemaVersion: 2 },
+            "schemaVersionUnsupported",
+            "schemaVersion",
+        ],
         ["mode", { ...base, mode: "sideways" }, "modeInvalid", "mode"],
         ["capabilities shape", { ...base, capabilities: 3 }, "notAMapping", "capabilities"],
         [

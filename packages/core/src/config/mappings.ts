@@ -18,11 +18,7 @@
  * the first match is the only match.
  */
 
-import {
-    MAPPABLE_MEANINGS,
-    type MappableMeaning,
-    type RepositoryConfig,
-} from "./schema.js";
+import { MAPPABLE_MEANINGS, type MappableMeaning, type RepositoryConfig } from "./schema.js";
 
 /**
  * D55's sameness, in one place for BOTH consumers: the validator's collision
@@ -43,10 +39,7 @@ export function labelKey(label: string): string {
  * Iterates `MAPPABLE_MEANINGS` rather than the config's own entries so the
  * keys keep their type without assertion — the closed union is the walk.
  */
-export function meaningOfLabel(
-    config: RepositoryConfig,
-    label: string,
-): MappableMeaning | null {
+export function meaningOfLabel(config: RepositoryConfig, label: string): MappableMeaning | null {
     // No empty-string case: the validator rejects empty and whitespace
     // labels, so an empty `wanted` can never match a mapped key.
     const wanted = labelKey(label);

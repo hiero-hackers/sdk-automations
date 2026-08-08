@@ -18,7 +18,6 @@ export type ActionClass =
     | "clockTriggeredDestructive"
     | "immediatePreventive";
 
-
 /** What a capability must supply with every write request (safety.md §2.3). */
 export interface WriteRequest {
     /**
@@ -35,12 +34,12 @@ export interface WriteRequest {
     readonly target: { readonly item: string; readonly change: string };
 }
 
-    /**
-     * When the newest HUMAN change was made: a `Date`, `null` if the shell
-     * checked and found none, or `"unknown"` if it could not establish
-     * ordering. Unestablished ordering is a conflict, never an absence
-     * (`FINDING(safety-ordering-unknown)`, D51).
-     */
+/**
+ * When the newest HUMAN change was made: a `Date`, `null` if the shell
+ * checked and found none, or `"unknown"` if it could not establish
+ * ordering. Unestablished ordering is a conflict, never an absence
+ * (`FINDING(safety-ordering-unknown)`, D51).
+ */
 export type HumanChangeOrdering = Date | null | "unknown";
 
 /**

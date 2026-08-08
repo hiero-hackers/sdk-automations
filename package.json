@@ -8,11 +8,14 @@
         "test": "pnpm -r test",
         "test:coverage": "pnpm -r test:coverage",
         "lint": "eslint .",
-        "audit": "pnpm audit --audit-level moderate"
+        "audit": "pnpm audit --audit-level moderate",
+        "format": "prettier --write packages/core packages/checks packages/store packages/executor packages/probes packages/lab packages/shell",
+        "format:check": "prettier --check packages/core packages/checks packages/store packages/executor packages/probes packages/lab packages/shell"
     },
     "devDependencies": {
         "@vitest/coverage-v8": "^4.1.10",
         "eslint": "^9.39.5",
+        "prettier": "^3.9.6",
         "typescript-eslint": "^8.46.0"
     },
     "pnpm": {
