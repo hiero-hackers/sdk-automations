@@ -9,8 +9,8 @@
         "test:coverage": "pnpm -r test:coverage",
         "lint": "eslint .",
         "audit": "pnpm audit --audit-level moderate",
-        "format": "prettier --write core checks store executor probes lab shell",
-        "format:check": "prettier --check core checks store executor probes lab shell"
+        "format": "prettier --write packages/core packages/checks packages/store packages/executor packages/probes packages/lab packages/shell",
+        "format:check": "prettier --check packages/core packages/checks packages/store packages/executor packages/probes packages/lab packages/shell"
     },
     "devDependencies": {
         "@vitest/coverage-v8": "^4.1.10",
