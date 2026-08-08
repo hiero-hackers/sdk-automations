@@ -93,17 +93,13 @@ interface Slice {
     readonly findings: readonly Finding[];
 }
 const capabilityOf = (f: Finding): string | null =>
-    f.subject.kind === "capability" ||
-    f.subject.kind === "item" ||
-    f.subject.kind === "effect"
+    f.subject.kind === "capability" || f.subject.kind === "item" || f.subject.kind === "effect"
         ? f.subject.capability
         : null;
 
 function sliceFor(decisions: readonly Decision[], name: string): Slice {
     return {
-        approved: decisions.flatMap((d) =>
-            d.approved.filter((i) => i.capability === name),
-        ),
+        approved: decisions.flatMap((d) => d.approved.filter((i) => i.capability === name)),
         findings: decisions.flatMap((d) =>
             d.report.findings.filter((f) => capabilityOf(f) === name),
         ),
@@ -114,9 +110,7 @@ async function runAll(enabled: readonly string[]): Promise<readonly Decision[]> 
     const config = configEnabling(enabled, NAMES, SETTINGS);
     const decisions: Decision[] = [];
     for (const observation of OBSERVATIONS) {
-        decisions.push(
-            await decide({ kind: "observation", observation }, config, ALL, externals),
-        );
+        decisions.push(await decide({ kind: "observation", observation }, config, ALL, externals));
     }
     return decisions;
 }
@@ -160,9 +154,6 @@ describe("P3 through the engine", () => {
         const staleAlone = sliceFor(await runAll(["inactivity"]), "inactivity");
         expect(staleAlone.approved).toHaveLength(1);
         expect(staleAlone.approved[0]).toMatchObject({ operation: "postManagedComment" });
-        expect(staleAlone.findings.map((f) => f.code)).toEqual([
-            "capabilityExplained",
-            "applied",
-        ]);
+        expect(staleAlone.findings.map((f) => f.code)).toEqual(["capabilityExplained", "applied"]);
     });
 });

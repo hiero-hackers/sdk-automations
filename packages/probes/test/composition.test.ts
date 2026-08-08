@@ -88,12 +88,10 @@ async function decideOn(
     observation: AnyObservation,
     over: Partial<DecideExternals> = {},
 ): Promise<Decision> {
-    return decide(
-        { kind: "observation", observation },
-        config,
-        engineCaps(),
-        { ...externals, ...over },
-    );
+    return decide({ kind: "observation", observation }, config, engineCaps(), {
+        ...externals,
+        ...over,
+    });
 }
 
 /** Counts applications per call — the reference model for exactly-once. */
@@ -152,9 +150,7 @@ describe("decide → planApproved → executor", () => {
 
         const store = openStore();
         const port = new CountingPort();
-        const executor = new RecoveryExecutor(store, port, "worker-1", () =>
-            NOW.toISOString(),
-        );
+        const executor = new RecoveryExecutor(store, port, "worker-1", () => NOW.toISOString());
         for (const plan of plans) {
             expect(await executor.runEffect(plan)).toEqual({ outcome: "complete" });
         }
@@ -167,8 +163,7 @@ describe("decide → planApproved → executor", () => {
     it("re-deciding the same observation is exactly-once across a crash", async () => {
         const config = configEnabling(NAMES, NAMES, { intake: { announce: false } });
         const decision = await decideOn(config, issueObservation);
-        const plan = planApproved(decision.approved, { repository: REPO, config })
-            .plans[0]!;
+        const plan = planApproved(decision.approved, { repository: REPO, config }).plans[0]!;
 
         const port = new CountingPort();
         port.crashOn(plan, plan.calls[0]!);
@@ -176,9 +171,7 @@ describe("decide → planApproved → executor", () => {
         // First process dies mid-call; the claim is never released.
         const first = openStore();
         await expect(
-            new RecoveryExecutor(first, port, "w1", () => NOW.toISOString()).runEffect(
-                plan,
-            ),
+            new RecoveryExecutor(first, port, "w1", () => NOW.toISOString()).runEffect(plan),
         ).rejects.toThrow("connection reset");
 
         // The restarted process takes the stale lease over and resolves.
@@ -257,9 +250,7 @@ describe("the gates are the doorway, not a bypass", () => {
         const { plans } = planApproved(acted.approved, { repository: REPO, config });
         const store = openStore();
         const port = new CountingPort();
-        const executor = new RecoveryExecutor(store, port, "w1", () =>
-            NOW.toISOString(),
-        );
+        const executor = new RecoveryExecutor(store, port, "w1", () => NOW.toISOString());
         expect(await executor.runEffect(plans[0]!)).toEqual({ outcome: "complete" });
         // The grace trio and the cause-drift refusal are pinned in
         // packages/core/test/engine/decide.test.ts — the gate itself is core's now.

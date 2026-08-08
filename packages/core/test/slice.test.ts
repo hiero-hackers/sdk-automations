@@ -163,10 +163,7 @@ describe("one real delivery, end to end", () => {
         ],
     };
     it("the report closes clean: nothing needs a human", () => {
-        expect(report.findings.map((f) => f.code)).toEqual([
-            "capabilityExplained",
-            "applied",
-        ]);
+        expect(report.findings.map((f) => f.code)).toEqual(["capabilityExplained", "applied"]);
         expect(problems(report)).toEqual([]);
     });
 

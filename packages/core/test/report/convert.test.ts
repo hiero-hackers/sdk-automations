@@ -96,10 +96,8 @@ describe("screens and explanations", () => {
 
     it("a failed screen is always a problem — there is no benign screen failure", () => {
         expect(
-            screenFinding(
-                { ok: false, code: "undeclaredIntent", reason: "not declared" },
-                item,
-            ).severity,
+            screenFinding({ ok: false, code: "undeclaredIntent", reason: "not declared" }, item)
+                .severity,
         ).toBe("problem");
     });
 

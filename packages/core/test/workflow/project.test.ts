@@ -52,9 +52,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 
     it("a conflict still reports cross-entity meanings as ignored", () => {
         expect(
-            projectPrObservation(
-                observed(["needsReview", "needsRevision", "ready", "blocked"]),
-            ),
+            projectPrObservation(observed(["needsReview", "needsRevision", "ready", "blocked"])),
         ).toEqual({
             kind: "conflict",
             positions: ["needsReview", "needsRevision"],
@@ -75,9 +73,9 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     });
 
     it("blocked does not rescue a conflict", () => {
-        expect(
-            projectIssueObservation(observed(["ready", "inProgress", "blocked"])).kind,
-        ).toBe("conflict");
+        expect(projectIssueObservation(observed(["ready", "inProgress", "blocked"])).kind).toBe(
+            "conflict",
+        );
     });
 
     it("duplicate observations of one meaning are one position, not a conflict", () => {
@@ -101,9 +99,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
     );
 
     it("a cross-entity meaning coexists with an own position without conflict", () => {
-        expect(
-            projectPrObservation(observed(["needsReview", "inProgress"])),
-        ).toEqual({
+        expect(projectPrObservation(observed(["needsReview", "inProgress"]))).toEqual({
             kind: "position",
             state: { meaning: "needsReview", blocked: false, closedBy: null },
             ignored: ["inProgress"],
@@ -142,9 +138,7 @@ describe("observation projection (manual-edits.md §3, §8)", () => {
 // to judge whether the conflict is worth anyone's attention.
 describe("conflict verdicts carry blocked and closedBy (D59)", () => {
     it("reports the pause alongside the conflict", () => {
-        expect(
-            projectIssueObservation(observed(["ready", "inProgress", "blocked"])),
-        ).toEqual({
+        expect(projectIssueObservation(observed(["ready", "inProgress", "blocked"]))).toEqual({
             kind: "conflict",
             positions: ["ready", "inProgress"],
             blocked: true,
@@ -154,11 +148,7 @@ describe("conflict verdicts carry blocked and closedBy (D59)", () => {
     });
 
     it("reports the closure alongside the conflict", () => {
-        expect(
-            projectPrObservation(
-                observed(["needsReview", "readyToMerge"], "merged"),
-            ),
-        ).toEqual({
+        expect(projectPrObservation(observed(["needsReview", "readyToMerge"], "merged"))).toEqual({
             kind: "conflict",
             positions: ["needsReview", "readyToMerge"],
             blocked: false,

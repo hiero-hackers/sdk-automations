@@ -137,10 +137,7 @@ describe("plan identity", () => {
         const a = labelIntent();
         const b = commentIntent();
         const { plans } = planApproved([a, b], inputs);
-        expect(plans.map((p) => p.effectId)).toEqual([
-            a.idempotencyKey,
-            b.idempotencyKey,
-        ]);
+        expect(plans.map((p) => p.effectId)).toEqual([a.idempotencyKey, b.idempotencyKey]);
         expect(plans.every((p) => p.revision === "rev-plan-1")).toBe(true);
     });
 });
@@ -151,18 +148,14 @@ describe("the three refusals only this layer can see", () => {
         const duplicate = { ...commentIntent(), idempotencyKey: original.idempotencyKey };
         const { plans, refusals } = planApproved([original, duplicate], inputs);
         expect(plans).toHaveLength(1);
-        expect(refusals).toEqual([
-            expect.objectContaining({ code: "duplicateIdempotencyKey" }),
-        ]);
+        expect(refusals).toEqual([expect.objectContaining({ code: "duplicateIdempotencyKey" })]);
     });
 
     it("an unmapped meaning has no command, so no plan", () => {
         const bare = { repository: REPO, config: configWith({}) };
         const { plans, refusals } = planApproved([labelIntent()], bare);
         expect(plans).toEqual([]);
-        expect(refusals).toEqual([
-            expect.objectContaining({ code: "mappedLabelMissing" }),
-        ]);
+        expect(refusals).toEqual([expect.objectContaining({ code: "mappedLabelMissing" })]);
     });
 
     it("a mixed-repository batch plans nothing at all", () => {

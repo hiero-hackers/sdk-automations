@@ -56,7 +56,7 @@ const validConfig = fc
                 minLength: meanings.length,
                 maxLength: meanings.length,
             })
-            .map((labels) => Object.fromEntries(meanings.map((m, i) => [m, labels[i]])))
+            .map((labels) => Object.fromEntries(meanings.map((m, i) => [m, labels[i]]))),
     )
     .chain((labels) =>
         fc.record(
@@ -97,7 +97,9 @@ describe("parseConfig properties", () => {
     it("valid-by-construction configs parse ok", () => {
         fc.assert(
             fc.property(validConfig, (raw) => {
-                const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: Object.keys(raw.capabilities ?? {}),
+                const result = parseConfig(raw, {
+                    revision: "rev-test",
+                    knownCapabilities: Object.keys(raw.capabilities ?? {}),
                 });
                 if (!result.ok) throw new Error(result.errors.map((e) => e.message).join("; "));
             }),

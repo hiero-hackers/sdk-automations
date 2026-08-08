@@ -47,19 +47,36 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
         expect(classifyFailure(observed.suspended).kind).toBe("installationSuspended");
         expect(classifyFailure(observed.secondaryLimit).kind).toBe("secondaryLimit");
         expect(
-            classifyFailure({ status: 403, body: "API rate limit exceeded", headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1784838989" } }),
+            classifyFailure({
+                status: 403,
+                body: "API rate limit exceeded",
+                headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1784838989" },
+            }),
         ).toEqual({ kind: "primaryExhausted", resetAt: "1784838989" });
     });
 
     it("secondary limit wins over the permissions header — its body marker is the only reliable signal (6.4)", () => {
-        const both = { ...observed.secondaryLimit, headers: { "x-accepted-github-permissions": "issues=write" } };
+        const both = {
+            ...observed.secondaryLimit,
+            headers: { "x-accepted-github-permissions": "issues=write" },
+        };
         expect(classifyFailure(both).kind).toBe("secondaryLimit");
     });
 
     it("401 splits on LOCAL token age, never the body — an expired token returns the same body as a wrong key (probe `…T21-52-06-572Z#1`)", () => {
-        const observedExpiredBody = '{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest","status":"401"}';
-        expect(classifyFailure({ status: 401, body: observedExpiredBody, headers: {}, tokenPastExpiry: true }).kind).toBe("tokenExpired");
-        expect(classifyFailure({ status: 401, body: observedExpiredBody, headers: {} }).kind).toBe("badCredentials");
+        const observedExpiredBody =
+            '{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest","status":"401"}';
+        expect(
+            classifyFailure({
+                status: 401,
+                body: observedExpiredBody,
+                headers: {},
+                tokenPastExpiry: true,
+            }).kind,
+        ).toBe("tokenExpired");
+        expect(classifyFailure({ status: 401, body: observedExpiredBody, headers: {} }).kind).toBe(
+            "badCredentials",
+        );
     });
 
     it("an unrecognized 403 admits ignorance instead of fabricating a diagnosis", () => {
@@ -75,9 +92,10 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
             kind: "forbiddenUnrecognized",
             bodySnippet: "This installation has been suspended by the account owner.",
         });
-        expect(
-            retryAdvice(classifyFailure(reworded), 0, 0),
-        ).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
+        expect(retryAdvice(classifyFailure(reworded), 0, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
     });
 
     it("the ignorance snippet is bounded — a huge body cannot flood a report", () => {
@@ -95,7 +113,9 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
 
     it("unmatched statuses classify as transient — the bounded-retry bucket", () => {
         for (const status of [500, 502, 503]) {
-            expect(classifyFailure({ status, body: "", headers: {} })).toEqual({ kind: "transient" });
+            expect(classifyFailure({ status, body: "", headers: {} })).toEqual({
+                kind: "transient",
+            });
         }
     });
 
@@ -193,9 +213,7 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
             status: 429,
             body: "rate limited",
             headers: {
-                "retry-after": String(
-                    MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
-                ),
+                "retry-after": String(MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS),
             },
         });
         expect(failure).toEqual({
@@ -210,23 +228,26 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
 
     it("422 with structured errors[] is maintainer-facing", () => {
         expect(classifyFailure(observed.validation).kind).toBe("validationError");
-        expect(retryAdvice({ kind: "validationError" }, 0, 0)).toEqual({ action: "doNotRetry", surfaceTo: "maintainer" });
+        expect(retryAdvice({ kind: "validationError" }, 0, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "maintainer",
+        });
     });
 });
 
 describe("retryAdvice (bounded, evidence-derived)", () => {
     it("secondary limit waits the documented one-minute floor — there is no header to trust", () => {
-        expect(retryAdvice({ kind: "secondaryLimit" }, 0, 0)).toEqual({ action: "retryAfterMs", ms: 60_000 });
+        expect(retryAdvice({ kind: "secondaryLimit" }, 0, 0)).toEqual({
+            action: "retryAfterMs",
+            ms: 60_000,
+        });
     });
 
     it("Retry-After zero still observes the one-minute secondary-limit floor", () => {
-        expect(
-            retryAdvice(
-                { kind: "secondaryLimit", retryAfterSeconds: 0 },
-                0,
-                0,
-            ),
-        ).toEqual({ action: "retryAfterMs", ms: 60_000 });
+        expect(retryAdvice({ kind: "secondaryLimit", retryAfterSeconds: 0 }, 0, 0)).toEqual({
+            action: "retryAfterMs",
+            ms: 60_000,
+        });
     });
 
     it("primary exhaustion waits for the reset epoch", () => {
@@ -237,9 +258,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
     it.each([undefined, "", "not-a-number"])(
         "fails closed when the primary reset header is unusable: %j",
         (resetAt) => {
-            expect(
-                retryAdvice({ kind: "primaryExhausted", resetAt }, 0, 0),
-            ).toEqual({
+            expect(retryAdvice({ kind: "primaryExhausted", resetAt }, 0, 0)).toEqual({
                 action: "doNotRetry",
                 surfaceTo: "operator",
             });
@@ -251,9 +270,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             retryAdvice(
                 {
                     kind: "primaryExhausted",
-                    resetAt: String(
-                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS + 1,
-                    ),
+                    resetAt: String(MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS + 1),
                 },
                 0,
                 0,
@@ -269,9 +286,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             retryAdvice(
                 {
                     kind: "primaryExhausted",
-                    resetAt: String(
-                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
-                    ),
+                    resetAt: String(MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS),
                 },
                 0,
                 0,
@@ -288,9 +303,9 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             { kind: "primaryExhausted", resetAt: "1000" },
         ] as const) {
             // The last allowed attempt still waits…
-            expect(
-                retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS - 1, 0).action,
-            ).toBe("retryAfterMs");
+            expect(retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS - 1, 0).action).toBe(
+                "retryAfterMs",
+            );
             // …one past the bound surfaces to the operator.
             expect(retryAdvice(failure, MAX_RATE_LIMIT_ATTEMPTS, 0)).toEqual({
                 action: "doNotRetry",
@@ -301,19 +316,20 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
 
     it("transient failures back off boundedly, then surface to the operator", () => {
         const waits = [0, 1, 2, 3].map((attempt) => retryAdvice({ kind: "transient" }, attempt, 0));
-        expect(waits.slice(0, 3).map((w) => (w.action === "retryAfterMs" ? w.ms : -1))).toEqual([500, 2_000, 8_000]);
+        expect(waits.slice(0, 3).map((w) => (w.action === "retryAfterMs" ? w.ms : -1))).toEqual([
+            500, 2_000, 8_000,
+        ]);
         expect(waits[3]).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
     });
 
     it("expired tokens refresh within their own bound, then surface", () => {
-        expect(retryAdvice({ kind: "tokenExpired" }, 0, 0)).toEqual({ action: "refreshTokenAndRetry" });
-        expect(
-            retryAdvice(
-                { kind: "tokenExpired" },
-                MAX_TOKEN_REFRESH_ATTEMPTS,
-                0,
-            ),
-        ).toEqual({ action: "doNotRetry", surfaceTo: "operator" });
+        expect(retryAdvice({ kind: "tokenExpired" }, 0, 0)).toEqual({
+            action: "refreshTokenAndRetry",
+        });
+        expect(retryAdvice({ kind: "tokenExpired" }, MAX_TOKEN_REFRESH_ATTEMPTS, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
     });
 
     it("every failure class has advice — the switch is exhaustive by type", () => {
@@ -365,9 +381,7 @@ describe("the perishable surface keeps its own evidence", () => {
 
     it("every pattern records when and where it was probed", () => {
         for (const [name, entry] of Object.entries(BODY_PATTERNS)) {
-            expect(entry.probedAt, `${name} has no probe date`).toMatch(
-                /^\d{4}-\d{2}-\d{2}$/,
-            );
+            expect(entry.probedAt, `${name} has no probe date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
             expect(entry.experiment.length, `${name} names no experiment`).toBeGreaterThan(0);
             expect(entry.observed.length).toBeGreaterThan(20);
         }

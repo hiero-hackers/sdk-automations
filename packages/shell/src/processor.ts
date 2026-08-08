@@ -64,10 +64,7 @@ export class Processor {
         try {
             await this.process(claimed);
         } catch (error) {
-            this.options.store.releaseDelivery(
-                claimed.deliveryId,
-                claimed.claimToken,
-            );
+            this.options.store.releaseDelivery(claimed.deliveryId, claimed.claimToken);
             throw error;
         }
         this.options.store.completeDelivery(
@@ -109,11 +106,7 @@ export class Processor {
             return;
         }
 
-        const decision = await this.decideOn(
-            claimed,
-            config.result.config,
-            decidedAt,
-        );
+        const decision = await this.decideOn(claimed, config.result.config, decidedAt);
         this.options.reports.record({
             kind: "decision",
             ...identity,
@@ -124,9 +117,7 @@ export class Processor {
 
     private claimNext(): ClaimedDelivery | undefined {
         const now = this.options.clock();
-        const staleBefore = new Date(
-            now.getTime() - STALE_CLAIM_MINUTES * 60_000,
-        );
+        const staleBefore = new Date(now.getTime() - STALE_CLAIM_MINUTES * 60_000);
         return this.options.store.claimNextDelivery(
             this.options.worker,
             now.toISOString(),
@@ -145,9 +136,7 @@ export class Processor {
             revision: document.revision,
             result: parseConfigDocument(document.text, {
                 revision: document.revision,
-                knownCapabilities: this.options.capabilities.map(
-                    (c) => c.declaration.name,
-                ),
+                knownCapabilities: this.options.capabilities.map((c) => c.declaration.name),
             }),
         };
     }

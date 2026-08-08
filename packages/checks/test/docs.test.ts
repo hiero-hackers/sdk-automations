@@ -36,20 +36,14 @@ const page = (name: string): string =>
 
 /** The first backtick-quoted token of each table row in one `## section`. */
 function tableCodes(markdown: string, heading: string): string[] {
-    const section = markdown
-        .split(/^## /m)
-        .find((s) => s.startsWith(heading));
+    const section = markdown.split(/^## /m).find((s) => s.startsWith(heading));
     expect(section, `section "${heading}" exists`).toBeDefined();
-    return [...(section ?? "").matchAll(/^\|\s*`([a-zA-Z-]+)`\s*\|/gm)].map(
-        (m) => m[1]!,
-    );
+    return [...(section ?? "").matchAll(/^\|\s*`([a-zA-Z-]+)`\s*\|/gm)].map((m) => m[1]!);
 }
 
 /** Every backtick-quoted token in a section, for the non-table list. */
 function inlineCodes(markdown: string, heading: string): string[] {
-    const section = markdown
-        .split(/^## /m)
-        .find((s) => s.startsWith(heading));
+    const section = markdown.split(/^## /m).find((s) => s.startsWith(heading));
     expect(section, `section "${heading}" exists`).toBeDefined();
     return [...(section ?? "").matchAll(/`([a-zA-Z]+)`/g)].map((m) => m[1]!);
 }
@@ -66,10 +60,7 @@ describe("documentation parsing", () => {
             "",
             "## Next",
         ].join(newline);
-        expect(tableCodes(normalizeNewlines(markdown), "Codes")).toEqual([
-            "first",
-            "second",
-        ]);
+        expect(tableCodes(normalizeNewlines(markdown), "Codes")).toEqual(["first", "second"]);
     });
 });
 
@@ -120,9 +111,7 @@ describe("docs/quickstart.md", () => {
     });
 
     it("its mode table is the mode union, in ladder order", () => {
-        expect(tableCodes(page("quickstart.md"), "Choosing a mode")).toEqual([
-            ...REPOSITORY_MODES,
-        ]);
+        expect(tableCodes(page("quickstart.md"), "Choosing a mode")).toEqual([...REPOSITORY_MODES]);
     });
 });
 
@@ -137,9 +126,7 @@ describe("docs/configuration.md", () => {
      */
     it("carries the provenance promise, as does troubleshooting", () => {
         for (const name of ["configuration.md", "troubleshooting.md"]) {
-            expect(page(name)).toContain(
-                "asserted against the code by the test suite",
-            );
+            expect(page(name)).toContain("asserted against the code by the test suite");
         }
     });
 
@@ -172,16 +159,12 @@ describe("docs/configuration.md", () => {
             const section = doc.split(`### \`${key}\``)[1] ?? "";
             const table = section.split("\n\n")[1] ?? "";
             expect(table, `${key} has a definition table`).toContain("| Type |");
-            expect(table, `${key} states required-or-default`).toMatch(
-                /\| (Required|Default) \|/,
-            );
+            expect(table, `${key} states required-or-default`).toMatch(/\| (Required|Default) \|/);
         }
     });
 
     it("its mode table matches the modes, and the ladder is in order", () => {
-        const ladder = doc
-            .split("| Mode | Reads |")[1]
-            ?.split("\n\n")[0] ?? "";
+        const ladder = doc.split("| Mode | Reads |")[1]?.split("\n\n")[0] ?? "";
         expect([...ladder.matchAll(/^\| `([a-z-]+)` \|/gm)].map((m) => m[1])).toEqual([
             ...REPOSITORY_MODES,
         ]);

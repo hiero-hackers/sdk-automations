@@ -21,7 +21,14 @@ import {
 } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
 import { intake } from "@hiero-hackers/automation-probes";
-import { createShell, fileConfigSource, fileReportSink, stubbedExternals, type Shell, type ShellRecord } from "../src/index.js";
+import {
+    createShell,
+    fileConfigSource,
+    fileReportSink,
+    stubbedExternals,
+    type Shell,
+    type ShellRecord,
+} from "../src/index.js";
 
 const SECRET = "shell-slice-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";

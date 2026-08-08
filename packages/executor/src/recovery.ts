@@ -72,10 +72,7 @@ export interface UnassignCommand extends AdapterCommandBase {
 }
 
 /** Plain immutable data: the only values crossing into an effect adapter. */
-export type AdapterCommand =
-    | PostManagedCommentCommand
-    | ApplyMappedLabelCommand
-    | UnassignCommand;
+export type AdapterCommand = PostManagedCommentCommand | ApplyMappedLabelCommand | UnassignCommand;
 
 export interface PlannedCall {
     /** 1-based, contiguous — the journal's call_seq. */
@@ -108,10 +105,7 @@ export interface EffectPlan {
  */
 export interface EffectPort {
     perform(plan: EffectPlan, call: PlannedCall): Promise<void>;
-    readBack(
-        plan: EffectPlan,
-        call: PlannedCall,
-    ): Promise<"present" | "absent">;
+    readBack(plan: EffectPlan, call: PlannedCall): Promise<"present" | "absent">;
 }
 
 export type RunResult =
@@ -238,10 +232,7 @@ export class RecoveryExecutor {
         ) {
             return {
                 outcome: "unresolved",
-                seq:
-                    state.state === "sentUnknown"
-                        ? state.seq
-                        : state.lastDoneSeq,
+                seq: state.state === "sentUnknown" ? state.seq : state.lastDoneSeq,
                 reason: "journaled effect revision does not match the current default-branch configuration revision",
             };
         }
@@ -266,10 +257,7 @@ export class RecoveryExecutor {
                  * and surfaces; it never guesses a mapping between old
                  * and new plans.
                  */
-                if (
-                    call === undefined ||
-                    commandIdentity(call.command) !== state.intent
-                ) {
+                if (call === undefined || commandIdentity(call.command) !== state.intent) {
                     return {
                         outcome: "unresolved",
                         seq: state.seq,

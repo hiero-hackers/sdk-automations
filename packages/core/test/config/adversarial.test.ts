@@ -18,17 +18,22 @@ describe("hostile keys (the __proto__ hole)", () => {
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
-            expect(result.errors.map((e) => e.message).join()).toContain("not a valid configuration key");
+            expect(result.errors.map((e) => e.message).join()).toContain(
+                "not a valid configuration key",
+            );
         }
     });
 
     it.each(["a.b", "kebab-case", "PascalCase", "_private", ""])(
         "rejects capability key %j — not a shippable capability name",
         (name) => {
-            const result = parseConfig({
-                schemaVersion: 1,
-                capabilities: { [name]: { enabled: false } },
-            }, { revision: "rev-test", knownCapabilities: [] });
+            const result = parseConfig(
+                {
+                    schemaVersion: 1,
+                    capabilities: { [name]: { enabled: false } },
+                },
+                { revision: "rev-test", knownCapabilities: [] },
+            );
             expect(result.ok).toBe(false);
         },
     );
@@ -37,13 +42,19 @@ describe("hostile keys (the __proto__ hole)", () => {
         // `constructor` is valid camelCase — it may exist as config.
         // What must NEVER happen is an inherited member masquerading
         // as configuration when the name is absent.
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: { constructor: { enabled: false } },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { constructor: { enabled: false } },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(result.config.capabilities.constructor).toEqual({ enabled: false, settings: {} });
+            expect(result.config.capabilities.constructor).toEqual({
+                enabled: false,
+                settings: {},
+            });
             expect(result.config.capabilities.hasOwnProperty).toBeUndefined();
             expect(result.config.capabilities.toString).toBeUndefined();
         }
@@ -54,7 +65,9 @@ describe("hostile keys (the __proto__ hole)", () => {
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(Object.prototype.hasOwnProperty.call(result.config.principals, "__proto__")).toBe(true);
+            expect(
+                Object.prototype.hasOwnProperty.call(result.config.principals, "__proto__"),
+            ).toBe(true);
             expect(Object.entries(result.config.principals)).toEqual([["__proto__", "team-x"]]);
         }
     });
@@ -76,7 +89,10 @@ describe("hostile keys (the __proto__ hole)", () => {
     });
 
     it("__proto__ as a top-level or mapping key is an ordinary rejected unknown key", () => {
-        const top = parseConfig(JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'), { revision: "rev-test", knownCapabilities: [] });
+        const top = parseConfig(JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'), {
+            revision: "rev-test",
+            knownCapabilities: [],
+        });
         expect(top.ok).toBe(false);
         const mapping = parseConfig(
             JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
@@ -117,16 +133,17 @@ describe("never throws, for any already-parsed shape", () => {
             },
         },
         // Many keys — no quadratic surprise, no throw.
-        Object.fromEntries(
-            Array.from({ length: 2000 }, (_, i) => [`k${String(i)}`, i]),
-        ),
+        Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`k${String(i)}`, i])),
     ];
 
     it("rejects null nested mappings instead of treating them as objects", () => {
-        const result = parseConfig({
-            schemaVersion: 1,
-            capabilities: { assignment: null },
-        }, { revision: "rev-test", knownCapabilities: [] });
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { assignment: null },
+            },
+            { revision: "rev-test", knownCapabilities: [] },
+        );
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.map((e) => e.message).join()).toContain(
@@ -143,7 +160,8 @@ describe("never throws, for any already-parsed shape", () => {
             if (!result.ok) {
                 expect(result.errors.length).toBeGreaterThan(0);
                 // Every error is a sentence, not an empty placeholder.
-                for (const { message: error } of result.errors) expect(error.length).toBeGreaterThan(0);
+                for (const { message: error } of result.errors)
+                    expect(error.length).toBeGreaterThan(0);
             }
         },
     );
@@ -156,7 +174,10 @@ describe("never throws, for any already-parsed shape", () => {
             [[], "configuration must be a mapping"],
             [{ schemaVersion: 1, capabilities: [] }, "capabilities must be a mapping"],
             [{ schemaVersion: 1, capabilities: { a: [] } }, 'capability "a" must be a mapping'],
-            [{ schemaVersion: 1, capabilities: { a: { settings: [] } } }, "settings must be a mapping"],
+            [
+                { schemaVersion: 1, capabilities: { a: { settings: [] } } },
+                "settings must be a mapping",
+            ],
             [{ schemaVersion: 1, mappings: [] }, "mappings must be a mapping"],
             [{ schemaVersion: 1, mappings: { labels: [] } }, "mappings.labels must be a mapping"],
             [{ schemaVersion: 1, principals: [] }, "principals must be a mapping"],
@@ -183,7 +204,10 @@ describe("never throws, for any already-parsed shape", () => {
         );
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect(Object.keys(result.config.capabilities).sort()).toEqual(["assignment", "prQuality"]);
+            expect(Object.keys(result.config.capabilities).sort()).toEqual([
+                "assignment",
+                "prQuality",
+            ]);
             expect(Object.keys(result.config.principals).sort()).toEqual(["a", "b"]);
         }
     });

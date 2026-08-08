@@ -13,8 +13,16 @@ const prQuality: CapabilityDeclaration = {
     observations: ["pullRequestUpdated"],
     resolvers: [],
     intents: [
-        { name: "postManagedComment", idempotencyClass: "nonIdempotent", requiredPermissions: ["issues:write"] },
-        { name: "applyMappedLabel", idempotencyClass: "idempotent", requiredPermissions: ["issues:write"] },
+        {
+            name: "postManagedComment",
+            idempotencyClass: "nonIdempotent",
+            requiredPermissions: ["issues:write"],
+        },
+        {
+            name: "applyMappedLabel",
+            idempotencyClass: "idempotent",
+            requiredPermissions: ["issues:write"],
+        },
     ],
     permissions: {
         repository: ["issues:write", "pull_requests:read"],
@@ -36,7 +44,13 @@ describe("validateDeclaration (design/modules/contract.md §1 + D23 amendments)"
     it("rejects an intent requiring a permission its capability does not declare", () => {
         const errors = validateDeclaration({
             ...prQuality,
-            intents: [{ name: "gate", idempotencyClass: "idempotent", requiredPermissions: ["checks:write"] }],
+            intents: [
+                {
+                    name: "gate",
+                    idempotencyClass: "idempotent",
+                    requiredPermissions: ["checks:write"],
+                },
+            ],
         });
         expect(errors.join()).toContain('"checks:write"');
         expect(errors.join()).toContain("cannot exceed");
@@ -185,7 +199,9 @@ describe("createRegistry → parseConfig (FINDING(config-capability-registry-gap
     it("get() returns the declaration configuration validation will interrogate", () => {
         const result = createRegistry([prQuality]);
         if (!result.ok) throw new Error("registry should build");
-        expect(result.registry.get("prQuality")?.intents[0]?.idempotencyClass).toBe("nonIdempotent");
+        expect(result.registry.get("prQuality")?.intents[0]?.idempotencyClass).toBe(
+            "nonIdempotent",
+        );
         expect(result.registry.get("missing")).toBeUndefined();
     });
 
@@ -297,8 +313,19 @@ describe("audit findings, pinned (D57-D58)", () => {
      */
     it("get hides a retired capability while describe reports metadata only", () => {
         const result = createRegistry([
-            { ...base, name: "live", intents: [], permissions: { repository: [], organization: [] } },
-            { ...base, name: "old", retired: true, intents: [], permissions: { repository: [], organization: [] } },
+            {
+                ...base,
+                name: "live",
+                intents: [],
+                permissions: { repository: [], organization: [] },
+            },
+            {
+                ...base,
+                name: "old",
+                retired: true,
+                intents: [],
+                permissions: { repository: [], organization: [] },
+            },
         ] as CapabilityDeclaration[]);
         expect(result.ok).toBe(true);
         if (!result.ok) return;

@@ -46,9 +46,7 @@ function evaluate<M, C extends TransitionCause>(
     edges: readonly Edge<M, C>[],
     request: TransitionRequest<M, C>,
 ): TransitionVerdict {
-    const edge = edges.find(
-        (e) => e.from === request.from && e.to === request.to,
-    );
+    const edge = edges.find((e) => e.from === request.from && e.to === request.to);
     if (!edge) {
         return {
             allowed: false,
@@ -74,9 +72,7 @@ export function canTransitionIssue(
 }
 
 /** Can a pull request move `from` → `to` for `cause`, per the profile? Pure. */
-export function canTransitionPr(
-    request: TransitionRequest<PrMeaning, PrCause>,
-): TransitionVerdict {
+export function canTransitionPr(request: TransitionRequest<PrMeaning, PrCause>): TransitionVerdict {
     return evaluate(PR_EDGES, request);
 }
 
@@ -138,9 +134,10 @@ export function applyTransition<M, C extends TransitionCause>(
  * merged pull request can never reopen, which GitHub enforces and this refuses
  * explicitly rather than omitting (`FINDING(taxonomy-reopen)`, D49, D28).
  */
-export function applyReopen<M>(
-    state: WorkItemState<M>,
-): { readonly state: WorkItemState<M>; readonly verdict: TransitionVerdict } {
+export function applyReopen<M>(state: WorkItemState<M>): {
+    readonly state: WorkItemState<M>;
+    readonly verdict: TransitionVerdict;
+} {
     if (state.closedBy === null) {
         return {
             state,

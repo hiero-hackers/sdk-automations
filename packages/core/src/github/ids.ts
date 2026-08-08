@@ -21,19 +21,12 @@ export type DeliveryRecordId = string & {
     readonly [deliveryRecordIdBrand]: true;
 };
 
-const GUID_PATTERN =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function asDeliveryGuid(raw: string): DeliveryGuid | undefined {
-    return typeof raw === "string" && GUID_PATTERN.test(raw)
-        ? (raw as DeliveryGuid)
-        : undefined;
+    return typeof raw === "string" && GUID_PATTERN.test(raw) ? (raw as DeliveryGuid) : undefined;
 }
 
-export function asDeliveryRecordId(
-    raw: string,
-): DeliveryRecordId | undefined {
-    return typeof raw === "string" && /^\d+$/.test(raw)
-        ? (raw as DeliveryRecordId)
-        : undefined;
+export function asDeliveryRecordId(raw: string): DeliveryRecordId | undefined {
+    return typeof raw === "string" && /^\d+$/.test(raw) ? (raw as DeliveryRecordId) : undefined;
 }

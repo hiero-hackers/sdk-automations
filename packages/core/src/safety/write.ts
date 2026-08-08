@@ -14,10 +14,7 @@
  */
 
 import type { RepositoryConfig } from "../config/index.js";
-import {
-    evaluateGeneralRulesAfterPreflight,
-    evaluatePreflight,
-} from "./rules.js";
+import { evaluateGeneralRulesAfterPreflight, evaluatePreflight } from "./rules.js";
 import type { SafetyVerdict, WriteContext, WriteRequest } from "./types.js";
 
 export function evaluateWrite(

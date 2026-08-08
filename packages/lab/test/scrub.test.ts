@@ -100,8 +100,7 @@ describe("structure survives", () => {
         const withSha = scrubPayload({
             head: { sha: "17494561942194c0b8b22ba14a09996d0c885e82" },
             merge_commit_sha: "17494561942194c0b8b22ba14a09996d0c885e82",
-            html_url:
-                "https://github.com/o/r/commit/17494561942194c0b8b22ba14a09996d0c885e82",
+            html_url: "https://github.com/o/r/commit/17494561942194c0b8b22ba14a09996d0c885e82",
         }) as any;
         expect(withSha.head.sha).toMatch(/^[0-9]{40}$/);
         expect(withSha.merge_commit_sha).toBe(withSha.head.sha);
@@ -111,7 +110,12 @@ describe("structure survives", () => {
 
     it("blanks description prose, which no identifier pass would catch", () => {
         const d = scrubPayload({
-            repository: { name: "x", full_name: "o/x", owner: { login: "o" }, description: "Throwaway sandbox for project-name experiments" },
+            repository: {
+                name: "x",
+                full_name: "o/x",
+                owner: { login: "o" },
+                description: "Throwaway sandbox for project-name experiments",
+            },
         }) as any;
         expect(d.repository.description).toBe("scrubbed-description");
         expect(JSON.stringify(d)).not.toContain("Throwaway");

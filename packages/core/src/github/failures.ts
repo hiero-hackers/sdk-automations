@@ -10,10 +10,7 @@
  * the re-probe obligation).
  */
 
-import {
-    MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS,
-    parseSecondsHeader,
-} from "./rate-limits.js";
+import { MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS, parseSecondsHeader } from "./rate-limits.js";
 
 /** The inputs classification needs — transport-agnostic. */
 export interface FailureObservation {
@@ -92,8 +89,7 @@ export const BODY_PATTERNS = {
     },
     installationSuspended: {
         pattern: /installation is currently suspended/i,
-        observed:
-            "This installation is currently suspended. Please contact an organization owner.",
+        observed: "This installation is currently suspended. Please contact an organization owner.",
         probedAt: "2026-07-23",
         experiment: "6.1",
     },
@@ -105,9 +101,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
         // The 6.1 probe falsified body-based detection: an expired
         // token and a wrong key both return "Bad credentials". Local
         // token age is the only distinguisher.
-        return o.tokenPastExpiry === true
-            ? { kind: "tokenExpired" }
-            : { kind: "badCredentials" };
+        return o.tokenPastExpiry === true ? { kind: "tokenExpired" } : { kind: "badCredentials" };
     }
     if (o.status === 403 || o.status === 429) {
         // Both primary and secondary exhaustion can arrive as 403 or
@@ -129,8 +123,7 @@ export function classifyFailure(o: FailureObservation): FailureClass {
                         reason: "invalid",
                     };
                 case "valid":
-                    return retryAfter.seconds >
-                        MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS
+                    return retryAfter.seconds > MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS
                         ? {
                               kind: "rateLimitResponseUnusable",
                               headerName: "retry-after",
@@ -194,20 +187,14 @@ export function retryAdvice(
                 ? { action: "doNotRetry", surfaceTo: "operator" }
                 : {
                       action: "retryAfterMs",
-                      ms: Math.max(
-                          60_000,
-                          (failure.retryAfterSeconds ?? 0) * 1000,
-                      ),
+                      ms: Math.max(60_000, (failure.retryAfterSeconds ?? 0) * 1000),
                   };
         case "primaryExhausted": {
             if (attempt >= MAX_RATE_LIMIT_ATTEMPTS) {
                 return { action: "doNotRetry", surfaceTo: "operator" };
             }
             const reset = parseSecondsHeader(failure.resetAt);
-            if (
-                reset.kind !== "valid" ||
-                !Number.isFinite(nowEpochSeconds)
-            ) {
+            if (reset.kind !== "valid" || !Number.isFinite(nowEpochSeconds)) {
                 return { action: "doNotRetry", surfaceTo: "operator" };
             }
             const waitSeconds = Math.max(0, reset.seconds - nowEpochSeconds);

@@ -56,9 +56,7 @@ describe("the shipped examples", () => {
 
     it.each(files)("%s parses", (file) => {
         const result = parse(file);
-        expect(
-            result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`),
-        ).toEqual([]);
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([]);
     });
 
     it("the file with nothing in it is a repository in observe", () => {

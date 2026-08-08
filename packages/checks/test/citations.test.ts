@@ -8,12 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import {
-    normalizeRepoPath,
-    repoRoot,
-    trackedFiles,
-    workspacePackages,
-} from "./helpers.js";
+import { normalizeRepoPath, repoRoot, trackedFiles, workspacePackages } from "./helpers.js";
 
 /**
  * A citation that points at a file which no longer exists breaks nothing.
@@ -180,8 +175,10 @@ describe("documents name files that exist", () => {
     it("proves the check can fail", () => {
         expect(sourceNames.has("write.ts")).toBe(true);
         expect(sourceNames.has("taxonomy.ts")).toBe(false);
-        expect([..."see `taxonomy.ts` and `write.ts`".matchAll(NAME)].map((m) => m[1]))
-            .toEqual(["taxonomy.ts", "write.ts"]);
+        expect([..."see `taxonomy.ts` and `write.ts`".matchAll(NAME)].map((m) => m[1])).toEqual([
+            "taxonomy.ts",
+            "write.ts",
+        ]);
     });
 });
 
@@ -196,9 +193,7 @@ describe("documents name files that exist", () => {
  */
 describe("code cites decisions that exist", () => {
     const register = readFileSync(join(repoRoot, "design", "decisions.md"), "utf8");
-    const recorded = new Set(
-        [...register.matchAll(/^\| (D\d+) \|/gm)].map((m) => m[1]!),
-    );
+    const recorded = new Set([...register.matchAll(/^\| (D\d+) \|/gm)].map((m) => m[1]!));
 
     const sources: { file: string; text: string }[] = [];
     // Every workspace package, same reason as the filename check above: a

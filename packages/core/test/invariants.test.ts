@@ -72,8 +72,8 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                     for (const installationHasPermission of bools)
                         for (const itemBlocked of bools)
                             for (const preconditionHolds of bools)
-                                    for (const latestHumanChangeAt of humanChanges)
-                                        for (const mode of REPOSITORY_MODES) {
+                                for (const latestHumanChangeAt of humanChanges)
+                                    for (const mode of REPOSITORY_MODES) {
                                         const config: RepositoryConfig = {
                                             revision: "rev-test",
                                             schemaVersion: 1,
@@ -147,7 +147,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         ) {
                                             expect(verdict.outcome).not.toBe("apply");
                                         }
-                                        }
+                                    }
         expect(checked).toBe(2_560); // 5 classes × 2^5 flags × 4 orderings × 4 modes
         // 2 currently authorized write classes × active mode ×
         // {null, older} ordering = 4. Immediate preventive actions stay
@@ -183,9 +183,7 @@ describe("projection: total and exclusive over every meaning subset", () => {
                 if (projection.kind === "conflict") {
                     expect([...projection.positions].sort()).toEqual([...ownPositions].sort());
                     expect([...projection.ignored].sort()).toEqual(
-                        meanings
-                            .filter((m) => !ownSet.has(m) && m !== "blocked")
-                            .sort(),
+                        meanings.filter((m) => !ownSet.has(m) && m !== "blocked").sort(),
                     );
                 }
             } else {
@@ -237,10 +235,7 @@ describe("retryAdvice: bounded for every class and attempt", () => {
             // Past the bound, no advised-wait class waits forever.
             const late = retryAdvice(
                 failure,
-                Math.max(
-                    MAX_RATE_LIMIT_ATTEMPTS,
-                    MAX_TOKEN_REFRESH_ATTEMPTS,
-                ) + 1,
+                Math.max(MAX_RATE_LIMIT_ATTEMPTS, MAX_TOKEN_REFRESH_ATTEMPTS) + 1,
                 0,
             );
             if (

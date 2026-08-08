@@ -40,17 +40,17 @@ describe("assertUtcInstant properties", () => {
     it("rejects every non-canonical string — offsets, seconds-only, prose, junk", () => {
         const nonCanonical = fc.oneof(
             // Seconds-only Z (the mixed-precision hazard).
-            fc.integer({ min: 0, max: 4102444800000 }).map(
-                (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z"),
-            ),
+            fc
+                .integer({ min: 0, max: 4102444800000 })
+                .map((ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z")),
             // Offset forms.
-            fc.integer({ min: 0, max: 4102444800000 }).map(
-                (ms) => new Date(ms).toISOString().replace("Z", "+01:00"),
-            ),
+            fc
+                .integer({ min: 0, max: 4102444800000 })
+                .map((ms) => new Date(ms).toISOString().replace("Z", "+01:00")),
             // Arbitrary strings that are not the canonical shape.
-            fc.string({ maxLength: 40 }).filter(
-                (s) => !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(s),
-            ),
+            fc
+                .string({ maxLength: 40 })
+                .filter((s) => !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(s)),
         );
         fc.assert(
             fc.property(nonCanonical, (bad) => {

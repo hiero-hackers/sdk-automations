@@ -126,9 +126,7 @@ describe("pull request flow (taxonomy.md §5)", () => {
     it("readyToMerge is reachable only from needsReview", () => {
         for (const from of [null, "needsRevision", "readyToMerge"] as const) {
             for (const cause of ALL_PR_CAUSES) {
-                expect(
-                    canTransitionPr({ from, to: "readyToMerge", cause }).allowed,
-                ).toBe(false);
+                expect(canTransitionPr({ from, to: "readyToMerge", cause }).allowed).toBe(false);
             }
         }
     });
@@ -271,7 +269,10 @@ describe("reopening is a closure clear, not a transition (D49)", () => {
 });
 
 describe("work-item invariants (test-architecture: invariants layer)", () => {
-    const at = (meaning: IssueMeaning | null, extra?: Partial<WorkItemState<IssueMeaning>>): WorkItemState<IssueMeaning> => ({
+    const at = (
+        meaning: IssueMeaning | null,
+        extra?: Partial<WorkItemState<IssueMeaning>>,
+    ): WorkItemState<IssueMeaning> => ({
         meaning,
         blocked: false,
         closedBy: null,
@@ -384,11 +385,31 @@ describe("work-item invariants (test-architecture: invariants layer)", () => {
 
     it("every refusal carries a non-empty human reason alongside its code", () => {
         const refusals = [
-            applyTransition(at("ready", { blocked: true }), { from: "ready", to: "inProgress", cause: "contributorAssigned" }, canTransitionIssue),
-            applyTransition(at(null, { closedBy: "closedByHuman" }), { from: null, to: "awaitingTriage", cause: "intakeObserved" }, canTransitionIssue),
-            applyTransition(at("inProgress"), { from: "ready", to: "inProgress", cause: "contributorAssigned" }, canTransitionIssue),
-            applyTransition(at("ready"), { from: "ready", to: "awaitingTriage", cause: "triageCompleted" }, canTransitionIssue),
-            applyTransition(at("ready"), { from: "ready", to: "inProgress", cause: "reclaimCompleted" }, canTransitionIssue),
+            applyTransition(
+                at("ready", { blocked: true }),
+                { from: "ready", to: "inProgress", cause: "contributorAssigned" },
+                canTransitionIssue,
+            ),
+            applyTransition(
+                at(null, { closedBy: "closedByHuman" }),
+                { from: null, to: "awaitingTriage", cause: "intakeObserved" },
+                canTransitionIssue,
+            ),
+            applyTransition(
+                at("inProgress"),
+                { from: "ready", to: "inProgress", cause: "contributorAssigned" },
+                canTransitionIssue,
+            ),
+            applyTransition(
+                at("ready"),
+                { from: "ready", to: "awaitingTriage", cause: "triageCompleted" },
+                canTransitionIssue,
+            ),
+            applyTransition(
+                at("ready"),
+                { from: "ready", to: "inProgress", cause: "reclaimCompleted" },
+                canTransitionIssue,
+            ),
             applyReopen(at("ready")),
             applyReopen({ meaning: null, blocked: false, closedBy: "merged" }),
         ];

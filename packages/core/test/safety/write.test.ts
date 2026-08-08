@@ -51,11 +51,8 @@ const capabilityOff = config({
 });
 
 /** Config last so the existing call shape stays readable. */
-const evalWrite = (
-    r: WriteRequest,
-    c: WriteContext,
-    cfg: RepositoryConfig = config(),
-) => evaluateWrite(r, cfg, c);
+const evalWrite = (r: WriteRequest, c: WriteContext, cfg: RepositoryConfig = config()) =>
+    evaluateWrite(r, cfg, c);
 
 const evalDestructive = (
     plan: DestructivePlan,
@@ -95,7 +92,11 @@ describe("evaluateWrite (safety.md §2)", () => {
         ["kill switch", { killSwitchActive: true }, "killSwitch"],
         ["missing permission (rule 2)", { installationGrants: [] as const }, "permissionMissing"],
         ["blocked item (§5)", { world: assertedWorld(["blocked"], true) }, "itemBlocked"],
-        ["failed precondition recheck (rule 4)", { world: assertedWorld([], false) }, "preconditionStale"],
+        [
+            "failed precondition recheck (rule 4)",
+            { world: assertedWorld([], false) },
+            "preconditionStale",
+        ],
         [
             "newer human change (rule 5)",
             { latestHumanChangeAt: new Date("2026-07-01T00:00:01Z") },
@@ -109,9 +110,10 @@ describe("evaluateWrite (safety.md §2)", () => {
     // Mode and enablement now come from the reviewed configuration (D73),
     // so their refusals are stated as configurations, not as context facts.
     it("refuses when the repository mode is disabled", () => {
-        expect(
-            evalWrite(request(), context(), config({ mode: "disabled" })),
-        ).toMatchObject({ outcome: "refuse", code: "modeDisabled" });
+        expect(evalWrite(request(), context(), config({ mode: "disabled" }))).toMatchObject({
+            outcome: "refuse",
+            code: "modeDisabled",
+        });
     });
 
     it("refuses when the reviewed configuration disables the capability", () => {
@@ -173,12 +175,20 @@ describe("evaluateWrite (safety.md §2)", () => {
     });
 
     it.each([
-        ["an invalid cause timestamp", request({ causeObservedAt: new Date("invalid") }), context({
-            latestHumanChangeAt: new Date("2026-06-30T23:59:59Z"),
-        })],
-        ["an invalid human-change timestamp", request(), context({
-            latestHumanChangeAt: new Date("invalid"),
-        })],
+        [
+            "an invalid cause timestamp",
+            request({ causeObservedAt: new Date("invalid") }),
+            context({
+                latestHumanChangeAt: new Date("2026-06-30T23:59:59Z"),
+            }),
+        ],
+        [
+            "an invalid human-change timestamp",
+            request(),
+            context({
+                latestHumanChangeAt: new Date("invalid"),
+            }),
+        ],
     ] as const)("fails closed on %s", (_name, badRequest, badContext) => {
         const verdict = evalWrite(badRequest, badContext);
         expect(verdict).toMatchObject({
@@ -227,15 +237,16 @@ describe("audit findings, pinned (D51-D53)", () => {
 
     // D51 — unknown ordering is a conflict, not an absence.
     it("unestablished human-change ordering refuses (manual-edits.md §2)", () => {
-        expect(
-            evalWrite(request(), context({ latestHumanChangeAt: "unknown" })),
-        ).toMatchObject({ outcome: "refuse", code: "humanOrderingUnknown" });
+        expect(evalWrite(request(), context({ latestHumanChangeAt: "unknown" }))).toMatchObject({
+            outcome: "refuse",
+            code: "humanOrderingUnknown",
+        });
     });
 
     it("null still means CHECKED-and-none, and still applies", () => {
-        expect(
-            evalWrite(request(), context({ latestHumanChangeAt: null })),
-        ).toEqual({ outcome: "apply" });
+        expect(evalWrite(request(), context({ latestHumanChangeAt: null }))).toEqual({
+            outcome: "apply",
+        });
     });
 
     it("unknown ordering also stops a fully-warranted destructive action", () => {
@@ -337,18 +348,15 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     const duringGrace = new Date("2026-07-05T00:00:00Z"); // 4 days later
 
     it("never acts on first observation — a missing warning refuses", () => {
-        const verdict = evalDestructive(
-            destructive({ warning: null }),
-            dContext(),
-            afterGrace,
-        );
+        const verdict = evalDestructive(destructive({ warning: null }), dContext(), afterGrace);
         expect(verdict).toMatchObject({ outcome: "refuse", code: "noWarning" });
     });
 
     it("refuses while the grace period is running", () => {
-        expect(
-            evalDestructive(destructive(), dContext(), duringGrace),
-        ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
+        expect(evalDestructive(destructive(), dContext(), duringGrace)).toMatchObject({
+            outcome: "refuse",
+            code: "graceRunning",
+        });
     });
 
     it("refuses when the affected person was active during the grace period", () => {
@@ -373,10 +381,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
                 dContext(),
             ],
             [{ ...plan.request, cause: "a different inactivity observation" }, dContext()],
-            [
-                { ...plan.request, causeObservedAt: new Date("2026-07-01T00:00:01Z") },
-                dContext(),
-            ],
+            [{ ...plan.request, causeObservedAt: new Date("2026-07-01T00:00:01Z") }, dContext()],
             [{ ...plan.request, capability: "anotherCapability" }, dContext()],
         ];
         for (const [mismatchedRequest, matchingContext] of mismatches) {
@@ -416,9 +421,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         const mutableTarget = aliasedRequest.target as { item: string; change: string };
         mutableTarget.item = "issue #999";
         mutableTarget.change = "close issue";
-        aliasedRequest.causeObservedAt.setTime(
-            new Date("2026-07-01T00:00:01Z").getTime(),
-        );
+        aliasedRequest.causeObservedAt.setTime(new Date("2026-07-01T00:00:01Z").getTime());
 
         expect(
             evalDestructive(
@@ -452,31 +455,24 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             warningFor(plan.request, { reversesWith: "   " }),
         ];
         for (const warning of invalidWarnings) {
-            const verdict = evalDestructive(
-                { ...plan, warning },
-                dContext(),
-                afterGrace,
-            );
+            const verdict = evalDestructive({ ...plan, warning }, dContext(), afterGrace);
             expect(verdict).toMatchObject({ outcome: "refuse", code: "invalidDestructivePlan" });
             if (verdict.outcome === "refuse") expect(verdict.reason.length).toBeGreaterThan(0);
         }
     });
 
-    it.each([0, -1, MIN_GRACE_DAYS - 1])(
-        "refuses a grace period of %s days (§4 floor)",
-        (days) => {
-            const plan = destructive();
-            const verdict = evalDestructive(
-                {
-                    ...plan,
-                    warning: warningFor(plan.request, { gracePeriodDays: days }),
-                },
-                dContext(),
-                afterGrace,
-            );
-            expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
-        },
-    );
+    it.each([0, -1, MIN_GRACE_DAYS - 1])("refuses a grace period of %s days (§4 floor)", (days) => {
+        const plan = destructive();
+        const verdict = evalDestructive(
+            {
+                ...plan,
+                warning: warningFor(plan.request, { gracePeriodDays: days }),
+            },
+            dContext(),
+            afterGrace,
+        );
+        expect(verdict).toMatchObject({ outcome: "refuse", code: "graceBelowFloor" });
+    });
 
     it.each([
         ["a non-finite grace period", Number.NaN, new Date("2026-07-01T00:00:00Z"), afterGrace],
@@ -485,13 +481,13 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     ] as const)("fails closed on %s", (_name, gracePeriodDays, warnedAt, now) => {
         const plan = destructive();
         const verdict = evalDestructive(
-                {
-                    ...plan,
-                    warning: warningFor(plan.request, { gracePeriodDays, warnedAt }),
-                },
-                dContext(),
-                now,
-            );
+            {
+                ...plan,
+                warning: warningFor(plan.request, { gracePeriodDays, warnedAt }),
+            },
+            dContext(),
+            now,
+        );
         expect(verdict).toMatchObject({
             outcome: "refuse",
             code: "invalidDestructivePlan",
@@ -513,9 +509,9 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         };
         // warnedAt 2026-07-01T00:00:00Z + exactly MIN_GRACE_DAYS days:
         // the grace has fully elapsed at this instant, not one ms later.
-        expect(
-            evalDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome,
-        ).toBe("apply");
+        expect(evalDestructive(atFloor, dContext(), new Date("2026-07-02T00:00:00Z")).outcome).toBe(
+            "apply",
+        );
         expect(
             evalDestructive(atFloor, dContext(), new Date("2026-07-01T23:59:59.999Z")),
         ).toMatchObject({ outcome: "refuse", code: "graceRunning" });
@@ -526,9 +522,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
             evalDestructive(destructive(), dContext(), afterGrace, config({ mode: "dry-run" }))
                 .outcome,
         ).toBe("record-only");
-        expect(
-            evalDestructive(destructive(), dContext(), afterGrace).outcome,
-        ).toBe("apply");
+        expect(evalDestructive(destructive(), dContext(), afterGrace).outcome).toBe("apply");
     });
 
     it("a human change during the grace period cancels the plan (rule 5)", () => {
@@ -546,8 +540,16 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
         const refusals = [
             evalDestructive(destructive({ warning: null }), dContext(), afterGrace),
             evalDestructive(destructive(), dContext(), duringGrace),
-            evalDestructive(destructive({ qualifyingActivitySinceWarning: true }), dContext(), afterGrace),
-            evalDestructive({ ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) }, dContext(), afterGrace),
+            evalDestructive(
+                destructive({ qualifyingActivitySinceWarning: true }),
+                dContext(),
+                afterGrace,
+            ),
+            evalDestructive(
+                { ...plan, warning: warningFor(plan.request, { gracePeriodDays: 0 }) },
+                dContext(),
+                afterGrace,
+            ),
             evalDestructive({ ...plan, request: request() }, context(), afterGrace),
         ];
         for (const verdict of refusals) {
@@ -568,11 +570,7 @@ describe("evaluateDestructive (safety.md §3–§4)", () => {
     it("rejects a non-destructive request routed through the destructive path", () => {
         const plan = destructive();
         expect(
-            evalDestructive(
-                { ...plan, request: request() },
-                context(),
-                afterGrace,
-            ),
+            evalDestructive({ ...plan, request: request() }, context(), afterGrace),
         ).toMatchObject({ outcome: "refuse", code: "wrongActionClass" });
     });
 });

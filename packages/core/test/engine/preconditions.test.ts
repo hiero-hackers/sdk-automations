@@ -24,11 +24,7 @@ describe("observedMeaningsOf reassembles what projection split", () => {
             closedBy: null,
             meanings: ["needsReview", "blocked", "ready"],
         });
-        expect(observedMeaningsOf(projection)).toEqual([
-            "ready",
-            "needsReview",
-            "blocked",
-        ]);
+        expect(observedMeaningsOf(projection)).toEqual(["ready", "needsReview", "blocked"]);
     });
 
     it("a conflict's positions all survive the reassembly", () => {
@@ -37,11 +33,7 @@ describe("observedMeaningsOf reassembles what projection split", () => {
             meanings: ["awaitingTriage", "inProgress", "blocked"],
         });
         expect(projection.kind).toBe("conflict");
-        expect(observedMeaningsOf(projection)).toEqual([
-            "awaitingTriage",
-            "inProgress",
-            "blocked",
-        ]);
+        expect(observedMeaningsOf(projection)).toEqual(["awaitingTriage", "inProgress", "blocked"]);
     });
 
     it("round-trips: any observed meaning set survives project → reassemble", () => {
@@ -63,10 +55,7 @@ describe("expectedHolds — the claim against the world", () => {
 
     it("a vacuous claim always holds", () => {
         expect(
-            expectedHolds(
-                { meaningsPresent: [], meaningsAbsent: [], closed: null },
-                at(["ready"]),
-            ),
+            expectedHolds({ meaningsPresent: [], meaningsAbsent: [], closed: null }, at(["ready"])),
         ).toBe(true);
     });
 
@@ -90,9 +79,9 @@ describe("expectedHolds — the claim against the world", () => {
 
     it("the closed claim reads both projection branches (the closureOf trap)", () => {
         const wantsOpen = { meaningsPresent: [], meaningsAbsent: [], closed: false } as const;
-        expect(
-            expectedHolds(wantsOpen, project({ closedBy: "closedByHuman", meanings: [] })),
-        ).toBe(false);
+        expect(expectedHolds(wantsOpen, project({ closedBy: "closedByHuman", meanings: [] }))).toBe(
+            false,
+        );
         // The conflict branch carries closure at the top level — a
         // position-only reading would call this open.
         const conflicted = project({
@@ -102,10 +91,7 @@ describe("expectedHolds — the claim against the world", () => {
         expect(conflicted.kind).toBe("conflict");
         expect(expectedHolds(wantsOpen, conflicted)).toBe(false);
         expect(
-            expectedHolds(
-                { meaningsPresent: [], meaningsAbsent: [], closed: true },
-                conflicted,
-            ),
+            expectedHolds({ meaningsPresent: [], meaningsAbsent: [], closed: true }, conflicted),
         ).toBe(true);
     });
 

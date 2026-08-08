@@ -16,7 +16,6 @@
  * through.
  */
 
-
 import type { MappableMeaning } from "../config/index.js";
 import type { PermissionGrant } from "../github/index.js";
 import type { ActionClass } from "../safety/index.js";
@@ -62,11 +61,7 @@ export interface DatedCause {
 
 // ─── The observation catalogue ───────────────────────────────────────
 
-export const OBSERVATION_NAMES = [
-    "issueUpdated",
-    "pullRequestUpdated",
-    "staleItemsDue",
-] as const;
+export const OBSERVATION_NAMES = ["issueUpdated", "pullRequestUpdated", "staleItemsDue"] as const;
 
 export type ObservationName = (typeof OBSERVATION_NAMES)[number];
 
@@ -145,9 +140,7 @@ export interface ResolverCatalogue extends Record<ResolverName, unknown> {
         readonly output: boolean;
     };
 }
-type _ResolverCatalogueNamesAreExact = AssertNever<
-    Exclude<keyof ResolverCatalogue, ResolverName>
->;
+type _ResolverCatalogueNamesAreExact = AssertNever<Exclude<keyof ResolverCatalogue, ResolverName>>;
 export type ResolverInput<Q extends ResolverName> = ResolverCatalogue[Q]["input"];
 export type ResolverOutput<Q extends ResolverName> = ResolverCatalogue[Q]["output"];
 
@@ -162,11 +155,7 @@ export type ResolverAnswer<T> =
     | { readonly ok: true; readonly value: T }
     | {
           readonly ok: false;
-          readonly reason:
-              | "noPermission"
-              | "rateLimited"
-              | "unavailable"
-              | "notConfigured";
+          readonly reason: "noPermission" | "rateLimited" | "unavailable" | "notConfigured";
           readonly detail: string;
       };
 
@@ -204,7 +193,6 @@ export interface IntentCatalogue {
     readonly unassign: { readonly login: string };
 }
 
-
 export type IntentOperation = keyof IntentCatalogue & string;
 
 /**
@@ -214,7 +202,6 @@ export type IntentOperation = keyof IntentCatalogue & string;
  * through the read-back path (comment create).
  */
 export type IdempotencyClass = "idempotent" | "nonIdempotent";
-
 
 /**
  * The facts the PLATFORM owns about an operation — never the capability.

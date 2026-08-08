@@ -51,11 +51,7 @@ export type EngineObservation = ObservationCatalogue[keyof ObservationCatalogue]
 /** A capability with its type parameter erased — the probes-harness pattern. */
 export interface EngineCapability {
     readonly declaration: TypedDeclaration;
-    evaluate(
-        observation: never,
-        config: never,
-        platform: never,
-    ): Promise<readonly AnyIntent[]>;
+    evaluate(observation: never, config: never, platform: never): Promise<readonly AnyIntent[]>;
 }
 
 /**
@@ -65,9 +61,7 @@ export interface EngineCapability {
  * did not have. Fourteen call sites used to re-argue this inline with
  * `as unknown as EngineCapability`; the argument now lives here once.
  */
-export function toEngine<D extends TypedDeclaration>(
-    capability: Capability<D>,
-): EngineCapability {
+export function toEngine<D extends TypedDeclaration>(capability: Capability<D>): EngineCapability {
     return capability as unknown as EngineCapability;
 }
 
@@ -247,8 +241,7 @@ function destructiveOrWrite(
                 cancelledBy: intent.destructive.cancelledBy,
                 reversesWith: intent.destructive.reversesWith,
             }),
-            qualifyingActivitySinceWarning:
-                intent.destructive.qualifyingActivitySinceWarning,
+            qualifyingActivitySinceWarning: intent.destructive.qualifyingActivitySinceWarning,
         },
         config,
         context,

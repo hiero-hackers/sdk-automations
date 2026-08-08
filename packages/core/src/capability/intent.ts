@@ -66,7 +66,7 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly desired: IntentCatalogue[K];
     readonly cause: DatedCause;
     readonly explanation: StructuredExplanation;
-        /**
+    /**
      * The effect's stable identity across redelivery, retry and restart — it
      * becomes the journal's `effect_id`, so two intents sharing a key ARE one
      * effect to the store (`FINDING(runtime-idempotency-key-underived)`, D65).
@@ -193,8 +193,7 @@ export const INTENT_SCREEN_REFUSAL_CODES = [
     "transitionNotOnMap",
 ] as const;
 
-export type IntentScreenRefusalCode =
-    (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
+export type IntentScreenRefusalCode = (typeof INTENT_SCREEN_REFUSAL_CODES)[number];
 
 export type IntentScreen =
     | { readonly ok: true }
@@ -211,10 +210,7 @@ export type IntentScreen =
  * built from `unknown`, and the boundary must not depend on the far side
  * having been compiled honestly.
  */
-export function screenIntent(
-    intent: AnyIntent,
-    declaration: TypedDeclaration,
-): IntentScreen {
+export function screenIntent(intent: AnyIntent, declaration: TypedDeclaration): IntentScreen {
     if (intent.capability !== declaration.name) {
         return {
             ok: false,
@@ -222,9 +218,7 @@ export function screenIntent(
             reason: `intent attributed to "${intent.capability}" was returned by "${declaration.name}"`,
         };
     }
-    const declared = declaration.intents.find(
-        (i) => i.name === intent.operation,
-    );
+    const declared = declaration.intents.find((i) => i.name === intent.operation);
     if (declared === undefined) {
         return {
             ok: false,

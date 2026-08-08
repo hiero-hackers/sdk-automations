@@ -32,9 +32,7 @@ describe("declarations", () => {
         const result = createRegistry(ALL.map((c) => c.declaration));
         expect(result.ok).toBe(true);
         if (result.ok) {
-            expect([...result.registry.activeNames].sort()).toEqual(
-                [...NAMES].sort(),
-            );
+            expect([...result.registry.activeNames].sort()).toEqual([...NAMES].sort());
         }
     });
 

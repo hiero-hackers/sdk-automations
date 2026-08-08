@@ -179,18 +179,19 @@ describe("screenIntent", () => {
         expect(
             screenIntent(intent({ actionClass: "humanFacingOutput" }), declaration),
         ).toMatchObject({ ok: false, code: "actionClassBelowFloor" });
-        expect(
-            screenIntent(intent({ actionClass: "observation" }), declaration),
-        ).toMatchObject({ ok: false, code: "actionClassBelowFloor" });
+        expect(screenIntent(intent({ actionClass: "observation" }), declaration)).toMatchObject({
+            ok: false,
+            code: "actionClassBelowFloor",
+        });
     });
 
     it("accepts a stricter class than the floor", () => {
         // Permitted by the screen; `evaluateWrite` still refuses
         // `immediatePreventive` for want of a gate (D54). The screen bounds
         // what may be CLAIMED, the safety engine what may HAPPEN.
-        expect(
-            screenIntent(intent({ actionClass: "immediatePreventive" }), declaration),
-        ).toEqual({ ok: true });
+        expect(screenIntent(intent({ actionClass: "immediatePreventive" }), declaration)).toEqual({
+            ok: true,
+        });
     });
 
     it("refuses an intent whose cause carries an invalid timestamp", () => {
@@ -372,9 +373,7 @@ describe("projectCapabilityView (contract.md §6)", () => {
     });
 
     it("never exposes another capability's configuration", () => {
-        expect(JSON.stringify(projectCapabilityView(declaration, config))).not.toContain(
-            "theirs",
-        );
+        expect(JSON.stringify(projectCapabilityView(declaration, config))).not.toContain("theirs");
     });
 
     /** D71 — availability of a meaning, never the repository's word for it. */
@@ -386,7 +385,13 @@ describe("projectCapabilityView (contract.md §6)", () => {
 
     it("reports no mapped meanings when the repository mapped none", () => {
         const bare = parseConfig(
-            { schemaVersion: 1, mode: "observe", capabilities: {}, mappings: { labels: {} }, principals: {} },
+            {
+                schemaVersion: 1,
+                mode: "observe",
+                capabilities: {},
+                mappings: { labels: {} },
+                principals: {},
+            },
             { revision: "rev-test", knownCapabilities: ["fixture"] },
         );
         if (!bare.ok) throw new Error("fixture config invalid");

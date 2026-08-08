@@ -19,9 +19,7 @@ export type ParsedSecondsHeader =
 export const MAX_AUTOMATIC_RATE_LIMIT_WAIT_SECONDS = 60 * 60;
 
 /** Parse a GitHub whole-seconds header without permissive number coercion. */
-export function parseSecondsHeader(
-    rawValue: string | undefined,
-): ParsedSecondsHeader {
+export function parseSecondsHeader(rawValue: string | undefined): ParsedSecondsHeader {
     if (rawValue === undefined) return { kind: "missing" };
     if (!/^\d+$/.test(rawValue)) {
         return { kind: "invalid", rawValue };

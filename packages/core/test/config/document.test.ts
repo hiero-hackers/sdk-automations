@@ -11,10 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import {
-    parseConfigDocument,
-    type ConfigErrorCode,
-} from "../../src/config/index.js";
+import { parseConfigDocument, type ConfigErrorCode } from "../../src/config/index.js";
 import { REJECTIONS } from "./documents.js";
 
 const OPTIONS = { revision: "rev-test", knownCapabilities: ["intake", "prQuality"] };
@@ -51,7 +48,9 @@ describe("every rejection the catalogue names is reachable", () => {
 
     it("has at least one document for every code", () => {
         const covered = new Set(REJECTIONS.map((r) => r.code));
-        expect([...Object.keys(REQUIRED)].filter((c) => !covered.has(c as ConfigErrorCode))).toEqual([]);
+        expect(
+            [...Object.keys(REQUIRED)].filter((c) => !covered.has(c as ConfigErrorCode)),
+        ).toEqual([]);
     });
 
     it.each(REJECTIONS.map((r) => [`${r.code}: ${r.why}`, r] as const))(
@@ -84,8 +83,7 @@ describe("a document-level problem reports where it is", () => {
     it.each(
         REJECTIONS.filter(
             (r) =>
-                !r.synthesised &&
-                (r.code === "documentUnparseable" || r.code === "duplicateKey"),
+                !r.synthesised && (r.code === "documentUnparseable" || r.code === "duplicateKey"),
         ).map((r) => [r.why, r.yaml] as const),
     )("%s", (_why, yaml) => {
         const result = parse(yaml);
@@ -131,12 +129,23 @@ describe("no document, however hostile, escapes as an exception", () => {
     });
 
     it("arbitrary YAML-shaped text produces a result, never a throw", () => {
-        const line = fc.tuple(
-            fc.constantFrom("", "  ", "\t", "- ", "  - "),
-            fc.constantFrom("schemaVersion", "mode", "capabilities", "labels", "a", "__proto__", "*x", "&x"),
-            fc.constantFrom(":", ": ", ":", ": |", ": >", ""),
-            fc.constantFrom("1", "observe", "{}", "[", '"', "null", "true", ""),
-        ).map(([indent, key, sep, value]) => `${indent}${key}${sep}${value}`);
+        const line = fc
+            .tuple(
+                fc.constantFrom("", "  ", "\t", "- ", "  - "),
+                fc.constantFrom(
+                    "schemaVersion",
+                    "mode",
+                    "capabilities",
+                    "labels",
+                    "a",
+                    "__proto__",
+                    "*x",
+                    "&x",
+                ),
+                fc.constantFrom(":", ": ", ":", ": |", ": >", ""),
+                fc.constantFrom("1", "observe", "{}", "[", '"', "null", "true", ""),
+            )
+            .map(([indent, key, sep, value]) => `${indent}${key}${sep}${value}`);
 
         fc.assert(
             fc.property(fc.array(line, { maxLength: 8 }), (lines) => {

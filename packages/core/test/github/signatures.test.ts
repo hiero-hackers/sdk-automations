@@ -6,11 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import {
-    SIGNATURE_HEADER,
-    signBody,
-    verifyBody,
-} from "../../src/github/index.js";
+import { SIGNATURE_HEADER, signBody, verifyBody } from "../../src/github/index.js";
 
 const SECRET = "test-webhook-secret";
 const BODY = '{"action":"opened","number":7}';

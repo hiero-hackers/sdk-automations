@@ -151,10 +151,17 @@ describe("schedules under random interleaving: fire exactly once unless requeued
                     const expected = ids
                         .filter((id) => {
                             const row = model.get(id)!;
-                            return row.status === "running" && row.claimedMs !== null && row.claimedMs <= threshold;
+                            return (
+                                row.status === "running" &&
+                                row.claimedMs !== null &&
+                                row.claimedMs <= threshold
+                            );
                         })
                         .sort();
-                    const requeued = store.requeueStuck(iso(threshold)).map((r) => r.scheduleId).sort();
+                    const requeued = store
+                        .requeueStuck(iso(threshold))
+                        .map((r) => r.scheduleId)
+                        .sort();
                     expect(requeued).toEqual(expected);
                     for (const id of requeued) {
                         const row = model.get(id)!;

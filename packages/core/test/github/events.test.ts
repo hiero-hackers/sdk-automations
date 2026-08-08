@@ -11,11 +11,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import {
-    normalizeDelivery,
-    parseConfig,
-    type RepositoryConfig,
-} from "../../src/index.js";
+import { normalizeDelivery, parseConfig, type RepositoryConfig } from "../../src/index.js";
 
 const fixturesDir = fileURLToPath(new URL("fixtures/", import.meta.url));
 const fixture = (name: string): unknown =>
@@ -53,13 +49,10 @@ describe("every captured fixture normalizes", () => {
         expect(files.length).toBeGreaterThanOrEqual(5);
     });
 
-    it.each(readdirSync(fixturesDir).filter((f) => f.endsWith(".json")))(
-        "%s",
-        (name) => {
-            const result = normalizeDelivery(eventOf(name), fixture(name), config);
-            expect(result.kind).toBe("observation");
-        },
-    );
+    it.each(readdirSync(fixturesDir).filter((f) => f.endsWith(".json")))("%s", (name) => {
+        const result = normalizeDelivery(eventOf(name), fixture(name), config);
+        expect(result.kind).toBe("observation");
+    });
 });
 
 describe("issues, through the real payloads", () => {
@@ -170,11 +163,7 @@ describe("shapes derived from the real ones", () => {
     });
 
     it("the blocked label pauses without occupying a position (D28)", () => {
-        const result = normalizeDelivery(
-            "issues",
-            withLabels(["status: blocked"]),
-            config,
-        );
+        const result = normalizeDelivery("issues", withLabels(["status: blocked"]), config);
         expect(result.kind).toBe("observation");
         if (result.kind !== "observation") return;
         expect(result.observation.position).toMatchObject({
