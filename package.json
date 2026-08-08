@@ -13,6 +13,7 @@
     "devDependencies": {
         "@vitest/coverage-v8": "^4.1.10",
         "eslint": "^9.39.5",
+        "prettier": "^3.9.6",
         "typescript-eslint": "^8.46.0"
     },
     "pnpm": {
