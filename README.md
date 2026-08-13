@@ -84,9 +84,11 @@ ESLint enforces code quality separately — the two do not overlap. If you're wo
 ESLint rule should be added: the answer is which defect class it catches, and whether a dedicated
 check in `checks/` would fit better than a rule catalogue entry.
 
-An opt-in pre-commit hook runs both on staged `.ts` files: `git config core.hooksPath .githooks`.
-It formats and re-stages with Prettier, then blocks the commit on ESLint errors only — warnings
-(like `no-explicit-any`) pass through. CI is the actual enforcement either way (the format check
-and lint jobs above), so the hook is convenience, not a gate; `git commit --no-verify` always skips
-it, and `@typescript-eslint/no-unused-vars` errors are not auto-fixable, so a mid-refactor WIP
-commit may need exactly that.
+An opt-in pre-commit hook runs both on staged `packages/**/*.ts` files: `git config
+core.hooksPath .githooks`. It formats and re-stages with Prettier, then blocks the commit on ESLint
+errors only — warnings (like `no-explicit-any`) pass through. Know before opting in: re-staging
+covers the whole file, so a partially-staged file gets its unstaged hunks committed too — stash
+what you don't mean to commit. CI is the actual enforcement either way (the format check and lint
+jobs above), so the hook is convenience, not a gate; `git commit --no-verify` always skips it, and
+`@typescript-eslint/no-unused-vars` errors are not auto-fixable, so a mid-refactor WIP commit may
+need exactly that.
