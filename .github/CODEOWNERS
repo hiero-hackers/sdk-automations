@@ -4,6 +4,7 @@
 # Paths that stay owner-gated even when the default relaxes later:
 /packages/core/src/ @hiero-hackers/sdk-automations-maintainers
 /.github/ @hiero-hackers/sdk-automations-maintainers
+/.githooks/ @hiero-hackers/sdk-automations-maintainers
 /design/decisions.md @hiero-hackers/sdk-automations-maintainers
 /.gitignore @hiero-hackers/sdk-automations-maintainers
 /packages/checks/test/never-tracked.test.ts @hiero-hackers/sdk-automations-maintainers
