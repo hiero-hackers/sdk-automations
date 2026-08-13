@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Opt-in: `git config core.hooksPath .githooks` (see README.md "Tooling").
+# CI is the real gate (format check + lint jobs); this only shortens the
+# feedback loop, so it stays inside a ~2.5s budget on staged .ts files only.
+# Git runs hooks with the working tree root as cwd, so `pnpm exec` is
+# skipped in favour of the workspace root's own binaries directly — pnpm's
+# own resolution overhead (~2-3s per call) blows the budget on its own.
+#
+# Prettier fixes and re-stages without asking. ESLint blocks the commit on
+# errors only — no --max-warnings, so @typescript-eslint/no-explicit-any
+# (warn) never blocks a commit. Both tools apply their own existing ignore
+# rules (.prettierignore, eslint.config.mjs) against the paths below.
+#
+# This formats the worktree file and re-stages it, which stages the whole
+# file — including any unstaged hunks in a partially-staged file. Commit
+# only what you mean to commit, or stash the rest first.
+set -euo pipefail
+
+files=()
+while IFS= read -r -d '' f; do
+    files+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.ts')
+
+if [ "${#files[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+node_modules/.bin/prettier --write -- "${files[@]}"
+git add -- "${files[@]}"
+
+node_modules/.bin/eslint -- "${files[@]}"
