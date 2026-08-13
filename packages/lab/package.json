@@ -4,6 +4,9 @@
     "private": true,
     "description": "The standing instrument for facts about GitHub's behaviour that only contact with GitHub can verify. Tests verify our code; the lab verifies our beliefs about someone else's system. Protocols are the methods, src/ holds one thin runner per question, conclusions migrate to design/ (D32). Era-1 harness, bulk evidence, and credentials are local-only \u2014 see .gitignore and README.md.",
     "type": "module",
+    "engines": {
+        "node": ">=23.4"
+    },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",

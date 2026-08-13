@@ -10,6 +10,9 @@
             "default": "./src/index.ts"
         }
     },
+    "engines": {
+        "node": ">=23.4"
+    },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",

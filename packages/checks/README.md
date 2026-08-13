@@ -48,6 +48,7 @@ One row per file; the summary is that file's own header, not a paraphrase.
 | [`provenance.test.ts`](test/provenance.test.ts) | The perishable-facts provenance table in `core/src/github/README.md` matches the code it describes |
 | [`architecture.test.ts`](test/architecture.test.ts) | Workspace package imports follow the allowed dependency direction, use public exports, and stay acyclic |
 | [`codeowners.test.ts`](test/codeowners.test.ts) | Every non-comment pattern in `.github/CODEOWNERS` matches at least one tracked file, checked with `git` itself rather than a hand-rolled matcher |
+| [`node-floor.test.ts`](test/node-floor.test.ts) | Every workspace package declares the same `engines.node`, and the README badge shows that same value |
 | [`helpers.test.ts`](test/helpers.test.ts) | Portable repository parsing: the path and line-ending normalization every check above shares ([`helpers.ts`](test/helpers.ts)) |
 
 Every one carries a negative control — a case asserting the check would still fail if the thing it
