@@ -13,7 +13,9 @@ Vocabulary is introduced **in bold** at the moment it does something. If you rea
 ```mermaid
 flowchart LR
     A[socket] --> B[verify] --> C[accept + 202]
-    C --> D[claim] --> E[config] --> F["decide()"] --> G["report + done"] --> H["JSONL projection"]
+    C --> D[claim] --> E[config]
+    E -->|observe or dry-run| F["decide()"] --> G["report + done"] --> H["JSONL projection"]
+    E -->|active| U["modeUnsupported"] --> G
     subgraph F2 ["inside decide()"]
         N[normalize] --> V[evaluate] --> S[screen] --> W[derive world] --> X[gate]
     end
@@ -225,27 +227,19 @@ collapsing the four findings already seen:
   "configRevision": "sha256:0f8ccef2e24d",
   "report": { "revision": "sha256:0f8ccef2e24d", "mode": "dry-run",
               "repository": { "owner": "scrubbed-1", "repo": "scrubbed-2" },
-              "findings": [ "…the four findings above…" ] },
-  "approved": []
+              "findings": [ "…the four findings above…" ] }
 }
 ```
 
-`approved` is empty **by construction**: in dry-run no intent gets an `apply` verdict, so there is
-nothing an executor may plan. This record — "here is what I would have done, and why" — is dry-run's
-durable product. The JSONL projection is the artifact a maintainer reads before turning the dial up.
+The shell does not persist Core's in-memory approved-intent array because no executor consumes it.
+The report is dry-run's durable product.
 
-## 13. Epilogue — the same delivery in `active` mode
+## 13. Epilogue — `active` is a completed rejection
 
-Change one word in the config (`mode: active`) and the journey is identical until station 10, where
-both verdicts become `apply` and the two intents land in `approved`. Then, and only then, the
-executor's half begins: the planner (`packages/executor/src/planner.ts`) translates each approved intent into
-a **plan** of ordered calls; the plan's identity is the intent's idempotency key, making it an
-**effect** the store can journal; the recovery loop (`packages/executor/src/recovery.ts`) runs each call
-through the **journal** (intent recorded before send, outcome after), so a crash between "sent" and
-"confirmed" is resolved by *reading GitHub back*, never by blind resend; and the **adapter** — the
-one component that speaks GitHub's API, not yet built — performs the writes, rechecking the
-intent's `expected` claim against live state at the moment of writing. Core decides; the executor
-remembers; the adapter touches. Nothing else does.
+Change one word in the config (`mode: active`) and the runnable shell stops after parsing it, before
+`decide()`. It atomically stores a `modeUnsupported` record with delivery completion, containing no
+decision report, approved intents, or applied-effect claim. The executor is not connected. Active
+behavior returns only with a real GitHub effect and durable recovery path.
 
 ## The vocabulary, in the order you met it
 
@@ -262,4 +256,4 @@ remembers; the adapter touches. Nothing else does.
 | 10 | gate, verdict, record-only | `packages/core/src/safety/rules.ts` |
 | 11 | finding, severity, report | `packages/core/src/report/convert.ts` |
 | 12 | decision record, atomic completion, operator projection | `packages/store/src/store.ts`, `packages/shell/src/reports.ts` |
-| 13 | plan, effect, journal, adapter | `packages/executor/src/planner.ts`, `packages/executor/src/recovery.ts` |
+| 13 | active-mode rejection | `packages/shell/src/processor.ts` |

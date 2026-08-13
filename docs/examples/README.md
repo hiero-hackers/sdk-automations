@@ -13,11 +13,10 @@ point the shell will use on a real repository.
 | `empty.yml` | A file with nothing in it. Identical to having no file: `observe`, no writes. |
 | `minimal.yml` | The smallest configuration that says anything — three lines. |
 | `observe-only.yml` | A real repository with mappings and a capability, still writing nothing. |
-| `active.yml` | The same repository writing, plus a capability staged with `enabled: false`. |
+| `active.yml` | A reserved active configuration that the runnable shell rejects. |
 
-`observe-only.yml` and `active.yml` are a pair on purpose. The test asserts that going from one to the
-other changes the **mode** and not the **vocabulary** — a repository that re-labels itself on the way to
-writing is not staging its adoption, it is guessing.
+`active.yml` remains parseable because active mode stays in Core's general vocabulary. The runnable shell
+rejects it before `decide()`; the executor is not connected.
 
 ## Where the rejections live
 

@@ -4,7 +4,7 @@
  * durable accept → 202 → parseConfigDocument → decide() → persisted
  * report, over a real socket, a real SQLite store, and a real config
  * file — with only GitHub itself absent. Dry-run: the report is the
- * product and nothing is approved.
+ * product and active mode stops before the decision path.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,7 @@ import {
     signBody,
     toEngine,
     SIGNATURE_HEADER,
+    type EngineCapability,
     type Report,
 } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
@@ -73,12 +74,12 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-function buildShell(): Shell {
+function buildShell(capability: EngineCapability = toEngine(intake)): Shell {
     let tick = 0;
     return createShell({
         secret: SECRET,
         store,
-        capabilities: [toEngine(intake)],
+        capabilities: [capability],
         configSource: fileConfigSource(configFile),
         reports: fileReportSink(reportsFile),
         externals: stubbedExternals(),
@@ -138,8 +139,7 @@ describe("the first slice, end to end", () => {
         });
         expect(problems(entry.report as Report)).toEqual([]);
         expect(entry.report.findings.length).toBeGreaterThan(0);
-        // Dry-run approves nothing; the report is the whole product.
-        expect(entry.approved).toEqual([]);
+        expect(entry).not.toHaveProperty("approved");
         const db = (
             store as unknown as {
                 db: {
@@ -174,10 +174,40 @@ describe("the first slice, end to end", () => {
         ).toBeUndefined();
     });
 
-    it("a redelivery acknowledges again but decides nothing twice", async () => {
-        const shell = buildShell();
+    it("rejects active mode canonically without deciding or retrying", async () => {
+        writeFileSync(configFile, CONFIG.replace("mode: dry-run", "mode: active"));
+        const capability = toEngine(intake);
+        const shell = buildShell({
+            ...capability,
+            evaluate: async () => {
+                throw new Error("active mode reached capability evaluation");
+            },
+        });
         expect(await deliver(shell)).toBe(202);
         await shell.drain();
+
+        const [entry, ...rest] = records();
+        expect(rest).toEqual([]);
+        expect(entry).toMatchObject({
+            kind: "modeUnsupported",
+            deliveryId: GUID,
+            event: "issues",
+            reason: "active mode is unsupported by the runnable shell",
+        });
+        expect(entry).not.toHaveProperty("report");
+        expect(entry).not.toHaveProperty("approved");
+        expect(JSON.stringify(entry)).not.toContain("applied");
+        expect(store.deliveryReports()).toEqual([
+            expect.objectContaining({ reportJson: JSON.stringify(entry) }),
+        ]);
+        expect(
+            store.claimNextDelivery(
+                "assert",
+                "2026-08-07T11:00:00.000Z",
+                "2026-08-07T10:59:00.000Z",
+            ),
+        ).toBeUndefined();
+
         expect(await deliver(shell)).toBe(202);
         await shell.drain();
         expect(records()).toHaveLength(1);

@@ -10,7 +10,7 @@ Set up in two minutes: one file, one merge, no per-repository installation.
 
 ```yaml
 schemaVersion: 1
-mode: active
+mode: dry-run
 
 capabilities:
   intake:
@@ -35,29 +35,22 @@ That is the whole setup.
 
 ## What happens next
 
-New issues get triaged. Items move between the labels you mapped as work progresses. Everything the
-App does appears in its reports, with the reason attached.
-
-Three things it will not do, ever:
-
-- **Overrule you.** If a human touched an item after the App decided, the App drops its plan.
-- **Pause work.** It reads `blocked`; it never sets it. That label is yours.
-- **Act destructively without warning.** Anything irreversible gets a visible warning and a grace
-  period first, and cancels itself the moment someone responds.
+The runnable shell observes deliveries and records a report explaining what it found. It does not call
+the executor or change GitHub state.
 
 ## Choosing a mode
 
-`mode` sets how much the App is allowed to do. Most repositories run `active`.
+The runnable shell supports `observe` and `dry-run`. It rejects `active` configuration before making a
+decision because no real GitHub effect path is connected yet.
 
 | Mode | Use it when |
 |---|---|
 | `disabled` | You want the App inert without uninstalling it |
 | `observe` | You want to see what it notices before letting it act |
 | `dry-run` | You want the exact actions it would take, recorded and reviewable |
-| `active` | You want it to do the work |
+| `active` | Unsupported by the runnable shell |
 
-`observe` and `dry-run` are there if you want them, not steps you have to pass through. Changing mode
-is a one-word diff, reviewed like any other change.
+Active behavior will return only with a real GitHub effect and durable recovery path.
 
 ## Common setups
 
@@ -65,7 +58,7 @@ is a one-word diff, reviewed like any other change.
 
 ```yaml
 schemaVersion: 1
-mode: active
+mode: dry-run
 capabilities:
   intake:
     enabled: true
@@ -78,7 +71,7 @@ mappings:
 
 ```yaml
 schemaVersion: 1
-mode: active
+mode: dry-run
 capabilities:
   intake:
     enabled: true
@@ -106,7 +99,7 @@ copy the one closest to what you want and edit the label names:
 
 | File | What you get |
 |---|---|
-| [`active.yml`](examples/active.yml) | The full setup above: triage, PR checks, one capability staged |
+| [`active.yml`](examples/active.yml) | A reserved active configuration that the runnable shell rejects |
 | [`observe-only.yml`](examples/observe-only.yml) | The same repository, reporting instead of acting |
 | [`minimal.yml`](examples/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
 | [`empty.yml`](examples/empty.yml) | Nothing at all, spelled out |

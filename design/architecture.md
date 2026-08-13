@@ -125,9 +125,13 @@ Enforced by the implementation today:
   ([recovery loop](operations/storage-decision.md#the-recovery-loop-the-grid-decided) and
   [D44](decisions.md#adoption-record--2026-07-25)).
 
+The runnable shell supports observe and dry-run. It rejects parsed `active` configuration before
+`decide()` and atomically stores that rejection with delivery completion. The executor is not connected;
+active behavior returns only with a real GitHub effect and durable recovery path.
+
 Required before active mode, not current runtime guarantees:
 
-- Every GitHub write enters executor recovery; active writes are not wired yet
+- Every GitHub write enters executor recovery
   ([recovery-loop decision](operations/storage-decision.md#the-recovery-loop-the-grid-decided)).
 - Report persistence and delivery completion become one atomic durable transition
   ([D93](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
@@ -334,8 +338,8 @@ architecture, encoded and tested in the implementation packages (`core/`, `store
   tables after the D42/D43/D110 amendments) underpins deduplication, recovery, coordination, schedules,
   and canonical decision reports. Hosting must therefore provide a persistent single-writer disk; a
   stateless or multi-writer deployment shape would reopen the storage decision.
-- **`active` mode is gated** on two stage-five deliverables: the read-after-write staleness measurement
-  (D46) and PR-time configuration validation (D38).
+- **`active` mode is not runnable.** The shell rejects it before `decide()` because the executor is not
+  connected. Active behavior returns only with a real GitHub effect and durable recovery path.
 
 The following questions remain open.
 

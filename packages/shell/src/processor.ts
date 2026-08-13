@@ -1,7 +1,7 @@
 /**
- * The worker half: claim a durable delivery, prepare, call the one verb,
- * commit the outcome with completion, then project it. The receiver
- * acknowledged long ago; GitHub never observes retries here.
+ * The worker half: claim a durable delivery, prepare, reject an unsupported
+ * mode or call the one verb, commit the outcome with completion, then project
+ * it. The receiver acknowledged long ago; GitHub never observes retries here.
  *
  * `process` below is the right lane of design/trace.md stations 3–12,
  * one named step per station.
@@ -138,12 +138,19 @@ export class Processor {
             };
         }
 
+        if (config.result.config.mode === "active") {
+            return {
+                kind: "modeUnsupported",
+                ...identity,
+                reason: "active mode is unsupported by the runnable shell",
+            };
+        }
+
         const decision = await this.decideOn(claimed, config.result.config, decidedAt);
         return {
             kind: "decision",
             ...identity,
             report: decision.report,
-            approved: decision.approved,
         };
     }
 

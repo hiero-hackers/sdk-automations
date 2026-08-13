@@ -6,7 +6,7 @@
 
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { AnyIntent, ConfigError, Report } from "@hiero-hackers/automation-core";
+import type { ConfigError, Report } from "@hiero-hackers/automation-core";
 import type { CanonicalDeliveryReport } from "@hiero-hackers/automation-store";
 
 interface RecordBase {
@@ -22,13 +22,16 @@ export type ShellRecord =
     | (RecordBase & {
           readonly kind: "decision";
           readonly report: Report;
-          /** Empty outside `active` mode; recorded so the count is auditable. */
-          readonly approved: readonly AnyIntent[];
       })
     | (RecordBase & {
           /** The config failed to parse. Fail-closed: nothing was decided. */
           readonly kind: "configRejected";
           readonly errors: readonly ConfigError[];
+      })
+    | (RecordBase & {
+          /** The runnable shell has no external effect path. */
+          readonly kind: "modeUnsupported";
+          readonly reason: string;
       });
 
 /** A derived projection that receives the already-persisted canonical JSON. */

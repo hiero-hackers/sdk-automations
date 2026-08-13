@@ -62,13 +62,7 @@ describe("the shipped examples", () => {
         expect(empty.ok && empty.config.mode).toBe("observe");
     });
 
-    /**
-     * The adoption ladder as an assertion. `active.yml` is meant to be
-     * `observe-only.yml` plus a reviewed diff, and the property that makes the
-     * diff safe to read is that the MAPPINGS did not move — a repository that
-     * re-labels itself on the way to writing is not staging, it is guessing.
-     */
-    it("the ladder from observe to active changes the mode, not the vocabulary", () => {
+    it("retains active in Core's configuration vocabulary", () => {
         const observe = parse("observe-only.yml");
         const active = parse("active.yml");
         expect(observe.ok && active.ok).toBe(true);

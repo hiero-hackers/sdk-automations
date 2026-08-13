@@ -1,9 +1,7 @@
-# The same repository, writing.
+# A reserved active configuration.
 #
-# One line changed from `observe-only.yml` — the mode — plus a second
-# capability turned on. That is the intended shape of adoption: the diff that
-# goes live is small enough to read, because everything else was settled while
-# nothing could happen.
+# Core retains active in its configuration vocabulary, but the runnable shell
+# rejects this mode before deciding. It performs no GitHub effect.
 #
 # `assignment` shows the staging pattern: its settings are present, validated
 # and dormant. Enabling it later is a one-word, pre-reviewed diff rather than a

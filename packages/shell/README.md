@@ -11,10 +11,11 @@ flowchart LR
     V --> A["② accept durably\nstore acceptDelivery"]
     A --> ACK["202"]
     ACK -.-> P["③ prepare\nconfig + externals"]
-    P --> D["④ decide()"]
+    P -->|observe or dry-run| D["④ decide()"]
+    P -->|active| U["modeUnsupported"]
     D --> C["⑤ store report + done\none transaction"]
+    U --> C
     C --> R["⑥ decisions.jsonl\nderived projection"]
-    D -->|active mode only, later| X["planApproved → executor"]
 ```
 
 ## The six stations, and who owns each
@@ -23,7 +24,7 @@ flowchart LR
 |---|---|---|
 | ① Verify the signature before anything else | [`src/receiver.ts`](src/receiver.ts) | core's `verifyBody` — the receiver never parses what it has not verified |
 | ② Persist durably, only then `202` | [`src/receiver.ts`](src/receiver.ts) → [`src/shell.ts`](src/shell.ts) | the store's `acceptDelivery` (P9): a crash after the ack loses nothing |
-| ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config fails closed as a `configRejected` record |
+| ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config becomes `configRejected`, while `active` becomes `modeUnsupported` before `decide()` |
 | ④ Decide with one verb | [`src/processor.ts`](src/processor.ts) | core's `decide()`; the shell cannot assert a world — `DerivedWorld` has no public constructor |
 | ⑤ Commit report plus completion | [`src/processor.ts`](src/processor.ts) → store's `completeDeliveryWithReport` | store verifies delivery identity and claim ownership, then creates one canonical report and marks the delivery done in one transaction |
 | ⑥ Project for operators | [`src/reports.ts`](src/reports.ts) | JSONL receives the exact already-committed JSON; append failure triggers a full replay from canonical SQLite rows, and startup rebuilds the projection before accepting work |
@@ -83,8 +84,9 @@ before accepting work, so deleting or corrupting the projection is recoverable.
 - **The scheduler** — `staleItemsDue` is queried, not delivered; it arrives as a second caller of
   `decide()`, not a second pipeline.
 - **Config hot-fetch** — the seam exists (`ConfigSource`); the fetch is the read adapter's.
-- **Active mode** — `planApproved` → executor → adapter wiring waits for the write adapter; in
-  dry-run `decide()` approves nothing by construction, so the shell does not even import the executor.
+- **Active mode** — the runnable shell supports observe and dry-run and rejects active configuration.
+  The executor is not connected. Active behavior returns only with a real GitHub effect and durable
+  recovery path.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.
 
 The capture receiver in `packages/lab/src/capture.ts` was this package's embryo: same verify-first line,

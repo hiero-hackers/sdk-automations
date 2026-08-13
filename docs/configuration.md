@@ -16,7 +16,7 @@ file can contain is on it, and indentation (two spaces per level) is the only st
 
 ```yaml
 schemaVersion: 1              # ── top level. Required — the only required key
-mode: active                  # ── top level. Optional, default: observe
+mode: dry-run                 # ── top level. Optional, default: observe
 
 capabilities:                 # ── top level. Optional, default: nothing enabled
   intake:                     #    └─ one block per capability, keyed by its name
@@ -65,15 +65,19 @@ there is, version 1 files keep working.
 | Default | `observe` |
 | Allowed | `disabled`, `observe`, `dry-run`, `active` |
 
-How far the App is allowed to go. Case-sensitive, and unquoted `no` is a YAML boolean rather than a
-mode — quote anything you are unsure of.
+Core recognizes all four values, but the runnable shell supports observe and dry-run only. Active is
+reserved and rejected before a decision. Values are case-sensitive, and unquoted `no` is a YAML boolean
+rather than a mode — quote anything you are unsure of.
 
 | Mode | Reads | Reports | Records what it would do | Writes |
 |---|---|---|---|---|
 | `disabled` | no | says only that it is disabled | no | no |
 | `observe` | yes | yes | no | no |
 | `dry-run` | yes | yes | yes | no |
-| `active` | yes | yes | yes | yes |
+| `active` | configuration only | unsupported-mode rejection | no | no |
+
+The executor is not connected. Active behavior will return only with a real GitHub effect and durable
+recovery path.
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
 
