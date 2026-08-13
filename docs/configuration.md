@@ -76,8 +76,7 @@ rather than a mode — quote anything you are unsure of.
 | `dry-run` | yes | yes | yes | no |
 | `active` | configuration only | unsupported-mode rejection | no | no |
 
-The executor is not connected. Active behavior will return only with a real GitHub effect and durable
-recovery path.
+Active GitHub writes and effect recovery are not implemented.
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
 

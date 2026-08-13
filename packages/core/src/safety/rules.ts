@@ -4,7 +4,7 @@
  * safety.md §2's mechanically checkable subset only. Rules 7–10 —
  * postcondition verification, unclear-outcome reconciliation, tested
  * rollback, dry-run-before-active rollout — cannot be decided from one
- * request and belong to the executor and to process.
+ * request and belong to a future write path and to process.
  *
  * Precedence is policy: kill switch → observation → consent → authority →
  * pause → staleness → human conflict → mode. Only the kill switch changes an

@@ -16,7 +16,7 @@ point the shell will use on a real repository.
 | `active.yml` | A reserved active configuration that the runnable shell rejects. |
 
 `active.yml` remains parseable because active mode stays in Core's general vocabulary. The runnable shell
-rejects it before `decide()`; the executor is not connected.
+rejects it before `decide()` because active GitHub writes are not implemented.
 
 ## Where the rejections live
 

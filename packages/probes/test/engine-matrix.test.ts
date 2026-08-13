@@ -157,3 +157,37 @@ describe("P3 through the engine", () => {
         expect(staleAlone.findings.map((f) => f.code)).toEqual(["capabilityExplained", "applied"]);
     });
 });
+
+describe("intake conflict behavior", () => {
+    it("reports a conflicted item in dry-run without approving a repair", async () => {
+        const config = {
+            ...configEnabling(["intake"], NAMES, SETTINGS),
+            mode: "dry-run" as const,
+        };
+        const observation: AnyObservation = {
+            kind: "issueUpdated",
+            repository: REPO,
+            item: { kind: "issue", number: 11 },
+            position: {
+                kind: "conflict",
+                positions: ["ready", "inProgress"],
+                blocked: false,
+                closedBy: null,
+                ignored: [],
+            },
+            observedAt: AT,
+        };
+
+        const decision = await decide({ kind: "observation", observation }, config, ALL, externals);
+
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings.map((finding) => finding.code)).toEqual([
+            "capabilityExplained",
+        ]);
+        expect(
+            decision.report.findings
+                .filter((finding) => finding.code === "capabilityExplained")
+                .map((finding) => finding.summary),
+        ).toContain("Skipped: the item holds more than one workflow position.");
+    });
+});

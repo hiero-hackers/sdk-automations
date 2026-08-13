@@ -1,8 +1,8 @@
 /**
  * Every workspace package declares the same `engines.node` floor, and the
  * README badge shows that same value. Nothing broke when three packages
- * were missing the field — the gap was only findable by reading all seven
- * `package.json` files side by side, which does not scale. New invariant,
+ * were missing the field — the gap was only findable by reading every
+ * `package.json` file side by side, which does not scale. New invariant,
  * new file (D89).
  */
 

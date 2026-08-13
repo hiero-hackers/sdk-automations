@@ -6,23 +6,21 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
 
 The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
-A repository enables only the capabilities it wants and maps them to its own workflow. The shared platform
-handles GitHub access, configuration, safety, recovery, and audit information.
+A repository enables only the capabilities it wants and maps them to its own workflow. The runnable application
+currently verifies and stores webhook deliveries, evaluates them in observe or dry-run mode, and persists canonical reports. Active GitHub writes are not implemented yet.
 
 The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Seven
-packages live under [`packages/`](packages/) as the parallel track the stage gates do not block (a pnpm
+it. The module documents are candidates based on that audit. They are not a committed product list. Six
+packages live under [`packages/`](packages/) as a pnpm
 workspace), all pending stage-four ratification of the decisions they encode:
 
 - [`core/`](packages/core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
   capability runtime boundary; its front door is one verb, `decide()`
 - [`store/`](packages/store/README.md) — the owned operational store
-- [`executor/`](packages/executor/README.md) — the recovery-loop engine with its automated crash grid and the
-  intent-to-plan translator
 - [`shell/`](packages/shell/README.md) — the transport: a webhook delivery in, a persisted report out; it owns
   ordering and decides nothing
 - [`probes/`](packages/probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
-  load-test the seam between the others and give P3 its first run in code
+  exercise the capability boundary, supply current shell fixtures, and give P3 its first run in code
 - [`checks/`](packages/checks/README.md) — tests about the repository rather than any package: docs,
   examples, and design documents held to the code they describe
 - [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub

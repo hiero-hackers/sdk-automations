@@ -67,8 +67,7 @@ export interface Finding {
  *
  * `revision` is the configuration the pass ran under. It is required rather
  * than optional because a report that cannot say which configuration it
- * describes is not evidence of anything, and the same string is what the
- * executor guards in-flight effects on.
+ * describes is not evidence of anything.
  */
 export interface Report {
     readonly revision: string;

@@ -75,9 +75,8 @@ export interface CapabilityConfig {
  * A validated configuration, plus the revision it was read from.
  *
  * `revision` is the sha of the file, and the one field nobody writes: the
- * shell supplies it through `ParseConfigOptions`. The executor guards
- * in-flight effects on it, so an intent from an older revision cannot
- * resume (D45, D77).
+ * shell supplies it through `ParseConfigOptions` and records it in reports.
+ * Any future write path must bind work to this revision (D45, D77).
  */
 export interface RepositoryConfig {
     readonly revision: string;

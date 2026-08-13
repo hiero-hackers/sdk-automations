@@ -7,15 +7,11 @@ the harness is disposable, the evidence is the product.
 
 ## Why this exists
 
-`core/`, `store/`, and `executor/` were each built against their own design
-document and tested in isolation. Nothing composed them: the only coupling
-was a branded id and one type import, and `executor/` had no `exports` field
-at all, because nothing had ever imported it. `EffectPlan` was defined in the
-executor and **no code produced one** — so the architecture's two halves, a
-capability that describes a desired outcome and a recovery loop that drives
-calls, had never met.
+The runnable shell uses these probes to exercise the capability boundary and
+produce observe or dry-run decisions. They also keep the capability-isolation
+matrix concrete without treating any probe as product scope.
 
-These probes are the load on that seam. What they found is recorded as
+What the probes found is recorded as
 D61–D73 in [`design/decisions.md`](../../design/decisions.md); eight of the thirteen
 rows are gaps that no further work inside a single package would have
 surfaced, because each package was individually correct. D72 needed more than
@@ -45,7 +41,6 @@ If the boundary holds for all three, it holds for anything in
 |---|---|
 | `test/boundary.test.ts` | Declarations are catalogue-consistent; the config projection leaks neither another capability's block nor a repository label string; the intent screen refuses undeclared, misattributed, under-classified, and malformed-destructive intents |
 | `test/engine-matrix.test.ts` | **P3**, tested: all eight subsets, each capability's behaviour identical regardless of neighbours, disabled capabilities never evaluated, with a negative control so the matrix cannot pass vacuously |
-| `test/composition.test.ts` | The full path — real config, real projection, real capability, real safety engine, real SQLite store, real recovery loop — including exactly-once across a crash, and dry-run leaving the journal empty |
 
 The P3 run is the one worth flagging: [`build-plan.md`](../../design/build-plan.md)
 §12 defers the toggle matrix past November because one capability cannot
@@ -69,8 +64,6 @@ smallest thing that could work.
 
 ## What it does not prove
 
-- Nothing about GitHub. The fake port has perfect read-after-write
-  consistency, the same declared kindness as the crash grid (D46).
+- Nothing about GitHub writes. Active mode is not implemented.
 - Nothing about demand. These are not candidate capabilities.
-- Nothing about live lease takeover — D41 is still `reopened`, and the
-  composition crash test restarts a dead process rather than racing a live one.
+- Nothing about effect recovery or live lease takeover.

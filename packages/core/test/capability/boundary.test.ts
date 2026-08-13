@@ -85,7 +85,7 @@ const destructiveDetail = {
 describe("the operation catalogue owns what the declaration may only restate", () => {
     /**
      * D62. If these values are not pinned here, a declaration is free to
-     * disagree with the platform and the executor picks its retry rule from
+     * disagree with the platform and a future writer picks its retry rule from
      * the wrong one — 6.5's demonstrated comment duplication.
      */
     it("pins the idempotency class of every operation", () => {

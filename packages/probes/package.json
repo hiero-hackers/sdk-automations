@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-probes",
     "version": "0.0.0",
     "private": true,
-    "description": "DISPOSABLE. Three deliberately different capability stubs that exist to test the runtime boundary, the intent-to-plan seam, and P3 isolation — not to ship. Deleted when stage four names the first real capability. See README.md.",
+    "description": "DISPOSABLE. Three deliberately different capability stubs that test the runtime boundary and P3 isolation — not to ship. Deleted when stage four names the first real capability. See README.md.",
     "type": "module",
     "exports": {
         ".": {
@@ -18,9 +18,7 @@
         "test:watch": "vitest"
     },
     "dependencies": {
-        "@hiero-hackers/automation-core": "workspace:*",
-        "@hiero-hackers/automation-executor": "workspace:*",
-        "@hiero-hackers/automation-store": "workspace:*"
+        "@hiero-hackers/automation-core": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",

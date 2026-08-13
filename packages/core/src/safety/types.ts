@@ -65,7 +65,7 @@ export interface WriteContext {
 }
 
 /**
- * Machine-readable verdict causes — the executor, telemetry, the config
+ * Machine-readable verdict causes — telemetry, the config
  * report, and managed explanations branch on `code`; `reason` is prose
  * for humans only. Same convention as `FailureClass` in failures.ts.
  */

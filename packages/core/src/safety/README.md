@@ -64,4 +64,4 @@ the rest decide which `code` a maintainer sees, and that is what makes a report 
 
 Rules 7–10 of safety.md §2 are absent here on purpose — postcondition verification, unclear-outcome
 reconciliation, tested rollback and staged rollout cannot be decided from a single request. They
-belong to the executor and to process.
+belong to a future write path and to process.

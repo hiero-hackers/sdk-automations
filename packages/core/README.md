@@ -26,7 +26,7 @@ derive the world"]
     W --> G["safety rules + gates"]
     G --> R["report/ findings"]
     G --> A["approved intents
-→ executor's planner"]
+(not executed by the runnable shell)"]
 ```
 
 | Directory | The question it answers | Files |
@@ -109,9 +109,9 @@ flowchart TB
 `github/` stands alone deliberately: nothing in core decides anything from it,
 and it is the only directory whose contents can go stale without an edit.
 
-**What actually happens to one event** — the path a webhook takes. Only the
-shaded steps live in `core/`; the shell and the executor own the rest, which
-is why core can be pure.
+**What actually happens to one event** — the current path a webhook takes.
+Only the shaded decision steps live in `core/`; the shell owns transport and
+the store owns persistence, which is why core can be pure.
 
 ```mermaid
 flowchart LR
@@ -120,16 +120,16 @@ flowchart LR
     O --> E["capability.evaluate()"]
     E --> I["intent[]"]
     I --> S["safety: verdict"]
-    S --> P["executor: plan"]
-    P --> G["adapter: GitHub"]
+    S --> R["report"]
+    R --> C["shell/store: report + completion"]
     style E fill:#EEEDFE,stroke:#534AB7
     style S fill:#EEEDFE,stroke:#534AB7
     style O fill:#EEEDFE,stroke:#534AB7
 ```
 
 Core decides; it never acts. `evaluate` returns requests, `safety` returns a
-verdict, and every write happens outside this package — which is what makes
-the whole thing testable in under a second with no network.
+verdict, and the runnable shell rejects active mode rather than performing
+approved intents. That keeps this package testable with no network.
 
 
 The tests are the executable form of the design's own claims: the
@@ -181,8 +181,7 @@ can re-run is the kind of evidence that stays honest.
 
 The invariant tests prove the *decision logic* is coherent: given true
 inputs, the rules compose the way the design says they should. They do not
-prove the safety property itself. Two debts are structural and stay with
-the stage-five executor:
+prove the safety property itself. Two debts remain for any future write path:
 
 - **Some inputs arrive by attestation.** `WriteContext` mixes facts the
   core compares itself (`latestHumanChangeAt` against the request's
@@ -190,13 +189,13 @@ the stage-five executor:
   attestations it must trust (`preconditionHolds` — the precondition's
   shape is capability-specific, so the comparison cannot live in
   capability-agnostic code). A shell that supplies a wrong attestation
-  gets a wrong verdict; executor tests own that boundary. D51 narrows
-  this further: the shell must now distinguish "no human change" from
+  gets a wrong verdict; adapter integration tests must own that boundary.
+  D51 narrows this further: the shell must now distinguish "no human change" from
   "could not establish ordering", and reporting `null` for a failed
   lookup silently restores the unsafe behaviour.
-- **Verdicts are advisory until the write lands.** The recheck happens
-  before the verdict and the GitHub write after it — the usual
-  time-of-check/time-of-use window. Closing it is executor work
+- **Verdicts are advisory until the write lands.** A future write path must
+  recheck immediately before the GitHub write to close the usual
+  time-of-check/time-of-use window
   (safety.md rules 7–10: postcondition verification and unclear-outcome
   reconciliation), not more pure logic.
 

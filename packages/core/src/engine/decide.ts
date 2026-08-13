@@ -76,7 +76,7 @@ export type DecideInput =
       }
     | { readonly kind: "observation"; readonly observation: EngineObservation };
 
-/** What one decision produced: the record, and what an executor may plan. */
+/** What one decision produced: the record and any active-mode intents. */
 export interface Decision {
     readonly report: Report;
     /** Intents that passed every gate in `active` mode. */

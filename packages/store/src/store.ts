@@ -526,8 +526,8 @@ export class Store {
      * call count of the effect's plan (contract.md §5); the journal
      * cannot know completion without it.
      *
-     * Classification reads the highest-seq row only, which assumes the
-     * caller discipline the executor enforces: calls run sequentially,
+     * Classification reads the highest-seq row only, which assumes caller
+     * discipline: calls run sequentially,
      * and seq N+1 is never declared while seq N is still `sent`. The
      * store does not police that invariant.
      */

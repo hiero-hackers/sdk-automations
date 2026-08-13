@@ -26,8 +26,8 @@ decides whether a database file may be opened at all.
 **Does not own:** the payload's meaning. The store does not parse JSON,
 inspect repositories, verify signatures, normalize events, log bodies, or
 scrub payloads. The payload is an opaque byte array at this boundary. It also
-owns no policy: retention windows, lease durations and requeue thresholds are
-the sweep's operations decisions, adopted in the executor's `policy.ts`.
+owns no policy: callers must supply retention windows, lease durations and
+requeue thresholds. The runnable application does not drive effect recovery.
 
 ## The path a delivery takes
 
@@ -67,8 +67,8 @@ together under a single write lock (D110).
 | Table | Role | Evidence status |
 |---|---|---|
 | `seen_delivery` | atomic webhook acceptance and work queue: opaque GUID, event name, exact payload bytes, SHA-256 digest, receipt/completion times, and claim state | GUID dedup was decided in 6.5; durable intake semantics are exercised by this package's restart and two-thread contention tests |
-| `effect_journal` | intent/done write-ahead rows with revision, durable attempt counter, and completion timestamp; the recovery loop's detector | crash-proven in the 6.5 sandbox grid; attempt counter and done-immutability added under D42 |
-| `effect_claim` | one-winner LEASE per effect: atomic stale takeover, released on completion | race-proven in the 6.5 sandbox grid; lease semantics added under D41 |
+| `effect_journal` | intent/done write-ahead rows with revision, durable attempt counter, and completion timestamp; reserved for a future effect-specific recovery path | unused by the runnable application; store transition tests cover the D42 mechanics |
+| `effect_claim` | one-winner LEASE per effect: atomic stale takeover, released on completion | unused by the runnable application; store contention tests cover the D41 mechanics |
 | `schedule` | clock-triggered work; `pending → running → done`, with claim age and a per-firing completion token | decided in 6.5; restart/requeue mechanics are pre-covered here; `claimed_at` and claim tokens prevent stale completion under D43 |
 | `delivery_report` | the canonical serialized shell record and the claim token that committed it, one row per delivery | report persistence plus delivery completion is crash-atomic; worker-thread fault injection covers both uncommitted steps and the committed boundary (D110) |
 
@@ -77,8 +77,7 @@ synchronous SQLite writes, and delivery acceptance commits before it
 returns; tables have no foreign keys, while delivery finalization deliberately
 updates `delivery_report` and `seen_delivery` in one transaction;
 `sentUnknown` is deliberately unresolvable from the journal
-alone — callers must resolve against GitHub state before retrying (the
-recovery loop in the storage decision).
+alone — a future effect-specific caller must resolve against GitHub state before retrying.
 
 Three store findings, argued in full in their register rows:
 
@@ -92,11 +91,10 @@ Three store findings, argued in full in their register rows:
   timestamp so an old open attempt is not immediately pruned when resolved.
 - `FINDING(store-sweep-api)` → **D43** — `requeueStuck(claimedBefore)`
   returns stuck `running` schedules to `pending` (stuckness = claim
-  age); `openIntents(before)` is the recovery loop's worklist; requeued
+  age); `openIntents(before)` exposes unresolved effect rows; requeued
   work re-enters `claimDue`. `pruneCompletedDeliveries` and
-  `pruneDoneJournal` support the adopted 90-day retention (executor
-  `policy.ts`); pending/processing deliveries and open `sent` journal
-  rows are never pruned.
+  `pruneDoneJournal` accept caller-supplied retention cutoffs;
+  pending/processing deliveries and open `sent` journal rows are never pruned.
 
 ## Version contract and migration
 

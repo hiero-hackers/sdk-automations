@@ -38,8 +38,8 @@ describe("declarations", () => {
 
     /**
      * FINDING(runtime-idempotency-declared-not-checked) as a test: the
-     * declaration layer alone accepts this, and the executor would then
-     * blind-retry a comment create — experiment 6.5's duplication.
+     * declaration layer alone accepts this, but a writer that trusted the
+     * declaration could blind-retry a comment create — experiment 6.5's duplication.
      */
     it("registry construction reaches the catalogue check for a structurally valid liar", () => {
         const liar = declareCapability({
@@ -70,7 +70,7 @@ describe("declarations", () => {
         const errors = registry.ok ? [] : registry.errors;
         expect(errors).toHaveLength(1);
         expect(errors[0]).toContain("the platform owns this fact");
-        // And the executor never reads the declared value anyway.
+        // The platform-owned catalogue remains the authoritative value.
         expect(idempotencyOf("postManagedComment")).toBe("nonIdempotent");
     });
 });

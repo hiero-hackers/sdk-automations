@@ -1,6 +1,6 @@
 # shell/ — transport, not decisions
 
-The seventh package (D93). A webhook delivery goes in; a persisted report comes out; every decision
+The transport package (D93). A webhook delivery goes in; a persisted report comes out; every decision
 in between belongs to core's one verb. The shell's entire contribution is **order**:
 
 > verify before accept, accept before ack, decide before act, commit the canonical outcome atomically.
@@ -42,7 +42,6 @@ The read-only adapter work packet replaces each behind its existing seam — the
 | `installationGrants: ["issues:write"]` | the installation's live grant list | `DecideExternals` |
 | `latestHumanChangeAt: () => null` | timeline evidence per item | `DecideExternals` |
 | no `resolve` | `linkedIssues` / `isAutomationActor` lookups | `DecideExternals.resolve` |
-| — | read-back for recovery | executor's `EffectPort.readBack` |
 
 `() => null` and not `() => "unknown"` deliberately: `"unknown"` is a safe conflict and would refuse
 every write, burying dry-run's real findings under a uniform refusal. Until the adapter lands,
@@ -78,8 +77,8 @@ programmatic access to canonical reports.
   `decide()`, not a second pipeline.
 - **Config hot-fetch** — the seam exists (`ConfigSource`); the fetch is the read adapter's.
 - **Active mode** — the runnable shell supports observe and dry-run and rejects active configuration.
-  The executor is not connected. Active behavior returns only with a real GitHub effect and durable
-  recovery path.
+  Active GitHub writes are not implemented yet; each real effect will need its own write and durable
+  recovery path before active behavior can be enabled.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.
 
 The capture receiver in `packages/lab/src/capture.ts` was this package's embryo: same verify-first line,

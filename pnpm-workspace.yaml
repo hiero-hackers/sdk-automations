@@ -5,7 +5,6 @@ packages:
     - packages/core
     - packages/checks
     - packages/store
-    - packages/executor
     - packages/probes
     - packages/lab
     - packages/shell

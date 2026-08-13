@@ -84,10 +84,9 @@ at which point subdirectories may start to earn their keep:
   `design/operations/endpoint-permission-matrix.md`.
 - `subscriptions.ts` — the webhook subscription list, including the
   `pull_request_review` gap experiment 6.6 found.
-- the read-after-write freshness rule (D46, experiment 6.7), which today sits
-  in `packages/executor/src/policy.ts` mixed in with adopted *decisions* like the lease
-  duration. Those two kinds of constant have different owners and different
-  reasons to change; splitting them is a follow-up, not part of this move.
+- the read-after-write freshness rule (D46, experiment 6.7), which is not
+  implemented by the runnable application and must be owned by the eventual
+  GitHub write path.
 
 The repository's graduation test is that **a directory becomes a package when
 it has external consumers and almost no internal ones.** Measured today, this
@@ -157,11 +156,9 @@ consumer that makes an enforced boundary pay for itself — unlike the three
 thin ones this directory has today. It will want every file in the list above:
 `endpoints.ts` from the permission matrix, the ratified permission ceiling to
 sit beside the `scope:level` form already here, `subscriptions.ts` for the
-subscription list, and the read-after-write freshness rule — which today sits
-in `packages/executor/src/policy.ts` next to adopted *decisions* like the lease
-duration and the retention window. Those two kinds of constant have different
-owners and different reasons to change, and the split is the natural moment to
-separate them.
+subscription list, and the read-after-write freshness rule. That rule is not
+implemented by the runnable application and belongs with the eventual GitHub
+write path.
 
 **The trigger is now two conditions, not one.** The adapter is the first. The
 second is what the coupling section measures: while `capability/`, `safety/`

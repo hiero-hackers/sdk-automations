@@ -117,7 +117,7 @@ function warningMatchesRequest(
     );
 }
 
-/** safety.md §3 — every condition the executor confirms before acting. */
+/** safety.md §3 — every condition core can confirm before a future write. */
 export function evaluateDestructive(
     plan: DestructivePlan,
     config: RepositoryConfig,

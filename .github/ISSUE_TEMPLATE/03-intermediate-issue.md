@@ -33,7 +33,7 @@ labels: "intermediate"
 
 - `core/` is pure by construction: no I/O and no clock reads.
 - Claims become invariants; a change that makes a claim should expect a check that keeps it true.
-- `store/`, `executor/`, and `probes/` have deliberately narrow boundaries described in their READMEs.
+- `store/` and `probes/` have deliberately narrow boundaries described in their READMEs.
 
 **Before opening your PR:**
 

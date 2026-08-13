@@ -85,7 +85,7 @@ export interface TransitionRequest<M, C extends TransitionCause = TransitionCaus
 }
 
 /**
- * Machine-readable refusal cause — the executor, telemetry, and managed
+ * Machine-readable refusal cause — telemetry and managed
  * explanations branch on `code`; `reason` is prose for humans only.
  * Same convention as `FailureClass` in failures.ts.
  */

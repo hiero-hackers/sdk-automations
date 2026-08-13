@@ -35,8 +35,8 @@ That is the whole setup.
 
 ## What happens next
 
-The runnable shell observes deliveries and records a report explaining what it found. It does not call
-the executor or change GitHub state.
+The runnable shell observes deliveries and records a report explaining what it found. Active GitHub
+writes and effect recovery are not implemented.
 
 ## Choosing a mode
 

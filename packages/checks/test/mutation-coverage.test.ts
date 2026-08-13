@@ -93,7 +93,6 @@ describe("mutation policy stays complete across packages and CI", () => {
     it("discovers every configured workspace package", () => {
         expect(configuredPackages.map(({ name }) => name).sort()).toEqual([
             "core",
-            "executor",
             "shell",
             "store",
         ]);

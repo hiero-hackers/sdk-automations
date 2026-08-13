@@ -1,8 +1,8 @@
 /**
  * What a capability asks for, and the screens every request passes.
  *
- * An intent describes a desired OUTCOME, not an API call — the translation
- * into calls is the executor's planner, deliberately outside `core/`.
+ * An intent describes a desired OUTCOME, not an API call. Translation into
+ * GitHub calls is deliberately outside `core/` and is not implemented yet.
  */
 
 import type { ActionClass, ClaimedFacts } from "../safety/index.js";
@@ -269,7 +269,7 @@ export function screenIntent(intent: AnyIntent, declaration: TypedDeclaration): 
     return { ok: true };
 }
 
-/** The class the executor must use — from the catalogue, never the intent. */
+/** The class any future writer must use — from the catalogue, never the intent. */
 export function idempotencyOf(operation: IntentOperation): IdempotencyClass {
     return INTENT_OPERATIONS[operation].idempotencyClass;
 }

@@ -30,12 +30,12 @@ flowchart LR
     REG --> CAP["Enabled capability"]
     CAP --> INTENT["Typed intent with reason and expected state"]
     INTENT --> POL["Authorization and safety policy"]
-    POL --> EXEC["Effect executor"]
-    EXEC --> ADP["Narrow GitHub adapter"]
+    POL --> WRITE["Effect-specific write path"]
+    WRITE --> ADP["Narrow GitHub adapter"]
     ADP --> GH
-    EXEC --> VERIFY["Postcondition verification and reconciliation"]
+    WRITE --> VERIFY["Postcondition verification and reconciliation"]
     VERIFY --> GH
-    EXEC --> OPS["Audit records, metrics, and recovery state"]
+    WRITE --> OPS["Audit records, metrics, and recovery state"]
 ```
 
 The main boundaries are as follows.
@@ -51,63 +51,40 @@ The main boundaries are as follows.
    explanation. It does not receive Octokit or another raw GitHub client.
 5. The policy layer checks repository mode, actor authority, required permissions, safety rules, and current
    state before any write.
-6. The executor applies approved effects, verifies their postconditions, and handles results that are not
-   immediately clear.
+6. Each future write path applies one approved effect, verifies its postcondition, and handles results that
+   are not immediately clear.
 7. The adapter is the only component that understands GitHub REST or GraphQL details.
 
-### As-built view (2026-07-25)
+### As-built view
 
-The diagram above is the product story and remains valid. The implementation packages have since given
-the middle of it a concrete, tested shape — the view below separates what exists (solid, with its test
-count) from the stage-five shell that wraps it (dashed). Every write flows through one pipeline; there is
-no second path to GitHub.
+The runnable application is observe and dry-run only. It verifies exact webhook bytes, accepts the
+delivery durably before acknowledgement, claims it for processing, loads configuration, runs the pure
+decision engine with the configured probes, and atomically stores the canonical report with delivery
+completion. Active GitHub writes and effect recovery are not implemented.
 
 ```mermaid
 flowchart TB
     GH["GitHub"]
-    subgraph SHELL["stage-five shell - pending"]
-        IN["intake: verify, durably accept, then ack - P9"]
-        CFGF["config fetch: default branch pinned, PR-time check - D38"]
-        PORT["EffectPort adapter: endpoint-matrix operations, freshness rule - D46"]
-        OPS["operator surface and config report"]
+    subgraph SHELL["shell - current runtime"]
+        VERIFY["verify signed bytes"]
+        CLAIM["claim delivery"]
+        CFG["load and validate configuration"]
+        DECIDE["probe-backed decide()"]
+        UNSUPPORTED["reject active mode"]
     end
-    subgraph CORE["core - pure logic, 224 tests"]
-        CFG["config: strict validation, fail closed"]
-        REG["contract: registry, idempotency classes"]
-        OBS["observe: labels to position or conflict"]
-        TX["taxonomy: transition tables"]
-        SAFE["safety: write and destructive gates"]
-        FAILC["failures: classify and bound retries"]
+    subgraph STORE["store - owned state"]
+        ACCEPT["accept delivery durably"]
+        COMPLETE["canonical report + completion"]
     end
-    subgraph STORE["store - owned state, 46 tests"]
-        SEEN["seen_delivery dedup"]
-        JRN["effect_journal: intent, done, attempt"]
-        CLM["effect_claim: 15 min lease"]
-        SCH["schedule: claimed_at, requeue"]
-    end
-    subgraph EXECP["executor - 31 tests incl. crash grid"]
-        LOOP["recovery loop: claim, journal, perform, resolve, class-ruled retry"]
-    end
-    GH --> IN --> SEEN
-    IN --> OBS
-    CFGF --> CFG --> REG
-    OBS --> TX --> SAFE --> LOOP
-    LOOP --> JRN
-    LOOP --> CLM
-    LOOP --> SCH
-    LOOP --> PORT --> GH
-    FAILC --> PORT
-    LOOP --> OPS
-    style SHELL stroke-dasharray: 5 5
+    GH --> VERIFY --> ACCEPT --> ACK["202"]
+    ACCEPT --> CLAIM --> CFG
+    CFG -->|observe or dry-run| DECIDE --> COMPLETE
+    CFG -->|active| UNSUPPORTED --> COMPLETE
 ```
 
-Two properties of this shape carry the safety argument: a conflicted observation produces no state object,
-so it structurally cannot reach the transition or write layers; and the recovery loop is the only
-component that touches both the journal and the port, so every retry is mediated by a read-back — the
-crash grid (every reachable perform crash, 64 scheduled two-point histories, seeded histories) is evidence
-for serialized crash-and-restart recovery, not for live lease overlap. Of the 64 scheduled histories, 18
-trigger both requested crashes, 30 trigger one, and 16 complete before either scheduled invocation; the
-suite now asserts that distribution instead of describing all 64 as exercised crash pairs.
+Two properties of this shape carry the current safety argument: intake reports a conflicted issue and
+produces no repair intent; and active configuration is rejected before a decision, so the runnable
+application has no GitHub write path.
 
 ### Load-bearing architecture rules
 
@@ -125,21 +102,16 @@ Enforced by the implementation today:
   ([D110](decisions.md#hypotheses-surfaced-by-the-pure-logic-implementation)).
 - SQLite uses an explicit schema version contract and rejects unknown or modified schemas
   ([storage decision](operations/storage-decision.md#durable-report-and-schema-amendment-2026-08-09)).
-- Executor retries begin with observation and stop at the adopted attempt bound
-  ([recovery loop](operations/storage-decision.md#the-recovery-loop-the-grid-decided) and
-  [D44](decisions.md#adoption-record--2026-07-25)).
-
 The runnable shell supports observe and dry-run. It rejects parsed `active` configuration before
-`decide()` and atomically stores that rejection with delivery completion. The executor is not connected;
-active behavior returns only with a real GitHub effect and durable recovery path.
+`decide()` and atomically stores that rejection with delivery completion. Active GitHub writes and effect
+recovery are not implemented.
 
 Required before active mode, not current runtime guarantees:
 
-- Every GitHub write enters executor recovery
-  ([recovery-loop decision](operations/storage-decision.md#the-recovery-loop-the-grid-decided)).
+- Each real GitHub effect gets narrow effect-specific persistence, reconciliation, and bounded retry.
 - Configuration has explicit migration and rollback requirements
   ([configuration migration](config/schema.md#11-migration-and-rollback)).
-- Webhook queue capacity is bounded; executor retries already are
+- Webhook queue capacity and future effect retries are bounded
   ([platform ownership](#3-what-the-shared-platform-owns)).
 - Activation has sandbox and rollback evidence
   ([P8](decisions.md#supported-product-principles) and
@@ -329,18 +301,18 @@ The following principles are strong enough to guide the next work.
   strings.
 - Real repository writes wait for personal-sandbox evidence and explicit approval.
 
-The 2026-07-25 adoption record (`design/decisions.md` §3) adds three architectural commitments as working
-architecture, encoded and tested in the implementation packages (`core/`, `store/`, `executor/`):
+The 2026-07-25 adoption record (`design/decisions.md` §3) proposed three architectural commitments. The
+store mechanics remain implemented, but the generic executor prototype was removed because the runnable
+application never called it:
 
-- **One write path.** Every capability effect is a sequenced plan with declared idempotency classes,
-  driven claim → journal-intent → perform → journal-done, with the recovery loop (journal detects, GitHub
-  resolves, class rules the retry) as the only retry mechanism. No component writes outside it.
+- **One write path.** A future real effect must own one narrow path with effect-specific persistence,
+  reconciliation, and retry behavior. No current component writes to GitHub.
 - **Owned operational state is required infrastructure.** The versioned single-file SQLite store (five
   tables after the D42/D43/D110 amendments) underpins deduplication, recovery, coordination, schedules,
   and canonical decision reports. Hosting must therefore provide a persistent single-writer disk; a
   stateless or multi-writer deployment shape would reopen the storage decision.
-- **`active` mode is not runnable.** The shell rejects it before `decide()` because the executor is not
-  connected. Active behavior returns only with a real GitHub effect and durable recovery path.
+- **`active` mode is not runnable.** The shell rejects it before `decide()` because active GitHub writes
+  and effect recovery are not implemented.
 
 The following questions remain open.
 

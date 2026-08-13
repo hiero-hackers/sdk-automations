@@ -49,8 +49,7 @@ const SOURCE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     core: new Set(),
     store: new Set(["core"]),
-    executor: new Set(["core", "store"]),
-    shell: new Set(["core", "store", "executor", "probes"]),
+    shell: new Set(["core", "store", "probes"]),
 };
 const NON_PRODUCTION = new Set(["checks", "lab", "probes"]);
 
@@ -334,16 +333,14 @@ describe("the workspace dependency graph preserves package ownership", () => {
         );
         const actual = messages(
             architectureViolations(withCoreStore, [
-                source("store", `import "${packageName("executor")}";`),
-                source("executor", `export * from "${packageName("shell")}";`),
+                source("store", `import "${packageName("shell")}";`),
                 source("shell", `import("${packageName("checks")}");`),
                 source("shell", `require("${packageName("lab")}");`),
             ]),
         );
         for (const [from, to] of [
             ["core", "store"],
-            ["store", "executor"],
-            ["executor", "shell"],
+            ["store", "shell"],
             ["shell", "checks"],
             ["shell", "lab"],
         ]) {

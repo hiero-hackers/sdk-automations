@@ -24,7 +24,7 @@ const SEED = 20260725;
  *
  * These two run 300 generated cases each and measure 1.5-1.9 s on an idle
  * machine — a 3x margin under vitest's 5 s default. `pnpm -r test` runs
- * seven packages concurrently over core's own parallel workers, and a 3x
+ * six packages concurrently over core's own parallel workers, and a 3x
  * slowdown there is ordinary, which is the best explanation of the
  * intermittent failures this file produced across 2026-08-07/08: the seed
  * is FIXED, so the inputs are identical on every run and an
