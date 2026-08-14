@@ -1,92 +1,140 @@
-# sdk-automations
+<div align="center">
 
-[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D23.4-blue)](https://github.com/hiero-hackers/sdk-automations/blob/main/package.json)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
+# Hiero SDK Automations
 
-The design and in-progress implementation of a hosted, configuration-driven GitHub App that replaces repeated repository automation.
-A repository enables only the capabilities it wants and maps them to its own workflow. The runnable application
-currently verifies and stores webhook deliveries, evaluates them in observe or dry-run mode, and persists canonical reports. Active GitHub writes are not implemented yet.
+**A safety-focused GitHub App for contributor workflows across Hiero SDK repositories.**
 
-The repository contains an audit of existing Hiero automation and drafts for the system that may replace
-it. The module documents are candidates based on that audit. They are not a committed product list. Six
-packages live under [`packages/`](packages/) as a pnpm
-workspace), all pending stage-four ratification of the decisions they encode:
+<p>
+  <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a>
+  <a href="https://github.com/hiero-hackers/sdk-automations/blob/main/package.json"><img alt="Node 23.4 or newer" src="https://img.shields.io/badge/node-%3E%3D23.4-blue"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge"></a>
+</p>
 
-- [`core/`](packages/core/README.md) — the pure-logic state machine, safety engine, configuration layer, and the
-  capability runtime boundary; its front door is one verb, `decide()`
-- [`store/`](packages/store/README.md) — the owned operational store
-- [`shell/`](packages/shell/README.md) — the transport: a webhook delivery in, a persisted report out; it owns
-  ordering and decides nothing
-- [`probes/`](packages/probes/README.md) — **disposable**: three deliberately dissimilar capability stubs that
-  exercise the capability boundary, supply current shell fixtures, and give P3 its first run in code
-- [`checks/`](packages/checks/README.md) — tests about the repository rather than any package: docs,
-  examples, and design documents held to the code they describe
-- [`lab/`](packages/lab/README.md) — the standing instrument for facts about GitHub that only contact with GitHub
-  can verify; protocols and the capture scrubber are tracked, credentials and raw evidence never are
+<p>
+  <a href="#overview">Overview</a> ·
+  <a href="#project-status">Status</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#documentation">Documentation</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
-Beyond `packages/` and `design/`, one user-facing root: [`docs/`](docs/README.md) — the configuration
-guide, every table locked to the code by `checks/`, and [`docs/examples/`](docs/examples/README.md), worked
-configurations parsed by the test suite on every commit. A top-level directory holds workspace packages
-or is one of `design/`, `docs/` — a rule the suite enforces, like the other sentences in this paragraph.
+</div>
 
-New here? [`design/trace.md`](design/trace.md) follows one real delivery through every stage of the
-system, introducing each term at the moment it acts.
+## Overview
 
-## Reading order
+Hiero SDK repositories repeat many of the same contributor-facing tasks: triage, workflow labels,
+pull-request checks, and status reporting. This project is building one hosted GitHub App that lets
+each repository choose its automations in a reviewed YAML file instead of maintaining separate
+scripts and workflows.
 
-1. [`design/planning/goals.md`](design/planning/goals.md) — the vision, the problem, and the hard limits.
-2. [`design/architecture.md`](design/architecture.md) — the current architecture proposal and its open
-   feasibility questions. [`design/decisions.md`](design/decisions.md) records accepted principles,
-   hypotheses, and open decisions.
-3. The component documents explain the candidate design in more detail.
-   - [`design/core/README.md`](design/core/README.md) explains the shared platform services and indexes the
-     rest of the core design.
-   - [`design/core/taxonomy.md`](design/core/taxonomy.md) describes an optional Hiero workflow profile and
-     the repository mappings it would require.
-   - [`design/core/manual-edits.md`](design/core/manual-edits.md) proposes safe behavior when a person changes
-     a mapped workflow label.
-   - [`design/config/schema.md`](design/config/schema.md) proposes the reviewed repository configuration.
-   - [`design/operations/README.md`](design/operations/README.md) describes hosting, rollout, rate limits,
-     failure reporting, and storage questions.
-   - [`design/operations/threat-model.md`](design/operations/threat-model.md) describes security threats,
-     required controls, and decisions that still depend on the implementation.
-4. [`design/modules/README.md`](design/modules/README.md) — candidate capabilities found in the audit. A
-   capability becomes product scope only after maintainer review and a safe test plan.
-5. [`design/testing/README.md`](design/testing/README.md) — how the system is tested.
-6. [`design/build-plan.md`](design/build-plan.md) is working planning material through November 2026. Its
-   dates and candidate milestones still require agreement and are not delivery commitments.
+The current application can:
 
-## The evidence underneath
+- verify signed webhook deliveries before trusting their contents;
+- store accepted work durably before acknowledging it;
+- evaluate repository configuration in `observe` or `dry-run` mode;
+- keep delivery state and canonical reports in SQLite; and
+- reject unsupported active behavior instead of claiming that a GitHub change happened.
 
-[`design/planning/lessons-learned.md`](design/planning/lessons-learned.md) distills the coupling anti-patterns
-(classes A–E) out of the audit; the audit itself lives in [`design/audit/`](design/audit/) — the C++, Python, and
-JavaScript SDK automation read at pinned commits, with `file:line` citations — and
-[`design/audit/services.md`](design/audit/services.md) is the cross-SDK synthesis of what exists today.
+> [!IMPORTANT]
+> This project is in early development. The App is not yet available for installation and does not
+> make active GitHub changes. The current runnable path is intentionally limited to truthful
+> observation and dry-run reports.
+
+## Project status
+
+| Area | Current state |
+|---|---|
+| Signed webhook verification | Implemented |
+| Durable delivery intake and deduplication | Implemented |
+| Observe and dry-run decisions | Implemented |
+| Canonical SQLite reports | Implemented |
+| Active GitHub writes and recovery | Deliberately unavailable |
+| Hosted installation | Not yet available |
+
+The next milestone is one small, real capability exercised end to end before the project expands to
+more automations. See the [configuration guide](docs/configuration.md) for the supported schema and
+[`design/trace.md`](design/trace.md) for the current delivery journey.
+
+## Get started
+
+### Develop locally
+
+You need [Node.js](https://nodejs.org/) 24 or newer and
+[pnpm](https://pnpm.io/) 10.29.1.
+
+```bash
+pnpm install
+pnpm -r test
+```
+
+All tracked tests run offline. You do not need GitHub credentials or a configured GitHub App.
+
+### Explore the configuration
+
+The [quickstart](docs/quickstart.md) shows the repository configuration planned for the App. Tested
+examples live in [`docs/examples/`](docs/examples/README.md). These files describe the current
+configuration contract; they are not installation instructions for a hosted service yet.
+
+## How it works
+
+```text
+signed GitHub webhook
+        │
+        ▼
+shell ── verify, accept, and claim the delivery
+        │
+        ▼
+SQLite ── durable delivery state
+        │
+        ▼
+core ── parse configuration and make a pure decision
+        │
+        ▼
+SQLite ── canonical report and atomic completion
+```
+
+The boundaries are deliberately narrow: transport does not make policy decisions, Core does not
+perform I/O, and SQLite owns durable operational state.
+
+## Workspace
+
+| Package | Responsibility |
+|---|---|
+| [`core`](packages/core/README.md) | Configuration, capability boundaries, safety rules, and pure decisions |
+| [`store`](packages/store/README.md) | Durable delivery and report state in SQLite |
+| [`shell`](packages/shell/README.md) | Webhook transport and processing order |
+| [`probes`](packages/probes/README.md) | Disposable capability fixtures used while the first real capability is selected |
+| [`checks`](packages/checks/README.md) | Repository-wide architecture, documentation, and example checks |
+| [`lab`](packages/lab/README.md) | Scrubbed experiments for behavior that requires contact with GitHub |
+
+## Documentation
+
+| Document | Use it for |
+|---|---|
+| [Quickstart](docs/quickstart.md) | Preview the repository configuration |
+| [Configuration](docs/configuration.md) | Understand every supported setting and validation rule |
+| [Troubleshooting](docs/troubleshooting.md) | Interpret reported errors and suggested actions |
+| [Delivery trace](design/trace.md) | Follow one webhook through the current system |
+| [Architecture](design/architecture.md) | Understand the present design and its open boundaries |
+| [Decision register](design/decisions.md) | Read the reasoning behind non-obvious choices |
+
+## Security
+
+The application verifies the exact webhook bytes, persists accepted work before returning success,
+and fails closed when configuration or runtime values are invalid. Active writes remain disabled
+until a real effect has durable restart and uncertain-outcome handling.
+
+Please report vulnerabilities privately through the process in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup (two commands, no credentials), the DCO sign-off
-every commit needs, how the difficulty ladder works, and the ground rules — each one linked to the
-decision or check that earned it. Participation is under the
-[Code of Conduct](CODE_OF_CONDUCT.md); security reports go through [`SECURITY.md`](SECURITY.md).
+Contributions are welcome. Start with the [contributing guide](CONTRIBUTING.md), then choose an open
+[`good first issue`](https://github.com/hiero-hackers/sdk-automations/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+Every commit requires a [Developer Certificate of Origin](https://developercertificate.org/) sign-off.
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Tooling
+## License
 
-Code style is enforced by [Prettier](https://prettier.io) (formatter-only) across all TypeScript
-packages; markdown, YAML, and JSON files are excluded — see `.prettierignore`. Run `pnpm format` to
-apply it, or `pnpm format:check` to verify without writing (CI runs the latter).
-
-ESLint enforces code quality separately — the two do not overlap. If you're wondering whether a new
-ESLint rule should be added: the answer is which defect class it catches, and whether a dedicated
-check in `checks/` would fit better than a rule catalogue entry.
-
-An opt-in pre-commit hook runs both on staged `packages/**/*.ts` files: `git config
-core.hooksPath .githooks`. It formats and re-stages with Prettier, then blocks the commit on ESLint
-errors only — warnings (like `no-explicit-any`) pass through. Know before opting in: re-staging
-covers the whole file, so a partially-staged file gets its unstaged hunks committed too — stash
-what you don't mean to commit. CI is the actual enforcement either way (the format check and lint
-jobs above), so the hook is convenience, not a gate; `git commit --no-verify` always skips it, and
-`@typescript-eslint/no-unused-vars` errors are not auto-fixable, so a mid-refactor WIP commit may
-need exactly that.
+Licensed under the [Apache License 2.0](LICENSE).
