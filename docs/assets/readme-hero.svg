@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-labelledby="title description">
+  <title id="title">Hiero SDK Automations</title>
+  <desc id="description">A verified webhook flows through durable intake and a pure decision into a durable report.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071c24"/>
+      <stop offset="0.52" stop-color="#0a3037"/>
+      <stop offset="1" stop-color="#0c202c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#57e6c2"/>
+      <stop offset="1" stop-color="#65bfff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#42d9ba" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#42d9ba" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="#b9fff0" stroke-opacity=".045"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="420" rx="28" fill="url(#background)"/>
+  <rect width="1200" height="420" rx="28" fill="url(#grid)"/>
+  <ellipse cx="600" cy="172" rx="390" ry="230" fill="url(#glow)"/>
+  <path d="M28 1H1172A27 27 0 0 1 1199 28V392A27 27 0 0 1 1172 419H28A27 27 0 0 1 1 392V28A27 27 0 0 1 28 1Z" fill="none" stroke="#7df4d8" stroke-opacity=".2" stroke-width="2"/>
+
+  <g transform="translate(600 70)" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <text y="0" fill="#82e9d3" font-size="15" font-weight="700" letter-spacing="5">HIERO SDK INFRASTRUCTURE</text>
+    <text y="72" fill="#f4fffc" font-size="62" font-weight="720" letter-spacing="-2">SDK Automations</text>
+    <rect x="-210" y="94" width="420" height="3" rx="1.5" fill="url(#accent)"/>
+    <text y="135" fill="#c1d8d8" font-size="20" font-weight="450" letter-spacing=".3">Repository automation you can inspect, trust, and control.</text>
+  </g>
+
+  <g transform="translate(97 278)" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <path d="M168 38H278M448 38H558M728 38H838" stroke="url(#accent)" stroke-width="2" stroke-dasharray="5 8" opacity=".75"/>
+    <g transform="translate(0)">
+      <rect width="168" height="76" rx="16" fill="#102f37" stroke="#62dbbf" stroke-opacity=".5"/>
+      <rect x="54" y="13" width="60" height="3" rx="1.5" fill="#63e2c4"/>
+      <text x="84" y="39" text-anchor="middle" fill="#effffc" font-size="15" font-weight="700">SIGNED WEBHOOK</text>
+      <text x="84" y="59" text-anchor="middle" fill="#91acab" font-size="12">exact bytes</text>
+    </g>
+    <g transform="translate(278)">
+      <rect width="170" height="76" rx="16" fill="#102f37" stroke="#62dbbf" stroke-opacity=".5"/>
+      <rect x="55" y="13" width="60" height="3" rx="1.5" fill="#63e2c4"/>
+      <text x="85" y="39" text-anchor="middle" fill="#effffc" font-size="15" font-weight="700">DURABLE INTAKE</text>
+      <text x="85" y="59" text-anchor="middle" fill="#91acab" font-size="12">SQLite first</text>
+    </g>
+    <g transform="translate(558)">
+      <rect width="170" height="76" rx="16" fill="#102f37" stroke="#64c8e8" stroke-opacity=".5"/>
+      <rect x="55" y="13" width="60" height="3" rx="1.5" fill="#68cfff"/>
+      <text x="85" y="39" text-anchor="middle" fill="#effffc" font-size="15" font-weight="700">PURE DECISION</text>
+      <text x="85" y="59" text-anchor="middle" fill="#91acab" font-size="12">observe or dry-run</text>
+    </g>
+    <g transform="translate(838)">
+      <rect width="168" height="76" rx="16" fill="#102f37" stroke="#64c8e8" stroke-opacity=".5"/>
+      <rect x="54" y="13" width="60" height="3" rx="1.5" fill="#68cfff"/>
+      <text x="84" y="39" text-anchor="middle" fill="#effffc" font-size="15" font-weight="700">DURABLE REPORT</text>
+      <text x="84" y="59" text-anchor="middle" fill="#91acab" font-size="12">honest outcome</text>
+    </g>
+  </g>
+</svg>
