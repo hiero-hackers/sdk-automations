@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme-hero.svg" alt="Hiero SDK Automations — signed webhook, durable intake, pure decision, durable report" width="100%">
+  <img src="docs/assets/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
 </p>
 
 <p align="center">
