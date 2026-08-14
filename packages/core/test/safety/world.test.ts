@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    deriveWorld,
     expectedHolds,
     observedMeaningsOf,
     projectIssueObservation,
@@ -114,6 +115,35 @@ describe("expectedHolds — the claim against the world", () => {
                 { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false },
                 projection,
             ),
+        ).toBe(false);
+    });
+});
+
+describe("deriveWorld authoritative preconditions", () => {
+    const emptyClaims = { meaningsPresent: [], meaningsAbsent: [], closed: null } as const;
+
+    it("refuses to establish or invent facts without a projection", () => {
+        expect(deriveWorld(null, emptyClaims)).toMatchObject({
+            observedMeanings: [],
+            preconditionHolds: false,
+        });
+    });
+
+    it("refuses to establish a precondition from a conflicted projection", () => {
+        const conflicted = project({
+            closedBy: null,
+            meanings: ["awaitingTriage", "inProgress"],
+        });
+        expect(conflicted.kind).toBe("conflict");
+        expect(deriveWorld(conflicted, emptyClaims).preconditionHolds).toBe(false);
+    });
+
+    it("checks requested facts against a clean authoritative projection", () => {
+        const clean = project({ closedBy: null, meanings: ["ready"] });
+        expect(deriveWorld(clean, emptyClaims).preconditionHolds).toBe(true);
+        expect(
+            deriveWorld(clean, { meaningsPresent: [], meaningsAbsent: ["ready"], closed: null })
+                .preconditionHolds,
         ).toBe(false);
     });
 });

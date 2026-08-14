@@ -140,6 +140,20 @@ describe("evaluateWrite (safety.md §2)", () => {
         expect(verdict).toMatchObject({ outcome: "refuse", code: "killSwitch" });
     });
 
+    it("unavailable authority is reported before permissions, mode, and observation handling", () => {
+        const unavailable = context({
+            installationGrants: [],
+            world: assertedWorld([], false),
+        });
+        expect(
+            evalWrite(
+                request({ actionClass: "observation" }),
+                unavailable,
+                config({ mode: "disabled" }),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "preconditionStale" });
+    });
+
     it.each(["observe", "dry-run"] as const)(
         "%s mode records instead of applying (rule 10)",
         (mode) => {
@@ -281,11 +295,29 @@ describe("audit findings, pinned (D51-D53)", () => {
                     warning: null,
                     qualifyingActivitySinceWarning: false,
                 },
-                context({ killSwitchActive: true }),
+                context({ killSwitchActive: true, world: assertedWorld([], false) }),
                 new Date("2026-08-01T00:00:00Z"),
                 anyCapability("inactivity"),
             ),
         ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
+    });
+
+    it("unavailable authority is reported before destructive-plan policy", () => {
+        expect(
+            evalDestructive(
+                {
+                    request: request({
+                        actionClass: "clockTriggeredDestructive",
+                        capability: "inactivity",
+                    }),
+                    warning: null,
+                    qualifyingActivitySinceWarning: false,
+                },
+                context({ world: assertedWorld([], false) }),
+                new Date("2026-08-01T00:00:00Z"),
+                anyCapability("inactivity"),
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "preconditionStale" });
     });
 
     it("refuses immediate preventive actions until their explanation and reversal gate exists", () => {
@@ -592,7 +624,6 @@ describe("the check order is contract, and now assertable directly", () => {
             "capabilityDisabled",
             "permissionMissing",
             "itemBlocked",
-            "preconditionStale",
             "humanOrderingUnknown",
             "invalidTimestamp",
             "newerHumanChange",
@@ -615,7 +646,7 @@ describe("the check order is contract, and now assertable directly", () => {
             request(),
             context({
                 installationGrants: [],
-                world: assertedWorld(["blocked"], false),
+                world: assertedWorld(["blocked"], true),
                 latestHumanChangeAt: "unknown",
             }),
             capabilityOff,

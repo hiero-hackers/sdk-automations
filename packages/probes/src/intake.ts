@@ -23,22 +23,7 @@ export const intakeDeclaration = declareCapability({
     configKeys: ["announce"],
     observations: ["issueUpdated"],
     resolvers: [],
-    intents: [
-        {
-            name: "applyMappedLabel",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-        {
-            name: "postManagedComment",
-            idempotencyClass: "nonIdempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: {
-        repository: ["issues:write", "contents:read"],
-        organization: [],
-    },
+    intents: ["applyMappedLabel", "postManagedComment"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -105,7 +90,6 @@ export const intake: Capability<IntakeDeclaration> = {
         intents.push(
             make({
                 operation: "applyMappedLabel",
-                actionClass: "reversibleStateChange",
                 /**
                  * The map's answer: `[*] → awaitingTriage` for
                  * `intakeObserved`. This probe's own invented cause,
@@ -126,7 +110,6 @@ export const intake: Capability<IntakeDeclaration> = {
             intents.push(
                 make({
                     operation: "postManagedComment",
-                    actionClass: "humanFacingOutput",
                     desired: {
                         marker: "<!-- hiero-automation:intake -->",
                         body: "Thanks for opening this. It has been placed in the triage queue.",

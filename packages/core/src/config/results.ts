@@ -24,7 +24,7 @@ export type ConfigErrorCode =
     | "modeInvalid"
     | "capabilityNameInvalid"
     | "capabilityEnabledNotBoolean"
-    | "capabilityNotInRegistry"
+    | "capabilityUnknown"
     | "meaningNotMappable"
     | "labelInvalid"
     | "labelNotInjective"

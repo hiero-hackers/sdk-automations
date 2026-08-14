@@ -1,12 +1,10 @@
 /**
- * One realistic story walked through EVERY core module in composition —
- * registry → config → observation → taxonomy → safety. No I/O; this is
- * executable documentation of how the shell wires the core, and the
- * cheapest place for interface mismatches between modules to surface.
+ * One realistic story walked through every core module in composition —
+ * direct admission → config → observation → taxonomy → safety. No I/O.
  */
 import { describe, it, expect } from "vitest";
 import {
-    createRegistry,
+    validateCapabilityDeclarations,
     parseConfig,
     projectIssueObservation,
     applyIssueTransition,
@@ -23,14 +21,7 @@ const assignment: CapabilityDeclaration = {
     configKeys: ["maxOpenAssignments"],
     observations: ["issueUpdated"],
     resolvers: [],
-    intents: [
-        {
-            name: "applyMappedLabel",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: { repository: ["issues:write"], organization: [] },
+    intents: ["applyMappedLabel"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -40,10 +31,10 @@ const assignment: CapabilityDeclaration = {
 };
 
 describe("the assignment story, end to end in pure logic", () => {
-    // 1. The platform boots its registry from shipped declarations.
-    const registryResult = createRegistry([assignment]);
-    if (!registryResult.ok) throw new Error(registryResult.errors.join("; "));
-    const registry = registryResult.registry;
+    // 1. The platform validates the direct shipped declaration list.
+    const declarations = [assignment];
+    const declarationErrors = validateCapabilityDeclarations(declarations);
+    if (declarationErrors.length > 0) throw new Error(declarationErrors.join("; "));
 
     // 2. The repository's reviewed config enables the capability and
     //    maps its labels.
@@ -59,12 +50,12 @@ describe("the assignment story, end to end in pure logic", () => {
                 },
             },
         },
-        { revision: "rev-test", knownCapabilities: registry.names },
+        { revision: "rev-test", knownCapabilities: declarations.map(({ name }) => name) },
     );
     if (!configResult.ok) throw new Error(configResult.errors.map((e) => e.message).join("; "));
     const config = configResult.config;
 
-    it("wires registry → config → projection → transition → safety into one apply", () => {
+    it("wires admission → config → projection → transition → safety into one apply", () => {
         // 3. The shell observes the issue's labels and maps them to
         //    meanings via config.mappings; core projects a position.
         const projection = projectIssueObservation({ closedBy: null, meanings: ["ready"] });
@@ -157,7 +148,7 @@ describe("the assignment story, end to end in pure logic", () => {
                 mode: "dry-run",
                 capabilities: { assignment: { enabled: true } },
             },
-            { revision: "rev-test", knownCapabilities: registry.names },
+            { revision: "rev-test", knownCapabilities: declarations.map(({ name }) => name) },
         );
         expect(dryConfig.ok).toBe(true);
         if (!dryConfig.ok) return;

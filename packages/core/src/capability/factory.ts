@@ -14,16 +14,10 @@
  *   the one that cannot be wrong.
  */
 
-import type { ActionClass } from "../safety/index.js";
 import type { TypedDeclaration } from "./declaration.js";
 import type { ItemRef, RepositoryRef } from "./catalogue.js";
 import type { IntentCatalogue, IntentOperation } from "./catalogue.js";
-import {
-    deriveIdempotencyKey,
-    type DestructiveDetail,
-    type ExpectedFacts,
-    type Intent,
-} from "./intent.js";
+import { deriveIdempotencyKey, type ExpectedFacts, type Intent } from "./intent.js";
 
 /** Where and when — bound once per evaluation, not restated per intent. */
 export interface IntentOccasion {
@@ -35,15 +29,12 @@ export interface IntentOccasion {
 /** What a capability says; the factory supplies the rest of the intent. */
 export interface IntentSpec<K extends IntentOperation> {
     readonly operation: K;
-    readonly actionClass: ActionClass;
     readonly desired: IntentCatalogue[K];
     /** What occasioned this — free text identifying the trigger, dated by the occasion. */
     readonly cause: string;
     /** Omitted fields claim nothing; `closed` defaults to no-claim, not open. */
     readonly expected?: Partial<ExpectedFacts>;
     readonly explain: { readonly summary: string; readonly detail?: readonly string[] };
-    /** Required exactly when the class is `clockTriggeredDestructive` — the screen enforces it. */
-    readonly destructive?: DestructiveDetail;
 }
 
 /** A spec-to-intent function with one occasion already bound. */
@@ -57,7 +48,6 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
             repository: occasion.repository,
             item: occasion.item,
             operation: spec.operation,
-            actionClass: spec.actionClass,
             expected: {
                 meaningsPresent: spec.expected?.meaningsPresent ?? [],
                 meaningsAbsent: spec.expected?.meaningsAbsent ?? [],
@@ -73,7 +63,6 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
         };
         return {
             ...base,
-            ...(spec.destructive !== undefined ? { destructive: spec.destructive } : {}),
             idempotencyKey: deriveIdempotencyKey(base),
         };
     };
@@ -89,6 +78,6 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
 export function intentFactoryFor<const D extends TypedDeclaration>(
     declaration: D,
     occasion: IntentOccasion,
-): <K extends D["intents"][number]["name"] & IntentOperation>(spec: IntentSpec<K>) => Intent<K> {
+): <K extends D["intents"][number]>(spec: IntentSpec<K>) => Intent<K> {
     return intentFactory(declaration.name, occasion);
 }

@@ -209,15 +209,9 @@ export type IntentOperation = keyof IntentCatalogue & string;
 export type IdempotencyClass = "idempotent" | "nonIdempotent";
 
 /**
- * The facts the PLATFORM owns about an operation — never the capability.
- *
- * The declared class is a redundant restatement that must match: a per-capability
- * field cannot be authoritative about a per-endpoint fact
- * (`FINDING(runtime-idempotency-declared-not-checked)`, D62).
- *
- * `actionClassFloor` is a MINIMUM, not a value: `unassign` is reversible when a
- * human asks and destructive when a clock does, so a capability may declare
- * stricter and never laxer (`FINDING(runtime-action-class-floor)`, D63).
+ * The facts the platform owns about an operation — never the capability.
+ * `actionClassFloor` retains its catalogue name but is the class supplied to
+ * safety now that capabilities cannot restate or elevate it.
  */
 export interface OperationFacts {
     readonly idempotencyClass: IdempotencyClass;
@@ -225,16 +219,7 @@ export interface OperationFacts {
     readonly permission: PermissionGrant;
 }
 
-/** Increasing risk — safety.md §1's order, as a comparable rank. */
-export const ACTION_CLASS_RANK: { readonly [K in ActionClass]: number } = {
-    observation: 0,
-    humanFacingOutput: 1,
-    reversibleStateChange: 2,
-    clockTriggeredDestructive: 3,
-    immediatePreventive: 4,
-};
-
-/** The platform's facts for every operation — the authority `screenIntent` reads. */
+/** The platform's authoritative facts for every operation. */
 export const INTENT_OPERATIONS: {
     readonly [K in IntentOperation]: OperationFacts;
 } = {

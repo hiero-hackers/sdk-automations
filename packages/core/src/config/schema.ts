@@ -110,12 +110,10 @@ export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
 /**
  * What the caller knows that the document does not say.
  *
- * `knownCapabilities` is the platform's shipped names. An enabled capability
- * outside the list is an error; a disabled one is not, so retiring a
- * capability never breaks a configuration that still names it. It is
- * required rather than optional because an absent registry used to mean both
- * "skip the check" and "nothing is known", and forgetting the argument
- * reached either one (D58).
+ * `knownCapabilities` is the application's directly admitted name list. Any
+ * capability outside it is an error, whether enabled or disabled. The field is
+ * required because omitting the admission authority would silently skip the
+ * unknown-capability check (D58).
  */
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */

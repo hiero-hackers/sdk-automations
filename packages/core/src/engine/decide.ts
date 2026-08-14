@@ -27,14 +27,7 @@ import { EngineHandle, type EngineCapability, type ResolverSource } from "./invo
 import { normalizeDelivery } from "./events.js";
 import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
 import type { ObservationProjection } from "../workflow/index.js";
-import {
-    createDestructiveWarning,
-    deriveWorld,
-    evaluateDestructive,
-    evaluateWrite,
-    type WriteContext,
-    type WriteRequest,
-} from "../safety/index.js";
+import { deriveWorld, evaluateWrite, type WriteRequest } from "../safety/index.js";
 import {
     explanationFinding,
     finding,
@@ -51,8 +44,6 @@ export type EngineObservation = ObservationCatalogue[keyof ObservationCatalogue]
 
 /** The facts core cannot derive, supplied as data and lookups rather than I/O. */
 export interface DecideExternals {
-    /** The caller's clock — the destructive grace comparison needs one. */
-    readonly now: Date;
     readonly killSwitchActive: boolean;
     readonly installationGrants: readonly PermissionGrant[];
     /** Ordering evidence per item; `"unknown"` is a safe conflict (manual-edits.md §2). */
@@ -110,43 +101,6 @@ const projectionOf = (observation: EngineObservation): EngineProjection =>
     observation.kind === "staleItemsDue" ? null : observation.position;
 
 /**
- * Destructive intents take the destructive gate; the warning rebuilds from
- * the STORED warned cause, never the current request (D60, D72).
- */
-function destructiveOrWrite(
-    intent: AnyIntent,
-    request: WriteRequest,
-    config: RepositoryConfig,
-    context: WriteContext,
-    now: Date,
-) {
-    if (intent.actionClass !== "clockTriggeredDestructive" || intent.destructive === undefined) {
-        return evaluateWrite(request, config, context);
-    }
-    return evaluateDestructive(
-        {
-            request,
-            warning: createDestructiveWarning({
-                request: {
-                    ...request,
-                    cause: intent.destructive.warnedCause,
-                    causeObservedAt: intent.destructive.warnedCauseObservedAt,
-                },
-                warnedAt: intent.destructive.warnedAt,
-                gracePeriodDays: intent.destructive.gracePeriodDays,
-                earliestActionAt: intent.destructive.earliestActionAt,
-                cancelledBy: intent.destructive.cancelledBy,
-                reversesWith: intent.destructive.reversesWith,
-            }),
-            qualifyingActivitySinceWarning: intent.destructive.qualifyingActivitySinceWarning,
-        },
-        config,
-        context,
-        now,
-    );
-}
-
-/**
  * One intent through every gate — screen, derived world, verdict —
  * returning its findings and, if it may act, the intent itself.
  */
@@ -162,17 +116,16 @@ function gateIntent(
         capability: declaration.name,
         item: intent.item,
     } as const;
-    const screen = screenIntent(intent, declaration);
+    const screen = screenIntent(intent, declaration, projection);
     if (!screen.ok) {
         return { findings: [screenFinding(screen, subject)], approved: null };
     }
 
-    const request = {
+    const operationFacts = INTENT_OPERATIONS[intent.operation];
+    const request: WriteRequest = {
         capability: declaration.name,
-        actionClass: intent.actionClass,
-        // From the catalogue — the platform owns what an operation needs
-        // (D62); the declaration's copy is the restatement, not the authority.
-        requiredPermissions: [INTENT_OPERATIONS[intent.operation].permission],
+        actionClass: operationFacts.actionClassFloor,
+        requiredPermissions: [operationFacts.permission],
         cause: intent.cause.cause,
         causeObservedAt: intent.cause.observedAt,
         target: {
@@ -186,7 +139,7 @@ function gateIntent(
         latestHumanChangeAt: externals.latestHumanChangeAt(intent.item),
         world: deriveWorld(projection, intent.expected),
     };
-    const verdict = destructiveOrWrite(intent, request, config, context, externals.now);
+    const verdict = evaluateWrite(request, config, context);
 
     const findings: Finding[] = [];
     // Acting intents tell their story; refusals keep their reasons alone (D92 3d).

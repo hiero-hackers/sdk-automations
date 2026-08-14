@@ -87,11 +87,9 @@ export function expectedHolds<M extends MappableMeaning>(
 }
 
 /**
- * The one constructor. A projected observation yields the real check; an
- * UNPROJECTED one (`null` — the stale sweep) shows the engine nothing to
- * check against, so the claim passes through unverified-here and rides
- * inside `AdapterCommand.expected` to the adapter's write-time recheck
- * (D92 3c).
+ * The one constructor. Missing or conflicted projection data cannot establish
+ * an authoritative precondition. A clean position projection compares the
+ * requested preconditions with observed facts.
  */
 export function deriveWorld<M extends MappableMeaning>(
     projection: ObservationProjection<M> | null,
@@ -99,7 +97,10 @@ export function deriveWorld<M extends MappableMeaning>(
 ): DerivedWorld {
     return {
         observedMeanings: projection === null ? [] : observedMeaningsOf(projection),
-        preconditionHolds: projection === null || expectedHolds(claims, projection),
+        preconditionHolds:
+            projection !== null &&
+            projection.kind === "position" &&
+            expectedHolds(claims, projection),
         [DERIVED]: true,
     };
 }

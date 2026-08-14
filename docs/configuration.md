@@ -88,8 +88,9 @@ Active GitHub writes and effect recovery are not implemented.
 | Required | no |
 | Default | `{}` — nothing enabled |
 
-Keys are capability names in camelCase (`intake`, `prQuality`). Enabling a name that does not ship is
-an error; **disabling** one is always fine, so a retired capability never breaks your file.
+Keys are capability names in camelCase (`intake`, `prQuality`). Every name must belong to the
+application's directly admitted capability list, whether `enabled` is `true` or `false`. Unknown
+names fail closed instead of being retained as compatibility entries.
 
 ### `capabilities.<name>.enabled`
 
@@ -201,7 +202,7 @@ The exact codes the App reports, and what to fix.
 | `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prQuality` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |
-| `capabilityNotInRegistry` | You enabled a capability that does not exist |
+| `capabilityUnknown` | The capability is not available in this application; remove its block or run an application that ships it |
 | `meaningNotMappable` | A key under `mappings.labels` is not in the meanings table above |
 | `labelInvalid` | A label that is empty, only spaces, or not a string |
 | `labelNotInjective` | Two meanings map to the same label; give one a different name |

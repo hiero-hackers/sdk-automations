@@ -1,35 +1,17 @@
 /**
- * What a capability declares about itself, and whether the declaration holds
- * up — `design/modules/contract.md` §1 as validated types.
- *
- * The shape first, then the two validators that judge it: one structural, one
- * against the platform catalogues. `registry.ts` is the list of declarations
- * the platform ships; `boundary.ts` is how one of them is invoked.
+ * What a capability declares about itself, and the one admission path for the
+ * complete set the platform ships. `boundary.ts` invokes an admitted
+ * capability; the platform catalogues remain authoritative for operation facts.
  */
 
 import { CAPABILITY_NAME_PATTERN } from "../config/schema.js";
-import type { PermissionGrant } from "../github/index.js";
-import { isPermissionGrant } from "../github/index.js";
-import type {
-    IdempotencyClass,
-    IntentOperation,
-    ObservationName,
-    ResolverName,
-} from "./catalogue.js";
+import type { IntentOperation, ObservationName, ResolverName } from "./catalogue.js";
 import { INTENT_OPERATIONS, OBSERVATION_NAMES, RESOLVER_NAMES } from "./catalogue.js";
 
 /** contract.md §1 triggers, split into the two real shapes. */
 export type Trigger =
     | { readonly kind: "event"; readonly event: string }
     | { readonly kind: "schedule"; readonly description: string };
-
-/** One intent a capability claims, with the facts it must restate correctly (D23). */
-export interface IntentDeclaration {
-    readonly name: string;
-    readonly idempotencyClass: IdempotencyClass;
-    /** Repository permissions this intent's effects require. */
-    readonly requiredPermissions: readonly PermissionGrant[];
-}
 
 /** What a capability needs from the platform to run at all — contract.md §1. */
 export interface OperationalNeeds {
@@ -39,44 +21,26 @@ export interface OperationalNeeds {
     readonly externalDelivery: boolean;
 }
 
-/**
- * A capability's self-description — contract.md §1, with intents upgraded
- * from names to declarations.
- *
- * `retired` is a tombstone. A retired capability's name stays in the registry
- * forever: configs that enable it remain valid, but the capability never
- * activates and the effective-config report says so. Only names that never
- * existed are validation errors. Retirement is not allowed to be a breaking
- * change, and deleting a name — the only way to make it one — is not
- * representable.
- */
+/** A capability's self-description — `design/modules/contract.md` §1. */
 export interface CapabilityDeclaration {
     readonly name: string;
-    readonly retired?: boolean;
     readonly triggers: readonly Trigger[];
     readonly configKeys: readonly string[];
     readonly observations: readonly string[];
     readonly resolvers: readonly string[];
-    readonly intents: readonly IntentDeclaration[];
-    readonly permissions: {
-        readonly repository: readonly PermissionGrant[];
-        readonly organization: readonly PermissionGrant[];
-    };
+    readonly intents: readonly string[];
     readonly operationalNeeds: OperationalNeeds;
 }
 
 /**
  * A declaration whose names are catalogue keys. `CapabilityDeclaration`
- * keeps `readonly string[]` because configuration validation and operator
- * reporting only need names; the runtime boundary needs the payload types
- * those names stand for, which only a key-constrained declaration gives.
+ * keeps `readonly string[]` so malformed external declarations remain
+ * runtime-validatable; the runtime boundary needs key-constrained names.
  */
 export interface TypedDeclaration extends CapabilityDeclaration {
     readonly observations: readonly ObservationName[];
     readonly resolvers: readonly ResolverName[];
-    readonly intents: readonly (IntentDeclaration & {
-        readonly name: IntentOperation;
-    })[];
+    readonly intents: readonly IntentOperation[];
 }
 
 /**
@@ -103,7 +67,7 @@ function duplicates(values: readonly string[]): string[] {
  * returns every violation rather than the first, in the same errors-as-values
  * style as `parseConfig`.
  */
-export function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
+function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
     const at = `capability "${d.name}"`;
 
@@ -125,31 +89,10 @@ export function validateDeclaration(d: CapabilityDeclaration): readonly string[]
         ["configKeys", d.configKeys],
         ["observations", d.observations],
         ["resolvers", d.resolvers],
-        ["intents", d.intents.map((i) => i.name)],
+        ["intents", d.intents],
     ] as const) {
         for (const dup of duplicates(list[1])) {
             errors.push(`${at}: duplicate ${list[0]} entry "${dup}"`);
-        }
-    }
-
-    // The declared set is repository AND organization grants (D57). Repository
-    // only rejected an intent whose grant was legitimately declared under
-    // `organization`, which would have blocked every org-scoped capability
-    // (FINDING(contract-intent-org-permissions)).
-    const declared = new Set<string>([...d.permissions.repository, ...d.permissions.organization]);
-    for (const grant of [...d.permissions.repository, ...d.permissions.organization]) {
-        if (!isPermissionGrant(grant)) {
-            errors.push(`${at}: permission "${grant}" is not in scope:level form`);
-        }
-    }
-    for (const intent of d.intents) {
-        for (const grant of intent.requiredPermissions) {
-            if (!declared.has(grant)) {
-                errors.push(
-                    `${at}: intent "${intent.name}" requires "${grant}" which the capability does not declare — ` +
-                        `an intent cannot exceed its capability's permissions`,
-                );
-            }
         }
     }
 
@@ -160,13 +103,8 @@ function isIntentOperation(name: string): name is IntentOperation {
     return Object.hasOwn(INTENT_OPERATIONS, name);
 }
 
-/**
- * Do the declared names exist, and does the declaration restate the
- * operation-owned facts correctly? Exported for focused diagnostics;
- * `createRegistry` is the trusted operation that always combines this with
- * structural validation.
- */
-export function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly string[] {
+/** Do the declared observation, resolver, and intent names exist? */
+function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
     const at = `capability "${declaration.name}"`;
 
@@ -181,20 +119,26 @@ export function checkAgainstCatalogue(declaration: CapabilityDeclaration): reado
         }
     }
     for (const intent of declaration.intents) {
-        if (!isIntentOperation(intent.name)) {
-            errors.push(`${at}: intent "${intent.name}" is not in the operation catalogue`);
-            continue;
+        if (!isIntentOperation(intent)) {
+            errors.push(`${at}: intent "${intent}" is not in the operation catalogue`);
         }
-        const facts = INTENT_OPERATIONS[intent.name];
-        if (facts.idempotencyClass !== intent.idempotencyClass) {
-            errors.push(
-                `${at}: intent "${intent.name}" declares idempotencyClass "${intent.idempotencyClass}" but the operation is "${facts.idempotencyClass}" — ` +
-                    `the platform owns this fact (FINDING(runtime-idempotency-declared-not-checked))`,
-            );
-        }
-        if (!intent.requiredPermissions.includes(facts.permission)) {
-            errors.push(`${at}: intent "${intent.name}" must require "${facts.permission}"`);
-        }
+    }
+    return errors;
+}
+
+/**
+ * Validate the complete direct capability set before any caller can use it.
+ * Returns every structural, catalogue, and duplicate-name error.
+ */
+export function validateCapabilityDeclarations(
+    declarations: readonly CapabilityDeclaration[],
+): readonly string[] {
+    const errors = declarations.flatMap((declaration) => [
+        ...validateDeclaration(declaration),
+        ...checkAgainstCatalogue(declaration),
+    ]);
+    for (const name of duplicates(declarations.map((declaration) => declaration.name))) {
+        errors.push(`duplicate capability name "${name}"`);
     }
     return errors;
 }

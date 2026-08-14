@@ -28,7 +28,7 @@ export type ObservationFor<D extends TypedDeclaration> =
 /** The intent union a declaration may return — one member per declared operation. */
 export type IntentFor<D extends TypedDeclaration> = Extract<
     AnyIntent,
-    { operation: D["intents"][number]["name"] }
+    { operation: D["intents"][number] }
 >;
 
 // ─── The view a capability sees ──────────────────────────────────────

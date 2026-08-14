@@ -133,7 +133,8 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         // whatever the context (D52).
                                         if (
                                             actionClass === "clockTriggeredDestructive" &&
-                                            !killSwitchActive
+                                            !killSwitchActive &&
+                                            preconditionHolds
                                         ) {
                                             expect(verdict).toMatchObject({
                                                 outcome: "refuse",

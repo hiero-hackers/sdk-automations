@@ -49,14 +49,7 @@ const declaration = declareCapability({
     configKeys: [],
     observations: ["issueUpdated"],
     resolvers: [],
-    intents: [
-        {
-            name: "applyMappedLabel",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: { repository: ["issues:write"], organization: [] },
+    intents: ["applyMappedLabel"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -80,7 +73,6 @@ function configIn(mode: "active" | "dry-run") {
 }
 
 const externals: DecideExternals = {
-    now: new Date("2026-08-07T02:00:00Z"),
     killSwitchActive: false,
     installationGrants: ["issues:write"],
     latestHumanChangeAt: () => null,
@@ -99,7 +91,6 @@ describe("one real delivery, end to end", () => {
         observedAt: observation.observedAt,
     })({
         operation: "applyMappedLabel",
-        actionClass: "reversibleStateChange",
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: "issueWithoutPosition",
         expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
@@ -144,7 +135,7 @@ describe("one real delivery, end to end", () => {
     });
 
     it("parity: decide() equals the hand-wired report, finding for finding", async () => {
-        const screen = screenIntent(keyed, declaration);
+        const screen = screenIntent(keyed, declaration, observation.position);
         expect(screen).toEqual({ ok: true });
 
         const verdict = evaluateWrite(

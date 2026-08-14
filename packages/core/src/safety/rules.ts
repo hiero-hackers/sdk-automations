@@ -6,10 +6,10 @@
  * rollback, dry-run-before-active rollout — cannot be decided from one
  * request and belong to a future write path and to process.
  *
- * Precedence is policy: kill switch → observation → consent → authority →
- * pause → staleness → human conflict → mode. Only the kill switch changes an
- * OUTCOME; the rest decide which `code` gets reported, and the tests freeze
- * that order.
+ * Precedence is policy: kill switch → authoritative precondition → observation
+ * → consent → permissions → pause → human conflict → mode. Only the kill
+ * switch changes an OUTCOME; the rest decide which `code` gets reported, and
+ * the tests freeze that order.
  * **If you are asking "why was my write refused?", this is the file.**
  * Both doors — `write.ts` and `destructive.ts` — arrive here after their
  * own policy; only the rule ORDER is exported, because order is contract
@@ -27,7 +27,7 @@ import type {
     WriteRequest,
 } from "./types.js";
 
-/** The one check that runs before everything, including observations (D39). */
+/** Kill switch and authoritative precondition run before either write door. */
 export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
     // Before the observation short-circuit: "stop" stops reads too (D39).
     if (context.killSwitchActive) {
@@ -35,6 +35,13 @@ export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
             outcome: "refuse",
             code: "killSwitch",
             reason: "a kill switch is active",
+        };
+    }
+    if (!context.world.preconditionHolds) {
+        return {
+            outcome: "refuse",
+            code: "preconditionStale",
+            reason: "the authoritative precondition is unavailable, conflicted, or no longer holds (rule 4)",
         };
     }
     return null;
@@ -104,16 +111,6 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
             isBlocked(f.context.world.observedMeanings)
                 ? refuse("itemBlocked", "the item is blocked — capability writes are paused (§5)")
                 : null,
-    ],
-    [
-        "preconditionStale",
-        (f) =>
-            f.context.world.preconditionHolds
-                ? null
-                : refuse(
-                      "preconditionStale",
-                      "the rechecked precondition no longer holds (rule 4)",
-                  ),
     ],
     [
         // Unestablished ordering is a conflict, never an absence — checked

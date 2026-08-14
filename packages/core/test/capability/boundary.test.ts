@@ -16,7 +16,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-    checkAgainstCatalogue,
     declareCapability,
     deriveIdempotencyKey,
     idempotencyOf,
@@ -33,19 +32,7 @@ const declaration = declareCapability({
     configKeys: ["announce"],
     observations: ["issueUpdated"],
     resolvers: ["linkedIssues"],
-    intents: [
-        {
-            name: "applyMappedLabel",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-        {
-            name: "unassign",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: { repository: ["issues:write"], organization: [] },
+    intents: ["applyMappedLabel", "unassign"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -62,7 +49,6 @@ const intent = (over: Record<string, unknown> = {}): AnyIntent =>
         repository: { owner: "o", repo: "r" },
         item: { kind: "issue", number: 1 },
         operation: "applyMappedLabel",
-        actionClass: "reversibleStateChange",
         expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: { cause: "someCause", observedAt: AT },
@@ -71,23 +57,8 @@ const intent = (over: Record<string, unknown> = {}): AnyIntent =>
         ...over,
     }) as AnyIntent;
 
-const destructiveDetail = {
-    warnedAt: AT,
-    gracePeriodDays: 7,
-    earliestActionAt: new Date("2026-08-12T09:00:00.000Z"),
-    cancelledBy: "activity",
-    reversesWith: "reassigning",
-    qualifyingActivitySinceWarning: false,
-    warnedCause: "someCause",
-    warnedCauseObservedAt: AT,
-};
-
-describe("the operation catalogue owns what the declaration may only restate", () => {
-    /**
-     * D62. If these values are not pinned here, a declaration is free to
-     * disagree with the platform and a future writer picks its retry rule from
-     * the wrong one — 6.5's demonstrated comment duplication.
-     */
+describe("the operation catalogue owns platform facts", () => {
+    /** Operation-owned facts cannot be restated by a capability. */
     it("pins the idempotency class of every operation", () => {
         expect(idempotencyOf("postManagedComment")).toBe("nonIdempotent");
         expect(idempotencyOf("applyMappedLabel")).toBe("idempotent");
@@ -108,183 +79,106 @@ describe("the operation catalogue owns what the declaration may only restate", (
             });
         }
     });
-
-    it("rejects a declaration whose idempotency class contradicts the catalogue", () => {
-        const liar = declareCapability({
-            ...declaration,
-            intents: [
-                {
-                    name: "postManagedComment",
-                    idempotencyClass: "idempotent",
-                    requiredPermissions: ["issues:write"],
-                },
-            ],
-        });
-        const errors = checkAgainstCatalogue(liar);
-        expect(errors).toHaveLength(1);
-        expect(errors[0]).toContain("the platform owns this fact");
-    });
-
-    it("rejects a declaration whose intent omits the operation's permission", () => {
-        const under = declareCapability({
-            ...declaration,
-            intents: [
-                {
-                    name: "applyMappedLabel",
-                    idempotencyClass: "idempotent",
-                    requiredPermissions: [],
-                },
-            ],
-        });
-        expect(checkAgainstCatalogue(under)[0]).toContain('must require "issues:write"');
-    });
-
-    it("accepts a declaration that agrees with the catalogue", () => {
-        expect(checkAgainstCatalogue(declaration)).toEqual([]);
-    });
 });
 
 describe("screenIntent", () => {
-    it("accepts a well-formed intent", () => {
-        expect(screenIntent(intent(), declaration)).toEqual({ ok: true });
+    const position = (meaning: "ready" | "needsReview" | null = null) => ({
+        kind: "position" as const,
+        state: { meaning, blocked: false, closedBy: null },
+        ignored: [],
+    });
+    const conflict = {
+        kind: "conflict" as const,
+        positions: ["ready", "inProgress"] as const,
+        blocked: false,
+        closedBy: null,
+        ignored: [],
+    };
+
+    it("accepts a well-formed intent against an authoritative position", () => {
+        expect(screenIntent(intent(), declaration, position())).toEqual({ ok: true });
     });
 
-    it("refuses an intent attributed to another capability", () => {
-        expect(screenIntent(intent({ capability: "other" }), declaration)).toMatchObject({
-            ok: false,
-            code: "foreignCapability",
-        });
-    });
-
-    it("refuses an operation the capability did not declare", () => {
-        expect(
+    it("refuses foreign, undeclared, and malformed intents with distinct reasons", () => {
+        const candidates = [
+            screenIntent(intent({ capability: "other" }), declaration, position()),
             screenIntent(
                 intent({
                     operation: "postManagedComment",
-                    actionClass: "humanFacingOutput",
                     desired: { marker: "<!-- m -->", body: "b" },
                 }),
                 declaration,
+                position(),
             ),
-        ).toMatchObject({ ok: false, code: "undeclaredIntent" });
-    });
-
-    /**
-     * D63's floor, in both directions. The `below` case is what pins
-     * ACTION_CLASS_RANK: with an empty rank map every lookup is `undefined`,
-     * `undefined < undefined` is false, and an understated write would sail
-     * through — so this assertion is the one that makes the ranking real.
-     */
-    it("refuses a write that understates its risk class", () => {
-        expect(
-            screenIntent(intent({ actionClass: "humanFacingOutput" }), declaration),
-        ).toMatchObject({ ok: false, code: "actionClassBelowFloor" });
-        expect(screenIntent(intent({ actionClass: "observation" }), declaration)).toMatchObject({
-            ok: false,
-            code: "actionClassBelowFloor",
-        });
-    });
-
-    it("accepts a stricter class than the floor", () => {
-        // Permitted by the screen; `evaluateWrite` still refuses
-        // `immediatePreventive` for want of a gate (D54). The screen bounds
-        // what may be CLAIMED, the safety engine what may HAPPEN.
-        expect(screenIntent(intent({ actionClass: "immediatePreventive" }), declaration)).toEqual({
-            ok: true,
-        });
-    });
-
-    it("refuses an intent whose cause carries an invalid timestamp", () => {
-        expect(
             screenIntent(
                 intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
                 declaration,
+                position(),
             ),
-        ).toMatchObject({ ok: false, code: "invalidCause" });
-    });
-
-    /** D64, both directions — the reverse check is the dangerous one. */
-    it("refuses a destructive intent carrying no warning record", () => {
-        expect(
-            screenIntent(
-                intent({
-                    operation: "unassign",
-                    actionClass: "clockTriggeredDestructive",
-                    desired: { login: "someone" },
-                }),
-                declaration,
-            ),
-        ).toMatchObject({ ok: false, code: "destructiveWithoutWarning" });
-    });
-
-    it("refuses a warning record attached to a non-destructive intent", () => {
-        expect(
-            screenIntent(
-                intent({
-                    operation: "unassign",
-                    actionClass: "reversibleStateChange",
-                    desired: { login: "someone" },
-                    destructive: destructiveDetail,
-                }),
-                declaration,
-            ),
-        ).toMatchObject({ ok: false, code: "warningWithoutDestructive" });
-    });
-
-    /**
-     * The same invariant `safety.test.ts` holds over its verdicts: `code` is
-     * machine-readable contract and asserted exactly; `reason` is prose for
-     * humans and asserted only to be PRESENT. A refusal that cannot say why
-     * is a refusal an operator cannot act on — but pinning the wording would
-     * make human-facing text a breaking change.
-     */
-    it("every refusal carries a non-empty human reason", () => {
-        const refusals = [
-            intent({ capability: "other" }),
-            intent({
-                operation: "postManagedComment",
-                actionClass: "humanFacingOutput",
-                desired: { marker: "<!-- m -->", body: "b" },
-            }),
-            intent({ actionClass: "observation" }),
-            intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
-            intent({
-                operation: "unassign",
-                actionClass: "clockTriggeredDestructive",
-                desired: { login: "someone" },
-            }),
-            intent({
-                operation: "unassign",
-                actionClass: "reversibleStateChange",
-                desired: { login: "someone" },
-                destructive: destructiveDetail,
-            }),
         ];
-        const seen = new Set<string>();
-        for (const candidate of refusals) {
-            const screen = screenIntent(candidate, declaration);
-            expect(screen.ok).toBe(false);
-            if (!screen.ok) {
-                expect(screen.reason.length).toBeGreaterThan(0);
-                expect(screen.code.length).toBeGreaterThan(0);
-                seen.add(screen.code);
-            }
+        expect(candidates.map((candidate) => (candidate.ok ? null : candidate.code))).toEqual([
+            "foreignCapability",
+            "undeclaredIntent",
+            "invalidCause",
+        ]);
+        for (const candidate of candidates) {
+            expect(candidate.ok).toBe(false);
+            if (!candidate.ok) expect(candidate.reason.length).toBeGreaterThan(0);
         }
-        // Every refusal path reports a DISTINCT code — a shared code would
-        // make two different defects indistinguishable to an operator.
-        expect(seen.size).toBe(refusals.length);
     });
 
-    it("accepts a destructive intent that carries its warning", () => {
+    it("refuses a mapped-label intent when authoritative position is unavailable", () => {
+        expect(screenIntent(intent(), declaration, null)).toEqual({
+            ok: false,
+            code: "authoritativePositionUnavailable",
+            reason: "the authoritative current position is unavailable",
+        });
+    });
+
+    it("uses an observed conflict even when the capability claims a clean state", () => {
         expect(
             screenIntent(
                 intent({
-                    operation: "unassign",
-                    actionClass: "clockTriggeredDestructive",
-                    desired: { login: "someone" },
-                    destructive: destructiveDetail,
+                    expected: {
+                        meaningsPresent: [],
+                        meaningsAbsent: ["ready", "inProgress"],
+                        closed: false,
+                    },
                 }),
                 declaration,
+                conflict,
+            ),
+        ).toMatchObject({ ok: false, code: "positionConflict" });
+    });
+
+    it("does not let a claimed current position replace the observed position", () => {
+        expect(
+            screenIntent(
+                intent({
+                    expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
+                }),
+                declaration,
+                position(),
+            ),
+        ).toEqual({ ok: true });
+        expect(
+            screenIntent(
+                intent({
+                    expected: { meaningsPresent: [], meaningsAbsent: ["ready"], closed: false },
+                    desired: { meaning: "inProgress", cause: "contributorAssigned" },
+                }),
+                declaration,
+                position("ready"),
+            ),
+        ).toEqual({ ok: true });
+    });
+
+    it("leaves non-transition operations to the safety gate", () => {
+        expect(
+            screenIntent(
+                intent({ operation: "unassign", desired: { login: "someone" } }),
+                declaration,
+                null,
             ),
         ).toEqual({ ok: true });
     });
@@ -401,260 +295,84 @@ describe("projectCapabilityView (contract.md §6)", () => {
     });
 });
 
-describe("the map is enforced (D78)", () => {
-    const move = (over: Record<string, unknown> = {}): AnyIntent =>
-        intent({
-            operation: "applyMappedLabel",
-            actionClass: "reversibleStateChange",
-            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-            ...over,
-        });
-
-    /**
-     * The case that motivated all of this: `readyToMerge` is a pull-request
-     * position. Nothing used to stop a capability writing it onto an issue —
-     * the screen checked the operation was declared, safety checked permission
-     * and mode, and the tables that knew better had no caller.
-     */
-    it("refuses a pull-request position on an issue", () => {
-        expect(
-            screenIntent(
-                move({ desired: { meaning: "readyToMerge", cause: "intakeObserved" } }),
-                declaration,
-            ),
-        ).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+describe("authoritative transition-map screening", () => {
+    const issuePosition = (meaning: "ready" | null = null) => ({
+        kind: "position" as const,
+        state: { meaning, blocked: false, closedBy: null },
+        ignored: [],
+    });
+    const pullRequestPosition = (meaning: "needsReview" | null = null) => ({
+        kind: "position" as const,
+        state: { meaning, blocked: false, closedBy: null },
+        ignored: [],
     });
 
-    it("accepts a documented edge", () => {
-        expect(screenIntent(move(), declaration)).toEqual({ ok: true });
-    });
-
-    /**
-     * A foreign-flow CAUSE, distinct from a foreign-flow meaning: the meaning
-     * is a legal issue position, but the cause belongs to the pull-request
-     * flow. Before D90 a cast slid this into the edge lookup; the predicate
-     * now refuses it by name, and this walks that branch — the predicate unit
-     * tests alone leave it uncovered.
-     */
-    it("refuses an issue move driven by a pull-request cause", () => {
-        const screen = screenIntent(
-            move({ desired: { meaning: "awaitingTriage", cause: "checksPassed" } }),
+    it("refuses wrong-flow desired and observed positions", () => {
+        const wrongDesired = screenIntent(
+            intent({ desired: { meaning: "readyToMerge", cause: "intakeObserved" } }),
             declaration,
+            issuePosition(),
         );
-        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
-        if (!screen.ok) expect(screen.reason).toContain("issue-flow");
+        expect(wrongDesired).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+        if (!wrongDesired.ok) expect(wrongDesired.reason).toContain("issue position");
+
+        const wrongObserved = screenIntent(
+            intent({ desired: { meaning: "awaitingTriage", cause: "intakeObserved" } }),
+            declaration,
+            pullRequestPosition("needsReview"),
+        );
+        expect(wrongObserved).toMatchObject({ ok: false, code: "meaningWrongEntity" });
+        if (!wrongObserved.ok) expect(wrongObserved.reason).toContain("issue position");
     });
 
-    it("refuses a move the profile does not document", () => {
-        // ready → inProgress is an edge, but not for `intakeObserved`.
+    it("refuses an undocumented issue edge from the observed position", () => {
         const screen = screenIntent(
-            move({
-                expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
-                desired: { meaning: "inProgress", cause: "intakeObserved" },
-            }),
+            intent({ desired: { meaning: "inProgress", cause: "intakeObserved" } }),
             declaration,
+            issuePosition("ready"),
         );
         expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
         if (!screen.ok) expect(screen.reason).toContain("ready");
     });
 
-    it("accepts that same move under the cause the map names for it", () => {
-        expect(
-            screenIntent(
-                move({
-                    expected: { meaningsPresent: ["ready"], meaningsAbsent: [], closed: false },
-                    desired: { meaning: "inProgress", cause: "contributorAssigned" },
-                }),
-                declaration,
-            ),
-        ).toEqual({ ok: true });
-    });
-
-    /**
-     * A cross-entity label is noise to preserve, not a position (D35). It must
-     * not be mistaken for the `from` the capability is moving away from.
-     */
-    it("ignores a stray cross-flow label when reading the current position", () => {
-        expect(
-            screenIntent(
-                move({
-                    expected: {
-                        meaningsPresent: ["needsReview"],
-                        meaningsAbsent: [],
-                        closed: false,
-                    },
-                }),
-                declaration,
-            ),
-        ).toEqual({ ok: true });
-    });
-
-    it("leaves non-moving operations alone — a comment is not a transition", () => {
-        expect(
-            screenIntent(
-                intent({
-                    operation: "unassign",
-                    actionClass: "reversibleStateChange",
-                    desired: { login: "someone" },
-                }),
-                declaration,
-            ),
-        ).toEqual({ ok: true });
-    });
-});
-
-describe("what the map check must NOT break", () => {
-    /**
-     * `blocked` is an orthogonal pause flag, not a position (D28). It is
-     * mappable, it applies to issues and pull requests alike, and applying it
-     * moves nothing — so there is no edge to check.
-     *
-     * The first version of the screen refused it as `meaningWrongEntity`,
-     * which would have broken every capability that blocks an item. This test
-     * exists because that bug shipped in the first draft and passed every
-     * other test in the suite.
-     */
-    it("refuses a capability-written pause, and not as a wrong entity (D79)", () => {
-        for (const kind of ["issue", "pullRequest"] as const) {
-            const screen = screenIntent(
-                intent({
-                    item: { kind, number: 1 },
-                    operation: "applyMappedLabel",
-                    actionClass: "reversibleStateChange",
-                    desired: { meaning: "blocked", cause: "intakeObserved" },
-                }),
-                declaration,
-            );
-            // The CODE is the point. Refusing it as `meaningWrongEntity`
-            // would tell a maintainer they got the entity wrong, when what
-            // they actually did was try to withhold an item from every other
-            // capability.
-            expect(screen, `on a ${kind}`).toMatchObject({
-                ok: false,
-                code: "pauseNotCapabilityWritable",
-            });
-        }
-    });
-
-    /**
-     * The refusal must be about pausing, not about positions: `blocked` is
-     * legal on both entity kinds and would pass an entity check. If this ever
-     * starts reporting `meaningWrongEntity`, the two rules have been reordered
-     * and the reason a maintainer sees has silently become false.
-     */
-    it("reaches the pause rule before the entity rule", () => {
-        const screen = screenIntent(
-            intent({
-                item: { kind: "pullRequest", number: 1 },
-                operation: "applyMappedLabel",
-                actionClass: "reversibleStateChange",
-                desired: { meaning: "blocked", cause: "intakeObserved" },
-            }),
+    it("refuses a pull-request cause on an issue", () => {
+        const wrongCause = screenIntent(
+            intent({ desired: { meaning: "awaitingTriage", cause: "reviewPolicySatisfied" } }),
             declaration,
+            issuePosition(),
         );
-        expect(screen.ok).toBe(false);
-        if (!screen.ok) expect(screen.code).not.toBe("meaningWrongEntity");
+        expect(wrongCause).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!wrongCause.ok) expect(wrongCause.reason).toContain("issue-flow cause");
     });
 
-    /**
-     * Two own-flow positions is a conflict, and the projection refuses to
-     * produce one (D35). Silently treating it as "no position" would check
-     * the `[*] → to` edge — the wrong one — and could let a move through.
-     */
-    it("refuses a conflicted position rather than checking the wrong edge", () => {
-        const screen = screenIntent(
-            intent({
-                operation: "applyMappedLabel",
-                actionClass: "reversibleStateChange",
-                expected: {
-                    meaningsPresent: ["ready", "inProgress"],
-                    meaningsAbsent: [],
-                    closed: false,
-                },
-                desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-            }),
-            declaration,
-        );
-        expect(screen).toMatchObject({ ok: false, code: "positionConflict" });
+    it("refuses a capability-written pause", () => {
+        expect(
+            screenIntent(
+                intent({ desired: { meaning: "blocked", cause: "intakeObserved" } }),
+                declaration,
+                issuePosition(),
+            ),
+        ).toMatchObject({ ok: false, code: "pauseNotCapabilityWritable" });
     });
-});
 
-describe("the map is enforced on both flows, not just issues", () => {
-    it("refuses a pull-request move driven by an issue cause", () => {
-        const screen = screenIntent(
+    it("enforces pull-request causes and edges", () => {
+        const pullRequestIntent = intent({
+            item: { kind: "pullRequest", number: 9 },
+            desired: { meaning: "readyToMerge", cause: "reviewPolicySatisfied" },
+        });
+        expect(
+            screenIntent(pullRequestIntent, declaration, pullRequestPosition("needsReview")),
+        ).toEqual({ ok: true });
+
+        const wrongCause = screenIntent(
             intent({
                 item: { kind: "pullRequest", number: 9 },
-                operation: "applyMappedLabel",
-                actionClass: "reversibleStateChange",
                 desired: { meaning: "needsReview", cause: "triageCompleted" },
             }),
             declaration,
+            pullRequestPosition(),
         );
-        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
-        if (!screen.ok) expect(screen.reason).toContain("pull-request-flow");
-    });
-
-    /**
-     * Every test above uses an issue, so `canTransitionPr` was never reached
-     * and half the profile went unexercised — the mutation gate caught it.
-     * The pull-request flow has its own edges and its own causes, and a check
-     * that only ever ran on one of them proves very little.
-     */
-    const pr = (over: Record<string, unknown> = {}): AnyIntent =>
-        intent({
-            item: { kind: "pullRequest", number: 9 },
-            operation: "applyMappedLabel",
-            actionClass: "reversibleStateChange",
-            ...over,
-        });
-
-    it("accepts a documented pull-request edge", () => {
-        expect(
-            screenIntent(
-                pr({
-                    expected: {
-                        meaningsPresent: ["needsReview"],
-                        meaningsAbsent: [],
-                        closed: false,
-                    },
-                    desired: { meaning: "readyToMerge", cause: "reviewPolicySatisfied" },
-                }),
-                declaration,
-            ),
-        ).toEqual({ ok: true });
-    });
-
-    it("refuses a pull-request move the profile does not document", () => {
-        const screen = screenIntent(
-            pr({
-                expected: {
-                    meaningsPresent: ["needsReview"],
-                    meaningsAbsent: [],
-                    closed: false,
-                },
-                desired: { meaning: "readyToMerge", cause: "revisionResolved" },
-            }),
-            declaration,
-        );
-        expect(screen).toMatchObject({ ok: false, code: "transitionNotOnMap" });
-        if (!screen.ok) expect(screen.reason).toContain("needsReview");
-    });
-
-    it("names the right entity when an issue position lands on a pull request", () => {
-        const screen = screenIntent(
-            pr({ desired: { meaning: "ready", cause: "triageCompleted" } }),
-            declaration,
-        );
-        expect(screen).toMatchObject({ ok: false, code: "meaningWrongEntity" });
-        if (!screen.ok) expect(screen.reason).toContain("pull request");
-    });
-
-    it("says 'no position' rather than nothing when moving from nowhere", () => {
-        const screen = screenIntent(
-            pr({ desired: { meaning: "readyToMerge", cause: "checksPassed" } }),
-            declaration,
-        );
-        expect(screen.ok).toBe(false);
-        if (!screen.ok) expect(screen.reason).toContain("no position");
+        expect(wrongCause).toMatchObject({ ok: false, code: "transitionNotOnMap" });
+        if (!wrongCause.ok) expect(wrongCause.reason).toContain("pull-request-flow cause");
     });
 });

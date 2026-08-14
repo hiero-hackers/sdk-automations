@@ -21,12 +21,8 @@ import { parseConfigDocument } from "@hiero-hackers/automation-core";
 
 const examplesDir = fileURLToPath(new URL("../../../docs/examples/", import.meta.url));
 
-/**
- * The registry the examples are read against. Deliberately small and fixed:
- * these files document the SCHEMA, and a schema example that changes meaning
- * when the shipped capability list changes is documenting the wrong thing.
- */
-const KNOWN = ["intake", "prQuality"];
+/** The direct capability list these schema examples are read against. */
+const KNOWN = ["assignment", "intake", "prQuality"];
 
 const parse = (file: string) =>
     parseConfigDocument(readFileSync(join(examplesDir, file), "utf8"), {
@@ -75,15 +71,11 @@ describe("the shipped examples", () => {
         }
     });
 
-    it("a capability may be configured while disabled, even an unknown one", () => {
+    it("a known capability may be configured while disabled", () => {
         const active = parse("active.yml");
         expect(active.ok).toBe(true);
         if (!active.ok) return;
-        // `assignment` is not in KNOWN, and is accepted because it is off —
-        // so retiring a capability never breaks a config that still names it.
-        expect(active.config.capabilities["assignment"]).toMatchObject({
-            enabled: false,
-        });
+        expect(active.config.capabilities.assignment).toMatchObject({ enabled: false });
     });
 
     /**

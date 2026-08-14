@@ -22,7 +22,7 @@ import {
     type Report,
 } from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
-import { intake } from "@hiero-hackers/automation-probes";
+import { intake, prQuality } from "@hiero-hackers/automation-probes";
 import { createShell, fileConfigSource, stubbedExternals, type Shell } from "../src/index.js";
 
 const SECRET = "shell-slice-secret";
@@ -120,6 +120,28 @@ function records(): StoredRecord[] {
 }
 
 describe("the first slice, end to end", () => {
+    it("rejects duplicate direct capability names before returning a server", () => {
+        const intakeCapability = toEngine(intake);
+        const prQualityCapability = toEngine(prQuality);
+        expect(() =>
+            createShell({
+                secret: SECRET,
+                store,
+                capabilities: [
+                    intakeCapability,
+                    intakeCapability,
+                    prQualityCapability,
+                    prQualityCapability,
+                ],
+                configSource: fileConfigSource(configFile),
+                externals: stubbedExternals(),
+                repository: { owner: "owner-sandbox", repo: "automation-sandbox" },
+            }),
+        ).toThrow(
+            'invalid capability declarations: duplicate capability name "intake"; duplicate capability name "prQuality"',
+        );
+    });
+
     it("a real delivery becomes a persisted dry-run report", async () => {
         const shell = buildShell();
         expect(await deliver(shell)).toBe(202);

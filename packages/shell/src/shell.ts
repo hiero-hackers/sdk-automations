@@ -6,7 +6,11 @@
  */
 
 import { createServer, type Server } from "node:http";
-import type { EngineCapability, RepositoryRef } from "@hiero-hackers/automation-core";
+import {
+    validateCapabilityDeclarations,
+    type EngineCapability,
+    type RepositoryRef,
+} from "@hiero-hackers/automation-core";
 import type { Store } from "@hiero-hackers/automation-store";
 import { createReceiver } from "./receiver.js";
 import { Processor } from "./processor.js";
@@ -31,6 +35,12 @@ export interface Shell {
 }
 
 export function createShell(options: ShellOptions): Shell {
+    const errors = validateCapabilityDeclarations(
+        options.capabilities.map(({ declaration }) => declaration),
+    );
+    if (errors.length > 0) {
+        throw new Error(`invalid capability declarations: ${errors.join("; ")}`);
+    }
     const clock = options.clock ?? (() => new Date());
     const processor = new Processor({
         store: options.store,

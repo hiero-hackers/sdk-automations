@@ -5,7 +5,6 @@
  * `main.ts` is the runnable entry point and is deliberately not exported.
  */
 export * from "./receiver.js";
-export * from "./processor.js";
 export * from "./config.js";
 export * from "./externals.js";
 export * from "./shell.js";

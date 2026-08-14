@@ -47,7 +47,7 @@ describe("hostile keys (the __proto__ hole)", () => {
                 schemaVersion: 1,
                 capabilities: { constructor: { enabled: false } },
             },
-            { revision: "rev-test", knownCapabilities: [] },
+            { revision: "rev-test", knownCapabilities: ["constructor"] },
         );
         expect(result.ok).toBe(true);
         if (result.ok) {

@@ -34,7 +34,7 @@ derive the world"]
 | `src/engine/` | What does the platform DO with a delivery? | `decide.ts` (the verb), `events.ts` (webhook payload → observation), `invoke.ts` (how a capability is called, type erased) — and its own [README](src/engine/README.md) |
 | `src/config/` | What did this repository ask for? | `schema.ts`, `sections.ts`, `parse.ts`, `document.ts` (YAML in), `labels.ts` (label ↔ meaning, both directions) — and its own [README](src/config/README.md) with the path a file takes |
 | `src/workflow/` | What states exist, and how do they move? | `positions.ts` (derived from config), `causes.ts`, `state.ts`, `transitions.ts` (the tables and the legality question), `reference.ts` (the executable spec), `project.ts` — and its own [README](src/workflow/README.md) |
-| `src/capability/` | What may a capability declare and do? | `declaration.ts`, `catalogue.ts` (the closed vocabularies — and the add-an-operation checklist), `boundary.ts` (how it is called), `intent.ts` (what it asks, and the screens), `factory.ts` (how one is built without ceremony) |
+| `src/capability/` | What may a capability declare and do? | `declaration.ts` (the sole direct-list validator), `catalogue.ts` (closed vocabulary and platform-owned operation facts), `boundary.ts` (how it is called), `intent.ts` (projection-aware screens), `factory.ts` (how one is built without ceremony) |
 | `src/safety/` | May this write happen? | `write.ts` + `destructive.ts` (the two doors), `rules.ts` (the ordered rules both share), `world.ts` (the derived, unforgeable facts) — and its own [README](src/safety/README.md) |
 | `src/github/` | Is this still true of GitHub? | `failures.ts`, `rate-limits.ts`, `ids.ts`, `signatures.ts` — and its own [README](src/github/README.md) with the provenance table |
 | `src/report/` | What happened, and who must act? | `finding.ts` (the record), `convert.ts` (the one severity table) — and its own [README](src/report/README.md) |
@@ -127,16 +127,21 @@ flowchart LR
     style O fill:#EEEDFE,stroke:#534AB7
 ```
 
-Core decides; it never acts. `evaluate` returns requests, `safety` returns a
-verdict, and the runnable shell rejects active mode rather than performing
-approved intents. That keeps this package testable with no network.
+Core decides; it never acts. Before core is invoked, the shell validates the
+complete direct capability list and refuses to construct a processor or HTTP
+server when any declaration is invalid. `evaluate` returns outcome requests;
+the engine gets current workflow position only from the authoritative
+observation projection and derives action class and required permission from
+`INTENT_OPERATIONS`. A capability's `expected` facts are requested
+preconditions, never current-state evidence. Missing, conflicted, or stale
+authority refuses before permissions and mode. The runnable shell rejects
+active mode rather than performing approved intents, keeping this package
+testable with no network.
 
-
-The tests are the executable form of the design's own claims: the
-transition matrix is exhaustive (every `(from, to, cause)` triple is either
-a documented edge or rejected), destructive actions cannot fire without a
-recorded warning and an elapsed grace period, and one config error yields
-no configuration at all.
+The tests are the executable form of those claims: the transition matrix is
+exhaustive, capability requests cannot supply safety authority, the generic
+destructive gate remains fail-closed, and one config error yields no
+configuration at all.
 
 ## Where a test lives
 
@@ -268,10 +273,12 @@ code as its evidence:
   for case and edge space, as GitHub folds it.
 - `FINDING(config-null-mode)` → **D56** — an absent mode defaults; a
   present but empty one is an error.
-- `FINDING(contract-intent-org-permissions)` → **D57** — an intent may
-  require any grant its capability declares, org-scoped included.
-- `FINDING(contract-retired-enforcement)` → **D58** — `get` is the
-  fail-closed activation lookup; `describe` returns report-only metadata.
+- `FINDING(contract-intent-org-permissions)` → **D57** — the former
+  capability permission restatement is gone; `INTENT_OPERATIONS` now supplies
+  each operation's required grant directly.
+- `FINDING(contract-retired-enforcement)` → **D58** — the unreleased
+  retirement path is gone; direct boot admission supplies the available names,
+  and configuration rejects every name absent from that list.
 - `FINDING(observe-conflict-context)` → **D59** — a conflict verdict
   carries `blocked`, `closedBy`, and ignored cross-entity meanings, so a
   report retains the same diagnostic facts as an ordinary projection.

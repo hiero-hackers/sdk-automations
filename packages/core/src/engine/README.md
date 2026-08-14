@@ -47,15 +47,14 @@ fact core genuinely cannot compute, and nothing on it is derivable.
 
 ## Three traps
 
-**A sweep has no projection.** `staleItemsDue` carries no labels, so `projectionOf` returns `null`
-and an intent's `expected` claim cannot be checked here. It is not waived — it rides along in the
-adapter command and is rechecked against live GitHub at write time, the only place a sweep's
-openness claim can honestly be checked.
+**A sweep has no projection.** `staleItemsDue` carries no labels, so `projectionOf` returns `null`.
+That cannot establish a current precondition: `deriveWorld` sets `preconditionHolds` false and the
+shared preflight returns `preconditionStale`. Requested `expected` facts are never treated as
+observed facts.
 
-**Destructive intents take the other door.** `destructiveOrWrite` routes them to
-`evaluateDestructive` INSTEAD of `evaluateWrite`, not as well (D52), and the warning is rebuilt from
-the STORED warned cause rather than the current request (D60, D72). Rebuilding from the current
-request would let a drifted cause pass its own grace period.
+**Operation policy belongs to the catalogue.** `gateIntent` derives `WriteRequest.actionClass` and
+`requiredPermissions` from `INTENT_OPERATIONS`. Capability intents carry neither field and every
+retained intent goes through `evaluateWrite`.
 
 **`toEngine` is a cast, and the argument for it lives in one place.** The engine holds a
 heterogeneous list of capabilities and so has no single declaration type; `invoke.ts` carries the
@@ -66,4 +65,4 @@ soundness argument once, and the three `never`s in `decide()` are that erasure s
 [`test/slice.test.ts`](../../test/slice.test.ts) is the parity specification: a real captured
 delivery travels payload → report through the hand-wired pipeline, and `decide()` must reproduce it
 finding-for-finding. Any divergence is a stop-work finding, not a test to update. The directory also
-holds a ≥90% mutation threshold, which is what caught the destructive branch during D92 phase 3c.
+holds a ≥90% mutation threshold, which protects these authority and precedence branches.

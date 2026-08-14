@@ -39,7 +39,7 @@ describe("every rejection the catalogue names is reachable", () => {
         modeInvalid: true,
         capabilityNameInvalid: true,
         capabilityEnabledNotBoolean: true,
-        capabilityNotInRegistry: true,
+        capabilityUnknown: true,
         meaningNotMappable: true,
         labelInvalid: true,
         labelNotInjective: true,

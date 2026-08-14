@@ -35,14 +35,7 @@ const declaration = declareCapability({
     configKeys: [],
     observations: ["issueUpdated"],
     resolvers: [],
-    intents: [
-        {
-            name: "applyMappedLabel",
-            idempotencyClass: "idempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: { repository: ["issues:write"], organization: [] },
+    intents: ["applyMappedLabel"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -67,7 +60,6 @@ const triage: EngineCapability = {
             repository: o.repository,
             item: o.item,
             operation: "applyMappedLabel",
-            actionClass: "reversibleStateChange",
             expected: { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false },
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
             cause: { cause: "issueWithoutPosition", observedAt: o.observedAt },
@@ -96,7 +88,6 @@ function configIn(mode: "active" | "dry-run", enabled = true): RepositoryConfig 
 }
 
 const externals: DecideExternals = {
-    now: new Date("2026-08-07T02:00:00Z"),
     killSwitchActive: false,
     installationGrants: ["issues:write"],
     latestHumanChangeAt: () => null,
@@ -204,7 +195,7 @@ describe("the gates, each visible in the report", () => {
      */
     it("a stale claim is caught by derivation, not by caller honesty", async () => {
         const eager: EngineCapability = {
-            declaration,
+            declaration: declareCapability({ ...declaration, intents: ["postManagedComment"] }),
             async evaluate(observation: never): Promise<readonly AnyIntent[]> {
                 const o = observation as Parameters<typeof triage.evaluate>[0] extends never
                     ? {
@@ -217,18 +208,17 @@ describe("the gates, each visible in the report", () => {
                     capability: "triage",
                     repository: o.repository,
                     item: o.item,
-                    operation: "applyMappedLabel",
-                    actionClass: "reversibleStateChange",
+                    operation: "postManagedComment",
                     // The lie: claims no triage label, on a labeled issue.
                     expected: {
                         meaningsPresent: [],
                         meaningsAbsent: ["awaitingTriage"],
                         closed: false,
                     },
-                    desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+                    desired: { marker: "<!-- stale -->", body: "stale claim" },
                     cause: { cause: "issueWithoutPosition", observedAt: o.observedAt },
                     explanation: { capability: "triage", summary: "s", detail: [] },
-                } as const satisfies Omit<Intent<"applyMappedLabel">, "idempotencyKey">;
+                } as const satisfies Omit<Intent<"postManagedComment">, "idempotencyKey">;
                 return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) }];
             },
         };
@@ -252,7 +242,6 @@ describe("the gates, each visible in the report", () => {
                         repository: { owner: "o", repo: "r" },
                         item: { kind: "issue", number: 1 },
                         operation: "applyMappedLabel",
-                        actionClass: "reversibleStateChange",
                         expected: { meaningsPresent: [], meaningsAbsent: [], closed: null },
                         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
                         cause: { cause: "c", observedAt: new Date("2026-08-07T00:00:00Z") },
@@ -467,59 +456,53 @@ describe("paths the delivery tests never walk", () => {
         expect(decision.report.findings).toEqual([]);
     });
 
-    it("staleItemsDue claims pass through — verified at act time, not decision time", async () => {
+    it("an active stale sweep refuses closed without an authoritative projection", async () => {
         const observation = {
             kind: "staleItemsDue",
             repository: { owner: "scrubbed-1", repo: "scrubbed-2" },
             items: [],
             observedAt: new Date("2026-08-07T00:00:00Z"),
         } as const;
-        const sweeper = (expected: {
-            meaningsPresent: readonly never[];
-            meaningsAbsent: readonly "awaitingTriage"[];
-            closed: boolean | null;
-        }): EngineCapability => ({
+        const sweeper: EngineCapability = {
             declaration: declareCapability({
                 ...declaration,
                 observations: ["staleItemsDue"],
+                intents: ["unassign"],
             }) as never,
             async evaluate() {
                 const draft = {
                     capability: "triage",
                     repository: observation.repository,
                     item: { kind: "issue", number: 9 },
-                    operation: "applyMappedLabel",
-                    actionClass: "reversibleStateChange",
-                    expected,
-                    desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+                    operation: "unassign",
+                    expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
+                    desired: { login: "contributor" },
                     cause: { cause: "sweep", observedAt: observation.observedAt },
                     explanation: { capability: "triage", summary: "s", detail: [] },
                 } as const;
                 return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never];
             },
-        });
-        /**
-         * D92 3c: an unprojected observation shows the engine nothing to
-         * check a claim against, so the claim rides through to the adapter,
-         * which rechecks `expected` against live GitHub at write time. Both
-         * the vacuous and the claiming sweep therefore pass HERE — the
-         * openness claim is deferred, not waived.
-         */
-        for (const expected of [
-            { meaningsPresent: [], meaningsAbsent: [], closed: null },
-            { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false },
-        ] as const) {
-            const decision = await decide(
-                { kind: "observation", observation },
-                configIn("active"),
-                [sweeper(expected as never)],
-                externals,
-            );
-            expect(decision.report.findings.map((f) => f.code)).toEqual([
-                "capabilityExplained",
-                "applied",
-            ]);
-        }
+        };
+
+        const decision = await decide(
+            { kind: "observation", observation },
+            configIn("active"),
+            [sweeper],
+            externals,
+        );
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.findings.map((finding) => finding.code)).toEqual([
+            "preconditionStale",
+        ]);
+
+        const stopped = await decide(
+            { kind: "observation", observation },
+            configIn("active"),
+            [sweeper],
+            { ...externals, killSwitchActive: true },
+        );
+        expect(stopped.approved).toEqual([]);
+        expect(stopped.report.findings.map((finding) => finding.code)).toEqual(["killSwitch"]);
     });
 
     it("a capability observing a different kind is never invoked", async () => {
@@ -542,98 +525,6 @@ describe("paths the delivery tests never walk", () => {
     });
 });
 
-describe("the destructive gate, through the engine (D92 3c)", () => {
-    const WARNED = new Date("2026-07-20T00:00:00Z");
-    const observation = {
-        kind: "staleItemsDue",
-        repository: { owner: "scrubbed-1", repo: "scrubbed-2" },
-        items: [],
-        observedAt: WARNED,
-    } as const;
-
-    const reclaimer = (over: { causeDrift?: boolean; activity?: boolean }): EngineCapability => ({
-        declaration: declareCapability({
-            ...declaration,
-            observations: ["staleItemsDue"],
-            intents: [
-                {
-                    name: "unassign",
-                    idempotencyClass: "idempotent",
-                    requiredPermissions: ["issues:write"],
-                },
-            ],
-        }) as never,
-        async evaluate() {
-            const draft = {
-                capability: "triage",
-                repository: observation.repository,
-                item: { kind: "issue", number: 13 },
-                operation: "unassign",
-                actionClass: "clockTriggeredDestructive",
-                expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
-                desired: { login: "contributor" },
-                cause: {
-                    cause: over.causeDrift === true ? "freshSweep" : "assignmentWentStale",
-                    observedAt: WARNED,
-                },
-                destructive: {
-                    warnedAt: WARNED,
-                    gracePeriodDays: 7,
-                    earliestActionAt: new Date("2026-07-27T00:00:00Z"),
-                    cancelledBy: "a comment or commit from the assignee",
-                    reversesWith: "reassigning the item to the same person",
-                    qualifyingActivitySinceWarning: over.activity === true,
-                    warnedCause: "assignmentWentStale",
-                    warnedCauseObservedAt: WARNED,
-                },
-                explanation: { capability: "triage", summary: "s", detail: [] },
-            } as const;
-            return [{ ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as never];
-        },
-    });
-
-    const at = (iso: string) => ({ ...externals, now: new Date(iso) });
-    const codesOf = async (cap: EngineCapability, ext: DecideExternals) => {
-        const d = await decide(
-            { kind: "observation", observation },
-            configIn("active"),
-            [cap],
-            ext,
-        );
-        return { codes: d.report.findings.map((f) => f.code), approved: d.approved };
-    };
-
-    it("refuses while the grace period runs", async () => {
-        const { codes, approved } = await codesOf(reclaimer({}), at("2026-07-22T00:00:00Z"));
-        expect(codes).toEqual(["graceRunning"]);
-        expect(approved).toEqual([]);
-    });
-
-    it("applies once the grace period has elapsed", async () => {
-        const { codes, approved } = await codesOf(reclaimer({}), at("2026-08-03T00:00:00Z"));
-        expect(codes).toEqual(["capabilityExplained", "applied"]);
-        expect(approved).toHaveLength(1);
-    });
-
-    it("cancels on qualifying activity during the grace period", async () => {
-        const { codes } = await codesOf(reclaimer({ activity: true }), at("2026-08-03T00:00:00Z"));
-        expect(codes).toEqual(["activityCancelled"]);
-    });
-
-    /**
-     * D60's teeth, now at the engine: the warning is rebuilt from the
-     * STORED warned cause, so an act citing a different causal observation
-     * than it warned about is not the act that was authorized.
-     */
-    it("refuses an act whose cause is not the one the warning authorized", async () => {
-        const { codes } = await codesOf(
-            reclaimer({ causeDrift: true }),
-            at("2026-08-03T00:00:00Z"),
-        );
-        expect(codes).toEqual(["warningRequestMismatch"]);
-    });
-});
-
 describe("describeChange — §2.6's exact item and value, pinned", () => {
     it("names each operation's change precisely", () => {
         const base = intentFactory("triage", {
@@ -645,7 +536,6 @@ describe("describeChange — §2.6's exact item and value, pinned", () => {
             describeChange(
                 base({
                     operation: "postManagedComment",
-                    actionClass: "humanFacingOutput",
                     desired: { marker: "<!-- m -->", body: "b" },
                     cause: "c",
                     explain: { summary: "s" },
@@ -656,7 +546,6 @@ describe("describeChange — §2.6's exact item and value, pinned", () => {
             describeChange(
                 base({
                     operation: "applyMappedLabel",
-                    actionClass: "reversibleStateChange",
                     desired: { meaning: "ready", cause: "triageCompleted" },
                     cause: "c",
                     explain: { summary: "s" },
@@ -667,7 +556,6 @@ describe("describeChange — §2.6's exact item and value, pinned", () => {
             describeChange(
                 base({
                     operation: "unassign",
-                    actionClass: "reversibleStateChange",
                     desired: { login: "someone" },
                     cause: "c",
                     explain: { summary: "s" },

@@ -127,7 +127,7 @@ describe("parseConfig (design/config/schema.md)", () => {
                     schemaVersion: 1,
                     capabilities: { intake: { enabled } },
                 },
-                { revision: "rev-test", knownCapabilities: [] },
+                { revision: "rev-test", knownCapabilities: ["intake"] },
             );
             expect(result.ok).toBe(false);
         }
@@ -136,7 +136,7 @@ describe("parseConfig (design/config/schema.md)", () => {
                 schemaVersion: 1,
                 capabilities: { intake: { settings: {} } },
             },
-            { revision: "rev-test", knownCapabilities: [] },
+            { revision: "rev-test", knownCapabilities: ["intake"] },
         );
         expect(omitted.ok).toBe(true);
         if (omitted.ok) expect(omitted.config.capabilities.intake?.enabled).toBe(false);
@@ -200,51 +200,51 @@ describe("parseConfig (design/config/schema.md)", () => {
     });
 });
 
-describe("capability registry (FINDING(config-capability-registry-gap), experiment 6.3)", () => {
-    const registry = ["prQuality", "assignment"];
+describe("direct capability admission", () => {
+    const available = ["prQuality", "assignment"];
 
-    it("rejects an enabled capability outside the registry, naming it and the registry", () => {
+    it("rejects an unknown capability and lists available names", () => {
         const result = parseConfig(
             { schemaVersion: 1, capabilities: { checksGate: { enabled: true } } },
-            { revision: "rev-test", knownCapabilities: registry },
+            { revision: "rev-test", knownCapabilities: available },
         );
         expect(result.ok).toBe(false);
         if (!result.ok) {
             expect(result.errors.map((e) => e.message).join()).toContain('"checksGate"');
-            expect(result.errors.map((e) => e.message).join()).toContain("capability registry");
-            // The registry listing is sorted so maintainers can scan it.
+            expect(result.errors.map((e) => e.message).join()).toContain("not available");
             expect(result.errors.map((e) => e.message).join()).toContain("assignment, prQuality");
         }
     });
 
-    it("an empty registry says so — 'none' rather than a blank list", () => {
+    it("an empty available set says 'none' rather than showing a blank list", () => {
         const result = parseConfig(
             { schemaVersion: 1, capabilities: { prQuality: { enabled: true } } },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(result.errors.map((e) => e.message).join()).toContain("known: none");
+        if (!result.ok)
+            expect(result.errors.map((e) => e.message).join()).toContain("available: none");
     });
 
-    it("keeps a disabled unknown capability dormant — removing a shipped capability must not break configs that still mention it", () => {
+    it("rejects a disabled unknown capability instead of retaining a tombstone", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
-                capabilities: { retired: { enabled: false, settings: { old: 1 } } },
+                capabilities: { removedProbe: { enabled: false, settings: { old: 1 } } },
             },
-            { revision: "rev-test", knownCapabilities: registry },
+            { revision: "rev-test", knownCapabilities: available },
         );
-        expect(result.ok).toBe(true);
-        if (result.ok) expect(result.config.capabilities.retired?.enabled).toBe(false);
+        expect(result).toMatchObject({
+            ok: false,
+            errors: [{ code: "capabilityUnknown", path: "capabilities.removedProbe" }],
+        });
     });
 
     /**
-     * An EMPTY registry rejects every enabled capability — the authority
-     * boundary. Note what is no longer expressible: `knownCapabilities`
-     * is required, so a caller cannot reach this outcome by forgetting an
-     * argument. Omission is a compile error; `[]` is a stated choice.
+     * An empty direct list rejects every capability. `knownCapabilities` is
+     * required, so omission remains a compile error and `[]` a stated choice.
      */
-    it("an empty registry fails closed instead of bypassing the authority boundary", () => {
+    it("an empty direct list fails closed", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
@@ -254,10 +254,10 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
         );
         expect(result.ok).toBe(false);
         if (!result.ok)
-            expect(result.errors.map((e) => e.message).join()).toContain("(known: none)");
+            expect(result.errors.map((e) => e.message).join()).toContain("(available: none)");
     });
 
-    it("a registry rejection fails closed like every other error (§2.6)", () => {
+    it("an unknown-capability rejection fails closed like every other error (§2.6)", () => {
         const result = parseConfig(
             {
                 schemaVersion: 1,
@@ -266,7 +266,7 @@ describe("capability registry (FINDING(config-capability-registry-gap), experime
                     checksGate: { enabled: true }, // not shipped
                 },
             },
-            { revision: "rev-test", knownCapabilities: registry },
+            { revision: "rev-test", knownCapabilities: available },
         );
         expect(result.ok).toBe(false);
         expect("config" in result).toBe(false);
@@ -400,7 +400,7 @@ describe("every error names its kind and its place (D75)", () => {
         [
             "unknown capability",
             { ...base, capabilities: { ghost: { enabled: true } } },
-            "capabilityNotInRegistry",
+            "capabilityUnknown",
             "capabilities.ghost",
         ],
         [

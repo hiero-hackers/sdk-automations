@@ -20,7 +20,7 @@ Nothing to fix — this is your configuration, or our caution, behaving as speci
 | `capabilityDisabled` | The capability is `enabled: false` (or absent) in your file |
 | `itemBlocked` | A human marked the item `blocked`, so the App keeps its hands off |
 | `newerHumanChange` | Someone edited the item after the App decided — your edit wins |
-| `preconditionStale` | The item changed between the App looking and acting, so it stopped |
+| `preconditionStale` | The authoritative current state was unavailable, conflicted, or no longer matched the requested precondition, so the App stopped |
 | `graceRunning` | A destructive action is still inside its warning period |
 | `activityCancelled` | Activity during the warning period cancelled the destructive action |
 

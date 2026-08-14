@@ -28,18 +28,17 @@ nobody made.
 |---|---|
 | `prQuality` | touches almost nothing: one resolver, one comment, no state, no mappings |
 | `intake` | consumes mapped meanings, emits two intents from one observation, and declares **no** resolvers — so it is also the test that an undeclared resolver is unreachable |
-| `inactivity` | is schedule-triggered and destructive: the only path through `evaluateDestructive`, the store's `schedule` table, and warn-then-act |
+| `inactivity` | is schedule-triggered and unprojected, proving the shared gate refuses `preconditionStale` instead of treating a capability claim as current-state evidence |
 
-Between them: event vs. schedule, idempotent vs. non-idempotent, safe vs.
-destructive, mapping-consuming vs. not, stateless vs. `durableState: required`.
-If the boundary holds for all three, it holds for anything in
-[`design/modules/`](../../design/modules/README.md).
+Between them: event vs. schedule, idempotent vs. non-idempotent,
+mapping-consuming vs. not, and stateless vs. `durableState: required`.
+Together they exercise the retained boundary without selecting a product capability.
 
 ## What the tests prove
 
 | Suite | Claim |
 |---|---|
-| `test/boundary.test.ts` | Declarations are catalogue-consistent; the config projection leaks neither another capability's block nor a repository label string; the intent screen refuses undeclared, misattributed, under-classified, and malformed-destructive intents |
+| `test/boundary.test.ts` | The direct declaration set is admitted; the config projection leaks neither another capability's block nor a repository label string; the intent screen refuses undeclared, misattributed, and unprojected label intents |
 | `test/engine-matrix.test.ts` | **P3**, tested: all eight subsets, each capability's behaviour identical regardless of neighbours, disabled capabilities never evaluated, with a negative control so the matrix cannot pass vacuously |
 
 The P3 run is the one worth flagging: [`build-plan.md`](../../design/build-plan.md)
@@ -58,8 +57,8 @@ When stage four names the first real capability:
    into a scope decision.
 3. Delete `probes/` and remove it from `pnpm-workspace.yaml`.
 
-`test/world.ts` is the one piece worth reading before it goes: its `runEnabled`
-is the registry-activation step from build-plan §8 item 4, written as the
+`test/world.ts` is the one piece worth reading before it goes: `runEnabled`
+uses the same direct capability list for config and evaluation, written as the
 smallest thing that could work.
 
 ## What it does not prove

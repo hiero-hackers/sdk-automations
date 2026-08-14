@@ -163,8 +163,8 @@ export const REJECTIONS: readonly RejectionCase[] = [
         yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: 1\n`,
     },
     {
-        code: "capabilityNotInRegistry",
-        why: "enabling a capability that does not ship",
+        code: "capabilityUnknown",
+        why: "mentioning a capability that does not ship",
         yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  autoMerge:\n    enabled: true\n`,
     },
 

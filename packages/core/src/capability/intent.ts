@@ -5,8 +5,8 @@
  * GitHub calls is deliberately outside `core/` and is not implemented yet.
  */
 
-import type { ActionClass, ClaimedFacts } from "../safety/index.js";
-import type { IdempotencyClass } from "./catalogue.js";
+import type { MappableMeaning } from "../config/index.js";
+import type { ClaimedFacts } from "../safety/index.js";
 import {
     canTransitionIssue,
     canTransitionPr,
@@ -14,11 +14,12 @@ import {
     isIssueMeaning,
     isPrCause,
     isPrMeaning,
+    type ObservationProjection,
 } from "../workflow/index.js";
 import {
-    ACTION_CLASS_RANK,
     INTENT_OPERATIONS,
     type DatedCause,
+    type IdempotencyClass,
     type IntentCatalogue,
     type IntentOperation,
     type ItemRef,
@@ -37,25 +38,8 @@ import type { TypedDeclaration } from "./declaration.js";
 export type ExpectedFacts = ClaimedFacts;
 
 /**
- * The warning record a destructive intent must carry (D64). The warned CAUSE
- * rides separately because the branded warning cannot cross the store —
- * rebuilding from the current request would compare a value with itself
- * (D60, D72).
- */
-export interface DestructiveDetail {
-    readonly warnedAt: Date;
-    readonly gracePeriodDays: number;
-    readonly earliestActionAt: Date;
-    readonly cancelledBy: string;
-    readonly reversesWith: string;
-    readonly qualifyingActivitySinceWarning: boolean;
-    readonly warnedCause: string;
-    readonly warnedCauseObservedAt: Date;
-}
-
-/**
- * One request from a capability: what to do, to which item, and the facts it
- * believes hold while asking.
+ * One request from a capability: what outcome it wants, for which item, and
+ * the requested preconditions that authoritative projection data must verify.
  *
  * `idempotencyKey` is the effect's stable identity across redelivery, retry
  * and restart. It becomes the journal's `effect_id`, so two intents sharing a
@@ -67,10 +51,6 @@ export interface Intent<K extends IntentOperation = IntentOperation> {
     readonly repository: RepositoryRef;
     readonly item: ItemRef;
     readonly operation: K;
-    /** At or above `INTENT_OPERATIONS[operation].actionClassFloor`. */
-    readonly actionClass: ActionClass;
-    /** Required when `actionClass` is `clockTriggeredDestructive`, else absent. */
-    readonly destructive?: DestructiveDetail;
     readonly expected: ExpectedFacts;
     readonly desired: IntentCatalogue[K];
     readonly cause: DatedCause;
@@ -118,10 +98,8 @@ export function deriveIdempotencyKey(intent: {
 export const INTENT_SCREEN_REFUSAL_CODES = [
     "foreignCapability",
     "undeclaredIntent",
-    "actionClassBelowFloor",
     "invalidCause",
-    "destructiveWithoutWarning",
-    "warningWithoutDestructive",
+    "authoritativePositionUnavailable",
     "pauseNotCapabilityWritable",
     "meaningWrongEntity",
     "positionConflict",
@@ -141,12 +119,21 @@ export type IntentScreen =
       };
 
 /**
- * Is the move this intent would make on the profile's map? Capabilities move
- * along documented edges; humans may land anywhere (D29, enforced by D78).
- * Self-contained: the claimed `from` is the same `expected` that safety
- * rechecks as the derived world.
+ * Is the move this intent would make from the authoritative projected
+ * position on the profile's map? Capability claims never supply `from`.
  */
-function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
+function screenTransition(
+    intent: Intent<"applyMappedLabel">,
+    projection: ObservationProjection<MappableMeaning>,
+): IntentScreen {
+    if (projection.kind === "conflict") {
+        return {
+            ok: false,
+            code: "positionConflict",
+            reason: `the observed item holds ${projection.positions.join(" and ")}; a conflicted position has no edge to move along`,
+        };
+    }
+
     // `blocked` is a pause flag, not a position (D28); only a human may set
     // it — a capability that could would hold a veto over every other
     // capability (D79), and a freeze-by-label would bypass D54's gate.
@@ -158,30 +145,21 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
         };
     }
 
-    // Two flows, symmetric; the predicates carry the narrowing (D90). Held
-    // meanings filter to own-flow, since cross-entity labels are preserved
-    // noise (D35), and >1 own-flow position is a conflict with no edge.
-    const wrongEntity = (): IntentScreen => ({
+    const wrongEntity = (meaning: string): IntentScreen => ({
         ok: false,
         code: "meaningWrongEntity",
-        reason: `"${intent.desired.meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
-    });
-    const conflicted = (held: readonly string[]): IntentScreen => ({
-        ok: false,
-        code: "positionConflict",
-        reason: `the item is claimed to hold ${held.join(" and ")}; a conflicted position has no edge to move along`,
+        reason: `"${meaning}" is not ${intent.item.kind === "issue" ? "an issue" : "a pull request"} position`,
     });
     const offMap = (from: string | null, detail: string): IntentScreen => ({
         ok: false,
         code: "transitionNotOnMap",
         reason: `${from ?? "no position"} → ${intent.desired.meaning} for "${intent.desired.cause}" is not a documented edge (${detail})`,
     });
+    const from = projection.state.meaning;
 
     if (intent.item.kind === "issue") {
-        if (!isIssueMeaning(intent.desired.meaning)) return wrongEntity();
-        const held = intent.expected.meaningsPresent.filter(isIssueMeaning);
-        if (held.length > 1) return conflicted(held);
-        const from = held.length === 1 ? held[0]! : null;
+        if (!isIssueMeaning(intent.desired.meaning)) return wrongEntity(intent.desired.meaning);
+        if (from !== null && !isIssueMeaning(from)) return wrongEntity(from);
         if (!isIssueCause(intent.desired.cause)) {
             return offMap(from, "not an issue-flow cause");
         }
@@ -193,10 +171,8 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
         return verdict.allowed ? { ok: true } : offMap(from, verdict.code);
     }
 
-    if (!isPrMeaning(intent.desired.meaning)) return wrongEntity();
-    const held = intent.expected.meaningsPresent.filter(isPrMeaning);
-    if (held.length > 1) return conflicted(held);
-    const from = held.length === 1 ? held[0]! : null;
+    if (!isPrMeaning(intent.desired.meaning)) return wrongEntity(intent.desired.meaning);
+    if (from !== null && !isPrMeaning(from)) return wrongEntity(from);
     if (!isPrCause(intent.desired.cause)) {
         return offMap(from, "not a pull-request-flow cause");
     }
@@ -215,7 +191,11 @@ function screenTransition(intent: Intent<"applyMappedLabel">): IntentScreen {
  * built from `unknown`, and the boundary must not depend on the far side
  * having been compiled honestly.
  */
-export function screenIntent(intent: AnyIntent, declaration: TypedDeclaration): IntentScreen {
+export function screenIntent(
+    intent: AnyIntent,
+    declaration: TypedDeclaration,
+    projection: ObservationProjection<MappableMeaning> | null,
+): IntentScreen {
     if (intent.capability !== declaration.name) {
         return {
             ok: false,
@@ -223,20 +203,11 @@ export function screenIntent(intent: AnyIntent, declaration: TypedDeclaration): 
             reason: `intent attributed to "${intent.capability}" was returned by "${declaration.name}"`,
         };
     }
-    const declared = declaration.intents.find((i) => i.name === intent.operation);
-    if (declared === undefined) {
+    if (!declaration.intents.includes(intent.operation)) {
         return {
             ok: false,
             code: "undeclaredIntent",
             reason: `"${declaration.name}" did not declare intent "${intent.operation}"`,
-        };
-    }
-    const facts = INTENT_OPERATIONS[intent.operation];
-    if (ACTION_CLASS_RANK[intent.actionClass] < ACTION_CLASS_RANK[facts.actionClassFloor]) {
-        return {
-            ok: false,
-            code: "actionClassBelowFloor",
-            reason: `"${intent.operation}" declared as "${intent.actionClass}" is below the "${facts.actionClassFloor}" floor (FINDING(runtime-action-class-floor))`,
         };
     }
     if (!Number.isFinite(intent.cause.observedAt.getTime())) {
@@ -246,25 +217,15 @@ export function screenIntent(intent: AnyIntent, declaration: TypedDeclaration): 
             reason: "the intent's cause carries an invalid timestamp",
         };
     }
-    // Both directions are errors; the dangerous one is a warning on a
-    // NON-destructive intent — a grace period no gate will check (D64).
-    const destructive = intent.actionClass === "clockTriggeredDestructive";
-    if (destructive && intent.destructive === undefined) {
-        return {
-            ok: false,
-            code: "destructiveWithoutWarning",
-            reason: `"${intent.operation}" is clock-triggered destructive but carries no warning record (safety.md §3)`,
-        };
-    }
-    if (!destructive && intent.destructive !== undefined) {
-        return {
-            ok: false,
-            code: "warningWithoutDestructive",
-            reason: `"${intent.operation}" carries a warning record but is declared "${intent.actionClass}" — no gate would check it`,
-        };
-    }
     if (intent.operation === "applyMappedLabel") {
-        return screenTransition(intent);
+        if (projection === null) {
+            return {
+                ok: false,
+                code: "authoritativePositionUnavailable",
+                reason: "the authoritative current position is unavailable",
+            };
+        }
+        return screenTransition(intent, projection);
     }
     return { ok: true };
 }

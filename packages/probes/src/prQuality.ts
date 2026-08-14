@@ -22,17 +22,7 @@ export const prQualityDeclaration = declareCapability({
     configKeys: ["marker"],
     observations: ["pullRequestUpdated"],
     resolvers: ["linkedIssues"],
-    intents: [
-        {
-            name: "postManagedComment",
-            idempotencyClass: "nonIdempotent",
-            requiredPermissions: ["issues:write"],
-        },
-    ],
-    permissions: {
-        repository: ["issues:write", "pull_requests:write", "contents:read"],
-        organization: [],
-    },
+    intents: ["postManagedComment"],
     operationalNeeds: {
         schedule: false,
         durableState: "none",
@@ -89,7 +79,6 @@ export const prQuality: Capability<PrQualityDeclaration> = {
         return [
             make({
                 operation: "postManagedComment",
-                actionClass: "humanFacingOutput",
                 desired: {
                     marker,
                     body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",

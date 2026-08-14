@@ -184,7 +184,7 @@ describe("docs/configuration.md", () => {
             modeInvalid: true,
             capabilityNameInvalid: true,
             capabilityEnabledNotBoolean: true,
-            capabilityNotInRegistry: true,
+            capabilityUnknown: true,
             meaningNotMappable: true,
             labelInvalid: true,
             labelNotInjective: true,

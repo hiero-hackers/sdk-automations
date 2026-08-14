@@ -23,7 +23,6 @@ const make = intentFactory("triage", occasion);
 const label = () =>
     make({
         operation: "applyMappedLabel",
-        actionClass: "reversibleStateChange",
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: "issueWithoutPosition",
         explain: { summary: "New issue placed in triage." },
@@ -54,14 +53,12 @@ describe("what the factory stamps", () => {
     it("the key identifies the occasion, not the payload — a reworded comment is one effect", () => {
         const a = make({
             operation: "postManagedComment",
-            actionClass: "humanFacingOutput",
             desired: { marker: "<!-- m -->", body: "first wording" },
             cause: "prWithoutLinkedIssue",
             explain: { summary: "s" },
         });
         const b = make({
             operation: "postManagedComment",
-            actionClass: "humanFacingOutput",
             desired: { marker: "<!-- m -->", body: "second wording" },
             cause: "prWithoutLinkedIssue",
             explain: { summary: "s" },
@@ -82,7 +79,6 @@ describe("what the factory defaults", () => {
     it("a partial expected fills only the stated clause", () => {
         const intent = make({
             operation: "applyMappedLabel",
-            actionClass: "reversibleStateChange",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
             cause: "c",
             expected: { meaningsAbsent: ["awaitingTriage"], closed: false },
@@ -95,30 +91,9 @@ describe("what the factory defaults", () => {
         });
     });
 
-    it("no destructive field means no destructive KEY — absent, not undefined", () => {
+    it("does not mint capability-authored safety authority", () => {
+        expect("actionClass" in label()).toBe(false);
         expect("destructive" in label()).toBe(false);
-    });
-
-    it("a destructive record passes through intact", () => {
-        const destructive = {
-            warnedAt: new Date("2026-07-30T00:00:00Z"),
-            gracePeriodDays: 7,
-            earliestActionAt: new Date("2026-08-06T00:00:00Z"),
-            cancelledBy: "activity",
-            reversesWith: "reassigning",
-            qualifyingActivitySinceWarning: false,
-            warnedCause: "inactivity",
-            warnedCauseObservedAt: new Date("2026-07-30T00:00:00Z"),
-        };
-        const intent = make({
-            operation: "unassign",
-            actionClass: "clockTriggeredDestructive",
-            desired: { login: "someone" },
-            cause: "graceElapsed",
-            destructive,
-            explain: { summary: "s" },
-        });
-        expect(intent.destructive).toEqual(destructive);
     });
 });
 
@@ -130,14 +105,7 @@ describe("factory output is screen-clean", () => {
             configKeys: [],
             observations: ["issueUpdated"],
             resolvers: [],
-            intents: [
-                {
-                    name: "applyMappedLabel",
-                    idempotencyClass: "idempotent",
-                    requiredPermissions: ["issues:write"],
-                },
-            ],
-            permissions: { repository: ["issues:write"], organization: [] },
+            intents: ["applyMappedLabel"],
             operationalNeeds: {
                 schedule: false,
                 durableState: "none",
@@ -145,6 +113,12 @@ describe("factory output is screen-clean", () => {
                 externalDelivery: false,
             },
         });
-        expect(screenIntent(label(), declaration)).toEqual({ ok: true });
+        expect(
+            screenIntent(label(), declaration, {
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: null },
+                ignored: [],
+            }),
+        ).toEqual({ ok: true });
     });
 });

@@ -77,7 +77,6 @@ const SETTINGS = {
 };
 
 const externals: DecideExternals = {
-    now: new Date("2026-08-03T09:00:05.000Z"),
     killSwitchActive: false,
     installationGrants: ["issues:write"],
     latestHumanChangeAt: () => null,
@@ -150,11 +149,10 @@ describe("P3 through the engine", () => {
         expect(intakeAlone.approved.length).toBeGreaterThan(0);
         const prAlone = sliceFor(await runAll(["prQuality"]), "prQuality");
         expect(prAlone.approved.length).toBeGreaterThan(0);
-        // 3(c): the warning now travels the engine — approved, explained.
+        // The retained stale probe has no projection and therefore refuses closed.
         const staleAlone = sliceFor(await runAll(["inactivity"]), "inactivity");
-        expect(staleAlone.approved).toHaveLength(1);
-        expect(staleAlone.approved[0]).toMatchObject({ operation: "postManagedComment" });
-        expect(staleAlone.findings.map((f) => f.code)).toEqual(["capabilityExplained", "applied"]);
+        expect(staleAlone.approved).toEqual([]);
+        expect(staleAlone.findings.map((finding) => finding.code)).toEqual(["preconditionStale"]);
     });
 });
 

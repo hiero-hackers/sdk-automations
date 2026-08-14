@@ -138,7 +138,7 @@ export class Processor {
             };
         }
 
-        const decision = await this.decideOn(claimed, config.result.config, decidedAt);
+        const decision = await this.decideOn(claimed, config.result.config);
         return {
             kind: "decision",
             ...identity,
@@ -189,11 +189,7 @@ export class Processor {
     /** Stations 5–10 live behind this one call: normalize, evaluate,
      * screen, derive the world, gate. The shell's contribution ends at
      * the parenthesis. */
-    private decideOn(
-        claimed: ClaimedDelivery,
-        config: RepositoryConfig,
-        now: Date,
-    ): Promise<Decision> {
+    private decideOn(claimed: ClaimedDelivery, config: RepositoryConfig): Promise<Decision> {
         return decide(
             {
                 kind: "delivery",
@@ -203,7 +199,7 @@ export class Processor {
             },
             config,
             this.options.capabilities,
-            { ...this.options.externals, now },
+            this.options.externals,
         );
     }
 }

@@ -171,12 +171,12 @@ export function readCapabilities(
             continue;
         }
         const enabled = value.enabled === true;
-        if (enabled && !knownCapabilities.includes(name)) {
+        if (!knownCapabilities.includes(name)) {
             errors.push(
                 err(
-                    "capabilityNotInRegistry",
-                    `capability "${name}" is enabled but not in the platform's capability registry` +
-                        ` (known: ${[...knownCapabilities].sort().join(", ") || "none"})`,
+                    "capabilityUnknown",
+                    `capability "${name}" is not available in this application` +
+                        ` (available: ${[...knownCapabilities].sort().join(", ") || "none"})`,
                     `capabilities.${name}`,
                 ),
             );

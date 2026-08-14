@@ -35,9 +35,10 @@
 - **Per-capability pages.** `settings.announce`, `settings.marker`, `settings.maxOpenAssignments`
   appear in examples but are defined nowhere — `settings` is each capability's own contract, and the
   platform docs cannot define keys the platform does not own. Each shipped capability gets a page:
-  what it does, its settings, its required meanings and permissions. Locked against its declaration.
-- **The capability registry.** "Enabling a capability that does not exist is an error" — but no page
-  lists what exists. Blocked on the first real capability; the probes must not be documented.
+  what it does, its settings, required meanings, and platform-derived permissions.
+- **The available capability list.** Every configured name absent from the application's direct
+  capability list is an error, but no page lists what ships. Blocked on the first real capability;
+  the probes must not be documented.
 
 ## Examples: deliberately few, for now
 
