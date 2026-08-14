@@ -47,7 +47,7 @@ updates:
         update-types: [version-update:semver-major]
 
       # `@types/node` should track the LOWEST supported runtime, not the
-      # newest available. `engines.node` is >= 23.4 and CI's floor is Node 24,
+      # newest available. `engines.node` and CI's floor are both Node 24,
       # so typing against Node 26 would let code compile against APIs absent
       # from the versions actually supported — a failure that appears at run
       # time, on the oldest supported Node, the least-tested path.

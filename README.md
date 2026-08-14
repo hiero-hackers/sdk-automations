@@ -10,7 +10,7 @@
   <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a>
-  <a href="https://github.com/hiero-hackers/sdk-automations/blob/main/package.json"><img alt="Node 23.4 or newer" src="https://img.shields.io/badge/node-%3E%3D23.4-blue"></a>
+  <a href="https://github.com/hiero-hackers/sdk-automations/blob/main/package.json"><img alt="Node 24 or newer" src="https://img.shields.io/badge/node-%3E%3D24-blue"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge"></a>
 </p>
 

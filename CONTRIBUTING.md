@@ -15,9 +15,10 @@ That is the whole setup. **No tokens, credentials, or GitHub App configuration a
 tracked code** — every test runs offline, including the ones that walk a real captured webhook
 payload end to end.
 
-Node 24 or newer. The `engines` floor is `>=23.4`, which is where `node:sqlite` arrived (the store
-depends on it); CI runs the suite on both 24 and 25 because that API is still experimental and can
-change between majors.
+Node 24 or newer — every package's `engines` floor. `node:sqlite` (which the store depends on) only
+needs 23.4 unflagged, but Node 23 was never an LTS release and is past its own end of life, so the
+floor tracks the oldest runtime CI actually tests: both 24 and 25, because that API is still
+experimental and can change between majors.
 
 Useful while working:
 

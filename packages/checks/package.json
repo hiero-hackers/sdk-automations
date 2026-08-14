@@ -5,7 +5,7 @@
     "description": "Tests about the REPOSITORY, not about any package: docs and examples stay true to core's vocabularies, design diagrams match the edge tables, artifacts hold their invariants. No src/ — nothing here can or should kill a mutant. Depends on core only through its public barrel.",
     "type": "module",
     "engines": {
-        "node": ">=23.4"
+        "node": ">=24"
     },
     "scripts": {
         "test": "tsc --noEmit && vitest run",
