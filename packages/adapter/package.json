@@ -2,7 +2,7 @@
     "name": "@hiero-hackers/automation-adapter",
     "version": "0.0.0",
     "private": true,
-    "description": "The only place that talks to GitHub. App authentication now; the HTTP client, operations and seam implementations follow. See README.md.",
+    "description": "The only place that talks to GitHub. App authentication and the shared HTTP client are here; operations and seam implementations follow. See README.md.",
     "type": "module",
     "exports": {
         ".": {
