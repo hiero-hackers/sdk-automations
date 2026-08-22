@@ -16,10 +16,16 @@ not that it is correct. The build guide is
 |---|---|
 | `jwt.ts` | What proves we are the App? |
 | `token.ts` | What token may we call with, right now? |
+| `http.ts` | How does every operation make one bounded, classified GitHub call? |
 
-Both are network-free. `jwt.ts` is a pure function of its credentials and a `now` handed to it;
+`jwt.ts` is network-free: it is a pure function of its credentials and a `now` handed to it.
 `token.ts` takes the mint call as an injected function, so its whole lifecycle — cache, early
-refresh, single flight — is driven by a fake clock in tests and no test reaches the network.
+refresh, single flight — is driven by a fake clock. `http.ts` owns the authenticated request path,
+the bounded per-URL ETag cache, timeouts, rate-limit snapshots, core failure classification, and the
+one permitted retry. It pins credentials to GitHub's HTTPS API, exposes only the GET reads this
+stage has proved, and refuses to follow redirects — a 3xx comes back classified as `redirected`,
+carrying its `location`, rather than being silently chased or retried. Its fetch and clock are
+injected too, so no test reaches the network.
 
 **Minting is injected rather than called** because that one request authenticates with the assertion
 instead of with a token. It cannot travel through the HTTP client, since the client is what needs the
@@ -46,6 +52,8 @@ changing — so they are here for coverage, not for the quarterly pass.
 | Installation token TTL is 1 h | `REFRESH_SKEW_SECONDS`, `MINT_FLOOR_SECONDS` | matrix row, mint response | 2026-07-23 | GitHub shortens the TTL | **quiet if shortened below ~2 min**: the floor would serve genuinely dead tokens |
 | Expiry and bad key share a 401 body | `isPastExpiry`, and core's `classifyFailure` | experiment 6.1 | 2026-07-23 | GitHub distinguishes them | quiet — we keep using a local fact that became unnecessary |
 | `permissions` is `{scope: level}` | `grantsFromPermissions` | mint response | 2026-07-23 | a level outside `read`/`write` enters the ceiling | **quiet**: the grant is dropped, and a capability refuses citing a permission the installation actually holds |
+| REST request version is `2026-03-10` | `GITHUB_API_VERSION` | GitHub's version docs | documented | the version approaches sunset | response carries `deprecation`/`sunset`, then calls return 410 |
+| Authenticated conditional GET returning 304 costs no primary quota | `http.ts` ETag cache | GitHub's best-practice docs, experiment 6.4 | documented + 2026-07-23 | GitHub changes conditional accounting | rate usage rises on unchanged reads |
 
 **The two quiet rows are the ones that matter.** A wrong JWT bound fails on the next call and someone
 notices within minutes; a TTL that shrank, or a grant level silently dropped, keeps every test green
@@ -58,8 +66,7 @@ operator reports. **Owner:** unassigned, the same unfilled row as its sibling in
 
 ## Still to arrive
 
-The HTTP client (ETags, timeouts, bounded retry, classification through core's `classifyFailure`),
-the operations — one per confirmed matrix row — and the seam implementations the shell composes:
+The operations — one per confirmed matrix row — and the seam implementations the shell composes:
 `githubConfigSource`, `liveExternals`, and the resolvers. `design/guides/adapter.md` holds the order
 and what each one is blocked on.
 
