@@ -2,12 +2,21 @@
  * The one authenticated GitHub call path used by every adapter operation.
  *
  * This file deliberately owns the mechanics that would otherwise drift
- * between operations: request headers, timeouts, ETags, rate-limit state,
- * failure classification, and the two retry-eligible failure classes.
+ * between operations: request headers, timeouts, the bounded ETag cache,
+ * rate-limit state, refusal of redirects, and the two retry-eligible
+ * failure classes. What it does not own: the vocabulary of failure is
+ * core's `failures.ts`, and which token to send is `token.ts`. In order
+ * below: the chosen bounds, the contract, the local judgements, the client.
  */
 
-import { classifyFailure, type FailureClass } from "@hiero-hackers/automation-core";
+import {
+    classifyFailure,
+    type FailureClass,
+    type NotSentReason,
+} from "@hiero-hackers/automation-core";
 import { isPastExpiry, type InstallationToken, type TokenSource } from "./token.js";
+
+// ─── The chosen bounds ───────────────────────────────────────────────
 
 /** The REST version this client has been checked against. */
 export const GITHUB_API_VERSION = "2026-03-10";
@@ -21,8 +30,20 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 /** Full representations retained for conditional reads, least-recently-used. */
 export const DEFAULT_ETAG_CACHE_ENTRIES = 1_000;
 
+/**
+ * The cache is bounded in bytes as well as entries: entries hold full bodies,
+ * and 1,000 list-endpoint pages would otherwise be hundreds of megabytes.
+ * Body length is counted in UTF-16 code units — close enough for a bound.
+ */
+export const DEFAULT_ETAG_CACHE_BYTES = 20 * 1024 * 1024;
+
+/** A body larger than this is not worth retaining for a conditional re-read. */
+export const DEFAULT_ETAG_CACHE_ENTRY_BYTES = 512 * 1024;
+
 const DEFAULT_ACCEPT = "application/vnd.github+json";
 const USER_AGENT = "hiero-hackers-sdk-automations";
+
+// ─── The contract ────────────────────────────────────────────────────
 
 /** The operation-specific part of a GitHub request. */
 export interface GitHubRequest {
@@ -31,6 +52,7 @@ export interface GitHubRequest {
     readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** A usable response, whether GitHub sent the body or the cache held it. */
 export interface GitHubSuccess {
     readonly ok: true;
     readonly status: number;
@@ -39,6 +61,7 @@ export interface GitHubSuccess {
     readonly fromCache: boolean;
 }
 
+/** A classified failure; response fields are absent when nothing was sent. */
 export interface GitHubFailure {
     readonly ok: false;
     readonly failure: FailureClass;
@@ -47,16 +70,20 @@ export interface GitHubFailure {
     readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** What one call to `request()` resolves to — it never throws. */
 export type GitHubOutcome = GitHubSuccess | GitHubFailure;
 
+/** The `x-ratelimit-*` headers of the most recent actual response. */
 export interface RateLimitSnapshot {
     readonly url: string;
     readonly status: number;
     readonly headers: Readonly<Record<string, string>>;
 }
 
+/** The shape of `fetch`, named so tests can script it. */
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+/** Seams the composition root supplies; only the token source is required. */
 export interface GitHubHttpClientOptions {
     readonly tokenSource: TokenSource;
     readonly fetch?: FetchLike;
@@ -66,18 +93,22 @@ export interface GitHubHttpClientOptions {
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
 }
 
+/** What every operation calls; see the file header for what it owns. */
 export interface GitHubHttpClient {
     request(request: GitHubRequest): Promise<GitHubOutcome>;
     /** The last actual response, including a response that was retried. */
     latestRateLimit(): RateLimitSnapshot | null;
 }
 
+/** A retained body and the validator plus variant that make it reusable. */
 interface CachedRepresentation {
     readonly etag: string;
     readonly variant: string;
     readonly body: string;
     readonly headers: Readonly<Record<string, string>>;
 }
+
+// ─── Local judgements ────────────────────────────────────────────────
 
 function headersToRecord(headers: Headers): Record<string, string> {
     const record: Record<string, string> = {};
@@ -98,22 +129,37 @@ function representationHeaders(headers: Readonly<Record<string, string>>): Recor
     return link === undefined ? {} : { link };
 }
 
-function githubApiUrl(rawUrl: string): string | null {
+type GitHubApiUrl =
+    | { readonly ok: true; readonly url: string }
+    | { readonly ok: false; readonly refused: "malformedUrl" | "disallowedOrigin" };
+
+function githubApiUrl(rawUrl: string): GitHubApiUrl {
+    let url: URL;
     try {
-        const url = new URL(rawUrl);
-        return url.origin === GITHUB_API_ORIGIN ? url.href : null;
+        url = new URL(rawUrl);
     } catch {
-        return null;
+        return { ok: false, refused: "malformedUrl" };
     }
+    return url.origin === GITHUB_API_ORIGIN
+        ? { ok: true, url: url.href }
+        : { ok: false, refused: "disallowedOrigin" };
 }
 
+/** Genuine transport weather — the one locally-made class worth a retry. */
 function transportFailure(): GitHubFailure {
     return { ok: false, failure: { kind: "transient" } };
+}
+
+/** The request never left the process; retrying cannot help. */
+function notSentFailure(reason: NotSentReason): GitHubFailure {
+    return { ok: false, failure: { kind: "notSent", reason } };
 }
 
 function isRetriable(failure: FailureClass): boolean {
     return failure.kind === "tokenExpired" || failure.kind === "transient";
 }
+
+// ─── The client ──────────────────────────────────────────────────────
 
 export function createGitHubHttpClient({
     tokenSource,
@@ -123,7 +169,28 @@ export function createGitHubHttpClient({
     timeoutSignal = AbortSignal.timeout,
 }: GitHubHttpClientOptions): GitHubHttpClient {
     const cache = new Map<string, CachedRepresentation>();
+    let cacheBytes = 0;
     let latestRateLimit: RateLimitSnapshot | null = null;
+
+    const removeEntry = (url: string): void => {
+        const entry = cache.get(url);
+        if (entry !== undefined) {
+            cacheBytes -= entry.body.length;
+            cache.delete(url);
+        }
+    };
+
+    /** Insert as newest, then evict oldest-first until under both bounds. */
+    const storeEntry = (url: string, entry: CachedRepresentation): void => {
+        removeEntry(url);
+        cache.set(url, entry);
+        cacheBytes += entry.body.length;
+        while (cache.size > DEFAULT_ETAG_CACHE_ENTRIES || cacheBytes > DEFAULT_ETAG_CACHE_BYTES) {
+            // `size > a non-negative limit` proves an entry exists, and the
+            // per-entry byte cap proves a one-entry cache is under the total.
+            removeEntry(cache.keys().next().value as string);
+        }
+    };
 
     const rememberRateLimit = (
         url: string,
@@ -162,6 +229,14 @@ export function createGitHubHttpClient({
         // Capture the local age at send time. A later clock read could turn a
         // live request into a false `tokenExpired` diagnosis.
         const tokenPastExpiry = isPastExpiry(token, clock());
+        // An injected timeout factory that throws is a wiring defect, not
+        // transport weather — it must not be diagnosed as retriable.
+        let signal: AbortSignal;
+        try {
+            signal = timeoutSignal(timeoutMs);
+        } catch {
+            return notSentFailure("brokenSeam");
+        }
         const init: RequestInit = {
             method: "GET",
             headers,
@@ -169,7 +244,7 @@ export function createGitHubHttpClient({
             // calls would evade origin validation, rate tracking, failure
             // classification, and the two-attempt bound.
             redirect: "manual",
-            signal: timeoutSignal(timeoutMs),
+            signal,
         };
 
         // `request()` contains a rejected transport call together with every
@@ -198,6 +273,24 @@ export function createGitHubHttpClient({
             };
         }
 
+        if (response.status >= 300 && response.status < 400) {
+            // Refused above via `redirect: "manual"`; named here rather than
+            // left to fall through classification as retriable weather. A
+            // 301/308 is a permanent fact about where the resource lives.
+            const location = response.headers.get("location");
+            return {
+                ok: false,
+                status: response.status,
+                headers: responseHeaders,
+                failure: {
+                    kind: "redirected",
+                    status: response.status,
+                    permanent: response.status === 301 || response.status === 308,
+                    ...(location === null ? {} : { location }),
+                },
+            };
+        }
+
         let body: string;
         try {
             body = await response.text();
@@ -206,21 +299,21 @@ export function createGitHubHttpClient({
         }
 
         if (response.ok) {
-            const etag = response.status === 200 ? response.headers.get("etag") : null;
-            if (etag === null) {
-                cache.delete(request.url);
-            } else {
-                cache.delete(request.url);
-                cache.set(request.url, {
-                    etag,
-                    variant,
-                    body,
-                    headers: representationHeaders(responseHeaders),
-                });
-                if (cache.size > DEFAULT_ETAG_CACHE_ENTRIES) {
-                    // `size > a non-negative limit` proves an entry exists.
-                    const oldest = cache.keys().next().value as string;
-                    cache.delete(oldest);
+            // Only a 200 speaks about the representation. A 202 or 204 says
+            // nothing, so it must not evict a validator that is still good.
+            if (response.status === 200) {
+                const etag = response.headers.get("etag");
+                if (etag !== null && body.length <= DEFAULT_ETAG_CACHE_ENTRY_BYTES) {
+                    storeEntry(request.url, {
+                        etag,
+                        variant,
+                        body,
+                        headers: representationHeaders(responseHeaders),
+                    });
+                } else {
+                    // The representation changed and left no retainable
+                    // validator — a kept entry would be a stale one.
+                    removeEntry(request.url);
                 }
             }
             return {
@@ -248,17 +341,19 @@ export function createGitHubHttpClient({
 
     return {
         async request(request): Promise<GitHubOutcome> {
-            if (request.method !== "GET") return transportFailure();
-            const url = githubApiUrl(request.url);
-            if (url === null) return transportFailure();
-            const safeRequest = { ...request, url };
+            if (request.method !== "GET") return notSentFailure("disallowedMethod");
+            const parsed = githubApiUrl(request.url);
+            if (!parsed.ok) return notSentFailure(parsed.refused);
+            const safeRequest = { ...request, url: parsed.url };
             let attempt = 0;
             while (true) {
                 let tokenOutcome;
                 try {
                     tokenOutcome = await tokenSource.current();
                 } catch {
-                    return transportFailure();
+                    // `current()` promises not to throw; a throw is a broken
+                    // seam, not weather.
+                    return notSentFailure("brokenSeam");
                 }
                 if (!tokenOutcome.ok) return tokenOutcome;
 
@@ -266,6 +361,8 @@ export function createGitHubHttpClient({
                 try {
                     outcome = await sendOnce(safeRequest, tokenOutcome.token);
                 } catch {
+                    // The transport itself failed — the one thrown case that
+                    // is genuinely worth this loop's single retry.
                     outcome = transportFailure();
                 }
                 if (outcome.ok || !isRetriable(outcome.failure)) return outcome;
@@ -273,7 +370,7 @@ export function createGitHubHttpClient({
                     try {
                         tokenSource.invalidate(tokenOutcome.token);
                     } catch {
-                        return transportFailure();
+                        return notSentFailure("brokenSeam");
                     }
                 }
                 if (attempt === 1) return outcome;

@@ -23,7 +23,8 @@ not that it is correct. The build guide is
 refresh, single flight — is driven by a fake clock. `http.ts` owns the authenticated request path,
 the bounded per-URL ETag cache, timeouts, rate-limit snapshots, core failure classification, and the
 one permitted retry. It pins credentials to GitHub's HTTPS API, exposes only the GET reads this
-stage has proved, and handles redirects inside the classified boundary. Its fetch and clock are
+stage has proved, and refuses to follow redirects — a 3xx comes back classified as `redirected`,
+carrying its `location`, rather than being silently chased or retried. Its fetch and clock are
 injected too, so no test reaches the network.
 
 **Minting is injected rather than called** because that one request authenticates with the assertion

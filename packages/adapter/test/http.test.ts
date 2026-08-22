@@ -9,7 +9,9 @@ import { BODY_PATTERNS, type FailureClass } from "@hiero-hackers/automation-core
 import { describe, expect, it } from "vitest";
 import {
     createGitHubHttpClient,
+    DEFAULT_ETAG_CACHE_BYTES,
     DEFAULT_ETAG_CACHE_ENTRIES,
+    DEFAULT_ETAG_CACHE_ENTRY_BYTES,
     DEFAULT_REQUEST_TIMEOUT_MS,
     GITHUB_API_ORIGIN,
     GITHUB_API_VERSION,
@@ -180,7 +182,7 @@ describe("request shaping", () => {
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "transient" },
+            failure: { kind: "notSent", reason: "brokenSeam" },
         });
         expect(scripted.calls).toHaveLength(0);
     });
@@ -193,14 +195,14 @@ describe("request shaping", () => {
             fetch: scripted.fetch,
         });
 
-        for (const url of [
-            "http://api.github.com/repos/hiero-hackers/sdk-automations",
-            "https://api.github.com.attacker.example/steal",
-            "not a URL",
-        ]) {
+        for (const [url, reason] of [
+            ["http://api.github.com/repos/hiero-hackers/sdk-automations", "disallowedOrigin"],
+            ["https://api.github.com.attacker.example/steal", "disallowedOrigin"],
+            ["not a URL", "malformedUrl"],
+        ] as const) {
             expect(await client.request(request({ url }))).toEqual({
                 ok: false,
-                failure: { kind: "transient" },
+                failure: { kind: "notSent", reason },
             });
         }
         expect(GITHUB_API_ORIGIN).toBe("https://api.github.com");
@@ -208,26 +210,55 @@ describe("request shaping", () => {
         expect(scripted.calls).toHaveLength(0);
     });
 
-    it("does not follow redirects outside the classified, bounded call path", async () => {
+    it("refuses to follow redirects and names the refusal instead of retrying", async () => {
         const { client, scripted } = harness([
             new Response(null, {
                 status: 302,
                 headers: { location: "https://attacker.example/steal" },
             }),
-            new Response(null, {
-                status: 302,
-                headers: { location: "https://attacker.example/steal-again" },
-            }),
+            success("must not happen"),
         ]);
 
         expect(await client.request(request())).toMatchObject({
             ok: false,
             status: 302,
-            failure: { kind: "transient" },
+            failure: {
+                kind: "redirected",
+                status: 302,
+                location: "https://attacker.example/steal",
+                permanent: false,
+            },
         });
-        expect(scripted.calls).toHaveLength(2);
-        expect(scripted.calls.map(({ url }) => url)).toEqual([URL, URL]);
-        expect(scripted.calls.every(({ init }) => init.redirect === "manual")).toBe(true);
+        expect(scripted.calls).toHaveLength(1);
+        expect(scripted.calls[0]!.init.redirect).toBe("manual");
+    });
+
+    it("marks a 301 as a permanent fact carrying the new location", async () => {
+        const moved = "https://api.github.com/repos/hiero-hackers/renamed/issues/132";
+        const { client, scripted } = harness([
+            new Response(null, { status: 301, headers: { location: moved } }),
+            success("must not happen"),
+        ]);
+
+        expect(await client.request(request())).toMatchObject({
+            ok: false,
+            failure: { kind: "redirected", status: 301, location: moved, permanent: true },
+        });
+        expect(scripted.calls).toHaveLength(1);
+    });
+
+    it("classifies a locationless redirect without inventing a destination", async () => {
+        const { client } = harness([new Response(null, { status: 308 })]);
+
+        const outcome = await client.request(request());
+
+        expect(outcome).toMatchObject({
+            ok: false,
+            failure: { kind: "redirected", status: 308, permanent: true },
+        });
+        if (!outcome.ok && outcome.failure.kind === "redirected") {
+            expect("location" in outcome.failure).toBe(false);
+        }
     });
 
     it("rejects mutation methods before acquiring a token", async () => {
@@ -241,7 +272,7 @@ describe("request shaping", () => {
 
         expect(await client.request(mutation)).toEqual({
             ok: false,
-            failure: { kind: "transient" },
+            failure: { kind: "notSent", reason: "disallowedMethod" },
         });
         expect(tokens.calls()).toBe(0);
         expect(scripted.calls).toHaveLength(0);
@@ -424,6 +455,69 @@ describe("conditional reads", () => {
         expect(DEFAULT_ETAG_CACHE_ENTRIES).toBe(1_000);
     });
 
+    it("does not let a 202 evict a still-valid validator", async () => {
+        const { client, scripted } = harness([
+            success("stats", { etag: '"v1"' }),
+            new Response("computing", { status: 202 }),
+            new Response(null, { status: 304 }),
+        ]);
+
+        await client.request(request());
+        const accepted = await client.request(request());
+        const cached = await client.request(request());
+
+        expect(accepted).toMatchObject({ ok: true, status: 202, fromCache: false });
+        expect(new Headers(scripted.calls[2]!.init.headers).get("if-none-match")).toBe('"v1"');
+        expect(cached).toMatchObject({ ok: true, fromCache: true, body: "stats" });
+    });
+
+    it("does not retain a body larger than the per-entry byte cap", async () => {
+        const oversized = "x".repeat(DEFAULT_ETAG_CACHE_ENTRY_BYTES + 1);
+        const { client, scripted } = harness([
+            success("small", { etag: '"small"' }),
+            success(oversized, { etag: '"big"' }),
+            success("after", { etag: '"after"' }),
+        ]);
+
+        await client.request(request());
+        await client.request(request());
+        await client.request(request());
+
+        expect(new Headers(scripted.calls[1]!.init.headers).get("if-none-match")).toBe('"small"');
+        // The oversized 200 replaced the representation, so the old validator
+        // is stale and gone — but the giant body was not retained either.
+        expect(new Headers(scripted.calls[2]!.init.headers).get("if-none-match")).toBeNull();
+    });
+
+    it("bounds the cache in bytes as well as entries", async () => {
+        const body = "x".repeat(DEFAULT_ETAG_CACHE_ENTRY_BYTES);
+        const fill = Math.floor(DEFAULT_ETAG_CACHE_BYTES / DEFAULT_ETAG_CACHE_ENTRY_BYTES) + 1;
+        const urls = Array.from(
+            { length: fill },
+            (_, index) => `${GITHUB_API_ORIGIN}/repos/o/r/contents/${index}`,
+        );
+        const scripted = responseScript([
+            ...urls.map((_, index) => success(body, { etag: `"${index}"` })),
+            success("first again", { etag: '"first-2"' }),
+        ]);
+        const tokens = tokenSource([{ ok: true, token: token("t") }]);
+        const client = createGitHubHttpClient({
+            tokenSource: tokens.source,
+            fetch: scripted.fetch,
+            clock: () => NOW,
+        });
+
+        for (const url of urls) await client.request(request({ url }));
+        await client.request(request({ url: urls[0]! }));
+
+        // Filling one entry past the byte bound evicted the oldest URL, well
+        // before the 1,000-entry bound was anywhere near.
+        expect(fill).toBeLessThan(DEFAULT_ETAG_CACHE_ENTRIES);
+        expect(new Headers(scripted.calls[fill]!.init.headers).get("if-none-match")).toBeNull();
+        expect(DEFAULT_ETAG_CACHE_BYTES).toBe(20 * 1024 * 1024);
+        expect(DEFAULT_ETAG_CACHE_ENTRY_BYTES).toBe(512 * 1024);
+    });
+
     it("treats an impossible cacheless 304 as transient and still bounds the retry", async () => {
         const { client, scripted } = harness([
             new Response(null, { status: 304 }),
@@ -475,6 +569,34 @@ describe("classification and bounded retry", () => {
             name: "validation error",
             response: failure(422, '{"message":"Validation Failed","errors":[]}'),
             expected: { kind: "validationError" },
+        },
+        {
+            // A 401 on a LIVE token is a wrong or revoked key. It must not be
+            // retried: hammering GitHub with bad credentials is how an App
+            // earns a block, and no refresh can mint a better key.
+            name: "bad credentials",
+            response: failure(401, "Bad credentials"),
+            expected: { kind: "badCredentials" },
+        },
+        {
+            // Primary exhaustion must return at once with the reset instant;
+            // an auto-retry would spend requests the window no longer has.
+            name: "primary quota exhausted",
+            response: failure(403, "API rate limit exceeded", {
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": "1787300000",
+            }),
+            expected: { kind: "primaryExhausted", resetAt: "1787300000" },
+        },
+        {
+            name: "rate-limit wait beyond the automatic ceiling",
+            response: failure(429, "rate limited", { "retry-after": "7200" }),
+            expected: {
+                kind: "rateLimitResponseUnusable",
+                headerName: "retry-after",
+                headerValue: "7200",
+                reason: "aboveAutomaticLimit",
+            },
         },
     ];
 
@@ -543,7 +665,7 @@ describe("classification and bounded retry", () => {
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "transient" },
+            failure: { kind: "notSent", reason: "brokenSeam" },
         });
         expect(scripted.calls).toHaveLength(1);
     });
@@ -598,7 +720,7 @@ describe("classification and bounded retry", () => {
 
         expect(await client.request(request())).toEqual({
             ok: false,
-            failure: { kind: "transient" },
+            failure: { kind: "notSent", reason: "brokenSeam" },
         });
         expect(scripted.calls).toHaveLength(0);
     });

@@ -350,11 +350,26 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             { kind: "primaryExhausted", resetAt: undefined },
             { kind: "notFoundOrNotInstalled" },
             { kind: "validationError" },
+            { kind: "redirected", status: 301, permanent: true },
+            { kind: "notSent", reason: "malformedUrl" },
             { kind: "transient" },
         ];
         for (const failure of kinds) {
             expect(retryAdvice(failure, 0, 0).action).toBeTruthy();
         }
+    });
+
+    it("never advises retrying what did not reach GitHub or moved for good", () => {
+        // A wiring defect and a renamed repo share one property: no number
+        // of retries of the same request can ever succeed.
+        expect(retryAdvice({ kind: "notSent", reason: "disallowedOrigin" }, 0, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
+        expect(retryAdvice({ kind: "redirected", status: 301, permanent: true }, 0, 0)).toEqual({
+            action: "doNotRetry",
+            surfaceTo: "operator",
+        });
     });
 });
 
@@ -432,6 +447,8 @@ describe("retryAdvice: bounded for every class and attempt", () => {
         { kind: "primaryExhausted", resetAt: undefined },
         { kind: "notFoundOrNotInstalled" },
         { kind: "validationError" },
+        { kind: "redirected", status: 302, permanent: false },
+        { kind: "notSent", reason: "brokenSeam" },
         { kind: "transient" },
     ];
 
