@@ -360,8 +360,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
     });
 
     it("never advises retrying what did not reach GitHub or moved for good", () => {
-        // A wiring defect and a renamed repo share one property: no number
-        // of retries of the same request can ever succeed.
+        // No number of retries of the same request can ever succeed.
         expect(retryAdvice({ kind: "notSent", reason: "disallowedOrigin" }, 0, 0)).toEqual({
             action: "doNotRetry",
             surfaceTo: "operator",

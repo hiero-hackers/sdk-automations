@@ -66,7 +66,7 @@ flowchart TD
 - Retry: `tokenExpired` refreshes and retries once · `transient` retries once · the rest return at once.
 - `secondaryLimit` is **never** auto-retried by the client. The observed write-path block
   carried no wait signal (6.4); GitHub documents that `retry-after` may be present, and core
-  honours it when it is. The read path is unprobed — a re-probe obligation.
+  honours it when it is. The read path is unprobed — `REPROBE(secondary-limit-read-path)`.
 - Deterministic refusals are not weather: what never left the process is `notSent`, a refused
   3xx is `redirected` — both `doNotRetry`, so a wiring defect or a renamed repo cannot burn
   the retry budget under the `transient` label.

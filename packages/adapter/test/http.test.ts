@@ -484,8 +484,7 @@ describe("conditional reads", () => {
         await client.request(request());
 
         expect(new Headers(scripted.calls[1]!.init.headers).get("if-none-match")).toBe('"small"');
-        // The oversized 200 replaced the representation, so the old validator
-        // is stale and gone — but the giant body was not retained either.
+        // The stale validator is gone, and the giant body was not retained.
         expect(new Headers(scripted.calls[2]!.init.headers).get("if-none-match")).toBeNull();
     });
 
@@ -510,8 +509,7 @@ describe("conditional reads", () => {
         for (const url of urls) await client.request(request({ url }));
         await client.request(request({ url: urls[0]! }));
 
-        // Filling one entry past the byte bound evicted the oldest URL, well
-        // before the 1,000-entry bound was anywhere near.
+        // The byte bound evicted the oldest URL long before the entry bound.
         expect(fill).toBeLessThan(DEFAULT_ETAG_CACHE_ENTRIES);
         expect(new Headers(scripted.calls[fill]!.init.headers).get("if-none-match")).toBeNull();
         expect(DEFAULT_ETAG_CACHE_BYTES).toBe(20 * 1024 * 1024);
@@ -571,16 +569,15 @@ describe("classification and bounded retry", () => {
             expected: { kind: "validationError" },
         },
         {
-            // A 401 on a LIVE token is a wrong or revoked key. It must not be
-            // retried: hammering GitHub with bad credentials is how an App
-            // earns a block, and no refresh can mint a better key.
+            // A 401 on a LIVE token is a wrong or revoked key — no refresh
+            // can mint a better one, so it must not be retried.
             name: "bad credentials",
             response: failure(401, "Bad credentials"),
             expected: { kind: "badCredentials" },
         },
         {
-            // Primary exhaustion must return at once with the reset instant;
-            // an auto-retry would spend requests the window no longer has.
+            // Returns at once with the reset instant; a retry would spend
+            // requests the window no longer has.
             name: "primary quota exhausted",
             response: failure(403, "API rate limit exceeded", {
                 "x-ratelimit-remaining": "0",

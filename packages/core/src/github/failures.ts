@@ -49,13 +49,7 @@ export type FailureClass =
     | { readonly kind: "permissionMissing"; readonly acceptedPermissions: string }
     /** 403, body names suspension, and the permissions header is absent (6.1). */
     | { readonly kind: "installationSuspended" }
-    /**
-     * 403/429 secondary limit. The observed write-path block carried no
-     * `retry-after` and left primary quota untouched (6.4,
-     * FINDING(secondary-limit-no-wait-signal)); GitHub's docs say the header
-     * may be present, and it is honoured here when it is. The read path is
-     * unprobed — a re-probe obligation, not a settled fact.
-     */
+    /** 403/429 secondary limit. Write-path evidence only (6.4, FINDING(secondary-limit-no-wait-signal), REPROBE(secondary-limit-read-path)). */
     | {
           readonly kind: "secondaryLimit";
           readonly retryAfterSeconds?: number;
@@ -75,24 +69,14 @@ export type FailureClass =
     | { readonly kind: "notFoundOrNotInstalled" }
     /** 422 with structured `errors[]` — maintainer-showable verbatim (6.4). */
     | { readonly kind: "validationError" }
-    /**
-     * A 3xx a client refused to follow — hidden hops would evade origin
-     * pinning and the retry bound. 301/308 are permanent facts about where
-     * the resource lives (a renamed repo, most often); retrying the old URL
-     * is provably futile, and the fix is the `location` this carries.
-     */
+    /** A 3xx the client refused to follow; 301/308 are permanent, so the remedy is `location`, never a retry. */
     | {
           readonly kind: "redirected";
           readonly status: number;
           readonly location?: string;
           readonly permanent: boolean;
       }
-    /**
-     * The request never left the process — a caller or wiring defect, not
-     * GitHub weather. Kept out of `transient` deliberately: retrying a
-     * programming error burns the retry budget on something that cannot
-     * ever succeed, under a label that means "try again shortly".
-     */
+    /** Never left the process — a caller or wiring defect. Not `transient`: no retry can succeed. */
     | {
           readonly kind: "notSent";
           readonly reason: NotSentReason;

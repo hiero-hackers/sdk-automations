@@ -30,11 +30,7 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 /** Full representations retained for conditional reads, least-recently-used. */
 export const DEFAULT_ETAG_CACHE_ENTRIES = 1_000;
 
-/**
- * The cache is bounded in bytes as well as entries: entries hold full bodies,
- * and 1,000 list-endpoint pages would otherwise be hundreds of megabytes.
- * Body length is counted in UTF-16 code units — close enough for a bound.
- */
+/** Retained bodies across all entries, in UTF-16 code units — close enough for a bound. */
 export const DEFAULT_ETAG_CACHE_BYTES = 20 * 1024 * 1024;
 
 /** A body larger than this is not worth retaining for a conditional re-read. */
@@ -229,8 +225,7 @@ export function createGitHubHttpClient({
         // Capture the local age at send time. A later clock read could turn a
         // live request into a false `tokenExpired` diagnosis.
         const tokenPastExpiry = isPastExpiry(token, clock());
-        // An injected timeout factory that throws is a wiring defect, not
-        // transport weather — it must not be diagnosed as retriable.
+        // A throwing timeout factory is a wiring defect, not retriable weather.
         let signal: AbortSignal;
         try {
             signal = timeoutSignal(timeoutMs);
@@ -274,9 +269,8 @@ export function createGitHubHttpClient({
         }
 
         if (response.status >= 300 && response.status < 400) {
-            // Refused above via `redirect: "manual"`; named here rather than
-            // left to fall through classification as retriable weather. A
-            // 301/308 is a permanent fact about where the resource lives.
+            // Named here so a refused 3xx cannot fall through classification
+            // as retriable. Documented, never probed — REPROBE(redirect-3xx).
             const location = response.headers.get("location");
             return {
                 ok: false,
@@ -299,8 +293,8 @@ export function createGitHubHttpClient({
         }
 
         if (response.ok) {
-            // Only a 200 speaks about the representation. A 202 or 204 says
-            // nothing, so it must not evict a validator that is still good.
+            // Only a 200 speaks about the representation; a 202 or 204 must
+            // not evict a validator that is still good.
             if (response.status === 200) {
                 const etag = response.headers.get("etag");
                 if (etag !== null && body.length <= DEFAULT_ETAG_CACHE_ENTRY_BYTES) {
@@ -311,8 +305,7 @@ export function createGitHubHttpClient({
                         headers: representationHeaders(responseHeaders),
                     });
                 } else {
-                    // The representation changed and left no retainable
-                    // validator — a kept entry would be a stale one.
+                    // A 200 with no retainable validator leaves any kept entry stale.
                     removeEntry(request.url);
                 }
             }
@@ -351,8 +344,7 @@ export function createGitHubHttpClient({
                 try {
                     tokenOutcome = await tokenSource.current();
                 } catch {
-                    // `current()` promises not to throw; a throw is a broken
-                    // seam, not weather.
+                    // `current()` promises not to throw.
                     return notSentFailure("brokenSeam");
                 }
                 if (!tokenOutcome.ok) return tokenOutcome;
@@ -361,8 +353,7 @@ export function createGitHubHttpClient({
                 try {
                     outcome = await sendOnce(safeRequest, tokenOutcome.token);
                 } catch {
-                    // The transport itself failed — the one thrown case that
-                    // is genuinely worth this loop's single retry.
+                    // A thrown transport call is the one failure worth the retry.
                     outcome = transportFailure();
                 }
                 if (outcome.ok || !isRetriable(outcome.failure)) return outcome;
