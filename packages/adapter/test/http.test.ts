@@ -144,6 +144,39 @@ describe("request shaping", () => {
         expect(signals[0]).not.toBe(signals[1]);
     });
 
+    it("turns an observed timeout abort into one bounded transport retry", async () => {
+        let fetchCalls = 0;
+        const fetch: FetchLike = (_input, init) => {
+            fetchCalls += 1;
+            return new Promise((_resolve, reject) => {
+                const signal = init?.signal;
+                if (signal?.aborted === true) {
+                    reject(signal.reason);
+                    return;
+                }
+                signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+            });
+        };
+        const client = createGitHubHttpClient({
+            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+            fetch,
+            clock: () => NOW,
+            timeoutSignal: () => {
+                const controller = new AbortController();
+                queueMicrotask(() =>
+                    controller.abort(new DOMException("timed out", "TimeoutError")),
+                );
+                return controller.signal;
+            },
+        });
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "transient" },
+        });
+        expect(fetchCalls).toBe(2);
+    });
+
     it("uses the production clock and AbortSignal timeout defaults", async () => {
         const scripted = responseScript([success()]);
         const tokens = tokenSource([{ ok: true, token: token("t", new Date("2099-01-01")) }]);
@@ -187,6 +220,114 @@ describe("request shaping", () => {
         expect(scripted.calls).toHaveLength(0);
     });
 
+    it.each([
+        ["undefined", undefined],
+        ["null", null],
+        ["a missing discriminator", {}],
+        ["a non-boolean discriminator", { ok: "yes" }],
+        ["a null token", { ok: true, token: null }],
+        ["a non-object token", { ok: true, token: "token" }],
+        ["a non-string token value", { ok: true, token: { ...token("t"), value: 1 } }],
+        ["a non-Date expiry", { ok: true, token: { ...token("t"), expiresAt: "later" } }],
+        ["an invalid Date expiry", { ok: true, token: token("t", new Date(Number.NaN)) }],
+        ["non-array grants", { ok: true, token: { ...token("t"), grants: {} } }],
+        ["a null failure", { ok: false, failure: null }],
+        ["a non-object failure", { ok: false, failure: "transient" }],
+        ["a missing failure kind", { ok: false, failure: {} }],
+        ["a non-string failure kind", { ok: false, failure: { kind: 1 } }],
+    ])("contains malformed resolved token outcome: %s", async (_label, outcome) => {
+        const scripted = responseScript([success()]);
+        const source: TokenSource = {
+            current: () => Promise.resolve(outcome as never),
+            invalidate: () => undefined,
+        };
+        const client = createGitHubHttpClient({ tokenSource: source, fetch: scripted.fetch });
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "brokenSeam" },
+        });
+        expect(scripted.calls).toHaveLength(0);
+    });
+
+    it("contains invalid caller headers without retrying or calling fetch", async () => {
+        const scripted = responseScript([success()]);
+        const tokens = tokenSource([{ ok: true, token: token("t") }]);
+        const client = createGitHubHttpClient({
+            tokenSource: tokens.source,
+            fetch: scripted.fetch,
+        });
+
+        expect(
+            await client.request(request({ headers: { "x-invalid": "line one\nline two" } })),
+        ).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "invalidHeaders" },
+        });
+        expect(tokens.calls()).toBe(1);
+        expect(scripted.calls).toHaveLength(0);
+    });
+
+    it("contains a throwing clock as a broken seam without retrying", async () => {
+        const scripted = responseScript([success()]);
+        const tokens = tokenSource([{ ok: true, token: token("t") }]);
+        const client = createGitHubHttpClient({
+            tokenSource: tokens.source,
+            fetch: scripted.fetch,
+            clock: () => {
+                throw new Error("clock failed");
+            },
+        });
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "brokenSeam" },
+        });
+        expect(tokens.calls()).toBe(1);
+        expect(scripted.calls).toHaveLength(0);
+    });
+
+    it("contains an invalid token value as a broken seam before fetch", async () => {
+        const scripted = responseScript([success()]);
+        const tokens = tokenSource([{ ok: true, token: token("line one\nline two") }]);
+        const client = createGitHubHttpClient({
+            tokenSource: tokens.source,
+            fetch: scripted.fetch,
+            clock: () => NOW,
+        });
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "brokenSeam" },
+        });
+        expect(tokens.calls()).toBe(1);
+        expect(scripted.calls).toHaveLength(0);
+    });
+
+    it("contains an invalid injected response shape as a broken seam", async () => {
+        let fetchCalls = 0;
+        const client = createGitHubHttpClient({
+            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+            fetch: () => {
+                fetchCalls += 1;
+                return Promise.resolve(
+                    Object.defineProperty({}, "headers", {
+                        get: () => {
+                            throw new Error("invalid response seam");
+                        },
+                    }) as Response,
+                );
+            },
+            clock: () => NOW,
+        });
+
+        expect(await client.request(request())).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "brokenSeam" },
+        });
+        expect(fetchCalls).toBe(1);
+    });
+
     it("rejects cleartext and non-GitHub URLs before acquiring a token", async () => {
         const scripted = responseScript([success()]);
         const tokens = tokenSource([{ ok: true, token: token("must-not-leak") }]);
@@ -222,6 +363,7 @@ describe("request shaping", () => {
         expect(await client.request(request())).toMatchObject({
             ok: false,
             status: 302,
+            body: "",
             failure: {
                 kind: "redirected",
                 status: 302,
@@ -516,6 +658,33 @@ describe("conditional reads", () => {
         expect(DEFAULT_ETAG_CACHE_ENTRY_BYTES).toBe(512 * 1024);
     });
 
+    it("retains the oldest representation at the exact entry and total byte limits", async () => {
+        const body = "x".repeat(DEFAULT_ETAG_CACHE_ENTRY_BYTES);
+        const exactFill = DEFAULT_ETAG_CACHE_BYTES / DEFAULT_ETAG_CACHE_ENTRY_BYTES;
+        const urls = Array.from(
+            { length: exactFill },
+            (_, index) => `${GITHUB_API_ORIGIN}/repos/o/r/contents/exact-${index}`,
+        );
+        const scripted = responseScript([
+            ...urls.map((_, index) => success(body, { etag: `"${index}"` })),
+            new Response(null, { status: 304 }),
+        ]);
+        const client = createGitHubHttpClient({
+            tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+            fetch: scripted.fetch,
+            clock: () => NOW,
+        });
+
+        for (const url of urls) await client.request(request({ url }));
+        const oldest = await client.request(request({ url: urls[0]! }));
+
+        expect(Number.isInteger(exactFill)).toBe(true);
+        expect(new Headers(scripted.calls[exactFill]!.init.headers).get("if-none-match")).toBe(
+            '"0"',
+        );
+        expect(oldest).toMatchObject({ ok: true, fromCache: true, body });
+    });
+
     it("treats an impossible cacheless 304 as transient and still bounds the retry", async () => {
         const { client, scripted } = harness([
             new Response(null, { status: 304 }),
@@ -608,6 +777,20 @@ describe("classification and bounded retry", () => {
         });
     }
 
+    it("does not retry an otherwise-unclassified deterministic 4xx", async () => {
+        const { client, scripted } = harness([
+            failure(410, "API version retired"),
+            success("must not happen"),
+        ]);
+
+        expect(await client.request(request())).toMatchObject({
+            ok: false,
+            status: 410,
+            failure: { kind: "clientError", status: 410 },
+        });
+        expect(scripted.calls).toHaveLength(1);
+    });
+
     it("uses local token age for the expired-token row, refreshes, and retries once", async () => {
         const expired = token("expired", new Date(NOW.getTime() - 1));
         const fresh = token("fresh");
@@ -697,8 +880,10 @@ describe("classification and bounded retry", () => {
             );
         const { client, scripted } = harness([brokenBody(), brokenBody()]);
 
-        expect(await client.request(request())).toEqual({
+        expect(await client.request(request())).toMatchObject({
             ok: false,
+            status: 200,
+            headers: {},
             failure: { kind: "transient" },
         });
         expect(scripted.calls).toHaveLength(2);

@@ -53,8 +53,8 @@ unclear outcome is recorded and reconciled, never blindly repeated.
 
 ## Failure catalogue
 
-The distinct failure shapes a diagnostics layer must tell apart, each
-observed at least once:
+The distinct failure shapes a diagnostics layer must tell apart. Probe-backed rows carry dated
+evidence; documented-only rows are marked explicitly and remain re-probe obligations:
 
 | Failure | Status / body marker | Distinguishable from | Citation |
 |---|---|---|---|
@@ -64,4 +64,4 @@ observed at least once:
 | Repo outside installation | **404 `Not Found`** — existence hidden; indistinguishable from a nonexistent repo | permission missing (403 on a repo the App *is* installed on) | `2026-07-23T19-52-01-085Z#3` |
 | Secondary rate limit | 403, body "You have exceeded a secondary rate limit … temporarily blocked from content creation"; **no `retry-after` header on this write-path observation** (n=1; GitHub documents the header may be present, and read-path secondary limits are unprobed — `REPROBE(secondary-limit-read-path)`), primary quota nearly untouched (4909/5000) | permission 403 (different body, has `x-accepted-github-permissions`); primary exhaustion (`x-ratelimit-remaining: 0`) | `2026-07-23T19-37-00-198Z#19` |
 | Validation error | 422, `Validation Failed`, structured `errors[]` of `{message, resource, field, code}` | forbidden (403, prose body, no `errors[]`) | `2026-07-23T19-36-29-346Z#11` |
-| Redirect | 3xx with `location` — documented for renamed repos (301) and some downloads (302); **never observed in a probe**. The client refuses to follow and classifies as `redirected` | transient 5xx (which is worth a retry; a 301 never is) | documented only — `REPROBE(redirect-3xx)` |
+| Redirect | 3xx with `location` — documented for renamed repos (301) and temporary moves (302/307); **never observed in a probe**. The client currently refuses to follow and classifies as `redirected` pending an explicit redirect policy | transient 5xx (which is worth a retry) | [GitHub REST redirect guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#follow-redirects), documented only — `REPROBE(redirect-3xx)` |

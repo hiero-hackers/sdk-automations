@@ -36,9 +36,6 @@ export interface FailureObservation {
     readonly tokenPastExpiry?: boolean;
 }
 
-/** Why a request was refused locally instead of being sent. */
-export type NotSentReason = "disallowedMethod" | "disallowedOrigin" | "malformedUrl" | "brokenSeam";
-
 /** What a failed response turned out to be. */
 export type FailureClass =
     /** 401; token past its 1 h TTL (6.1). */
@@ -76,12 +73,9 @@ export type FailureClass =
           readonly location?: string;
           readonly permanent: boolean;
       }
-    /** Never left the process — a caller or wiring defect. Not `transient`: no retry can succeed. */
-    | {
-          readonly kind: "notSent";
-          readonly reason: NotSentReason;
-      }
-    /** 5xx and everything else worth one bounded retry. */
+    /** An otherwise-unclassified 4xx. Repeating the same request cannot repair it. */
+    | { readonly kind: "clientError"; readonly status: number }
+    /** A transport failure, request timeout, 408, or 5xx worth a bounded retry. */
     | { readonly kind: "transient" };
 
 // ─── The perishable surface ──────────────────────────────────────────
@@ -121,6 +115,17 @@ export const BODY_PATTERNS = {
 /** Read one failed response into exactly one class. */
 export function classifyFailure(o: FailureObservation): FailureClass {
     const body = o.body;
+    // 304 is a conditional-read result, not a redirect. A transport with no
+    // matching cached representation treats it as transient below.
+    if (o.status >= 300 && o.status < 400 && o.status !== 304) {
+        const location = o.headers.location;
+        return {
+            kind: "redirected",
+            status: o.status,
+            permanent: o.status === 301 || o.status === 308,
+            ...(location === undefined ? {} : { location }),
+        };
+    }
     if (o.status === 401) {
         // The 6.1 probe falsified body-based detection: an expired
         // token and a wrong key both return "Bad credentials". Local
@@ -171,6 +176,9 @@ export function classifyFailure(o: FailureObservation): FailureClass {
     }
     if (o.status === 404) return { kind: "notFoundOrNotInstalled" };
     if (o.status === 422) return { kind: "validationError" };
+    if (o.status >= 400 && o.status < 500 && o.status !== 408) {
+        return { kind: "clientError", status: o.status };
+    }
     return { kind: "transient" };
 }
 
@@ -242,7 +250,7 @@ export function retryAdvice(
         case "rateLimitResponseUnusable":
         case "notFoundOrNotInstalled":
         case "redirected":
-        case "notSent":
+        case "clientError":
             return { action: "doNotRetry", surfaceTo: "operator" };
     }
 }

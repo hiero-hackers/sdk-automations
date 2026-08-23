@@ -112,12 +112,57 @@ describe("classifyFailure (the matrix failure catalogue, executable)", () => {
         expect(classifyFailure(observed.notInstalled).kind).toBe("notFoundOrNotInstalled");
     });
 
-    it("unmatched statuses classify as transient — the bounded-retry bucket", () => {
-        for (const status of [500, 502, 503]) {
+    it("non-error 299, 408, and server errors classify as transient — the bounded-retry bucket", () => {
+        for (const status of [299, 408, 500, 502, 503]) {
             expect(classifyFailure({ status, body: "", headers: {} })).toEqual({
                 kind: "transient",
             });
         }
+    });
+
+    it.each([400, 405, 406, 410, 412, 415, 451])(
+        "classifies deterministic client response %i without calling it weather",
+        (status) => {
+            const failure = classifyFailure({ status, body: "request rejected", headers: {} });
+            expect(failure).toEqual({ kind: "clientError", status });
+            expect(retryAdvice(failure, 0, 0)).toEqual({
+                action: "doNotRetry",
+                surfaceTo: "operator",
+            });
+        },
+    );
+
+    it.each([
+        [300, false],
+        [301, true],
+        [302, false],
+        [307, false],
+        [308, true],
+    ] as const)("classifies redirect %i through the response vocabulary", (status, permanent) => {
+        expect(
+            classifyFailure({
+                status,
+                body: "",
+                headers: { location: "https://api.github.com/repos/o/renamed" },
+            }),
+        ).toEqual({
+            kind: "redirected",
+            status,
+            location: "https://api.github.com/repos/o/renamed",
+            permanent,
+        });
+    });
+
+    it("does not invent a location for a locationless redirect", () => {
+        const failure = classifyFailure({ status: 308, body: "", headers: {} });
+        expect(failure).toEqual({ kind: "redirected", status: 308, permanent: true });
+        expect("location" in failure).toBe(false);
+    });
+
+    it("does not misclassify a cache-validation 304 as a redirect", () => {
+        expect(classifyFailure({ status: 304, body: "", headers: {} })).toEqual({
+            kind: "transient",
+        });
     });
 
     it("429 is rate-limited and preserves Retry-After instead of retrying as a 500", () => {
@@ -351,7 +396,7 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
             { kind: "notFoundOrNotInstalled" },
             { kind: "validationError" },
             { kind: "redirected", status: 301, permanent: true },
-            { kind: "notSent", reason: "malformedUrl" },
+            { kind: "clientError", status: 400 },
             { kind: "transient" },
         ];
         for (const failure of kinds) {
@@ -359,13 +404,12 @@ describe("retryAdvice (bounded, evidence-derived)", () => {
         }
     });
 
-    it("never advises retrying what did not reach GitHub or moved for good", () => {
-        // No number of retries of the same request can ever succeed.
-        expect(retryAdvice({ kind: "notSent", reason: "disallowedOrigin" }, 0, 0)).toEqual({
+    it("never advises retrying a redirect or deterministic client response", () => {
+        expect(retryAdvice({ kind: "redirected", status: 301, permanent: true }, 0, 0)).toEqual({
             action: "doNotRetry",
             surfaceTo: "operator",
         });
-        expect(retryAdvice({ kind: "redirected", status: 301, permanent: true }, 0, 0)).toEqual({
+        expect(retryAdvice({ kind: "clientError", status: 410 }, 0, 0)).toEqual({
             action: "doNotRetry",
             surfaceTo: "operator",
         });
@@ -447,7 +491,7 @@ describe("retryAdvice: bounded for every class and attempt", () => {
         { kind: "notFoundOrNotInstalled" },
         { kind: "validationError" },
         { kind: "redirected", status: 302, permanent: false },
-        { kind: "notSent", reason: "brokenSeam" },
+        { kind: "clientError", status: 400 },
         { kind: "transient" },
     ];
 

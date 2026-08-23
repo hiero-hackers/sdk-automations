@@ -69,12 +69,14 @@ flowchart TD
   honours it when it is. The read path is unprobed — `REPROBE(secondary-limit-read-path)`.
 - Deterministic refusals are not weather: what never left the process is `notSent`, a refused
   3xx is `redirected` — both `doNotRetry`, so a wiring defect or a renamed repo cannot burn
-  the retry budget under the `transient` label.
+  the retry budget under the `transient` label. `notSent` is adapter-local because it is not a
+  GitHub response; every response class, including `redirected`, still comes from core.
 - **How the two retry layers compose:** the client owns exactly one immediate in-process
   retry (`tokenExpired` after a refresh, `transient` once); core's `retryAdvice` owns durable,
   paced, restart-surviving retries at the operation layer, treating each client call as one
-  attempt. Worst case for a persistent transient failure: 3 advised x 2 in-process = 6
-  requests per episode. That number is accepted here, deliberately, once.
+  attempt. With its current zero-based advice (wait after attempts 0, 1, and 2), the initial
+  client call plus three durable retries can each make two HTTP attempts: **8 requests per
+  persistent transient episode**. That number is accepted here, deliberately, once.
 - Its tests replay every row of the failure catalogue, whose body snapshots are the fixtures —
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).
 

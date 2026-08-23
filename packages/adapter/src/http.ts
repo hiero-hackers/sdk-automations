@@ -4,16 +4,13 @@
  * This file deliberately owns the mechanics that would otherwise drift
  * between operations: request headers, timeouts, the bounded ETag cache,
  * rate-limit state, refusal of redirects, and the two retry-eligible
- * failure classes. What it does not own: the vocabulary of failure is
- * core's `failures.ts`, and which token to send is `token.ts`. In order
- * below: the chosen bounds, the contract, the local judgements, the client.
+ * failure classes. Core owns the vocabulary for GitHub responses; this file
+ * adds only the typed `notSent` result for a request refused locally. Which
+ * token to send is `token.ts`. In order below: the chosen bounds, the
+ * contract, the local judgements, the client.
  */
 
-import {
-    classifyFailure,
-    type FailureClass,
-    type NotSentReason,
-} from "@hiero-hackers/automation-core";
+import { classifyFailure, type FailureClass } from "@hiero-hackers/automation-core";
 import { isPastExpiry, type InstallationToken, type TokenSource } from "./token.js";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
@@ -60,11 +57,19 @@ export interface GitHubSuccess {
 /** A classified failure; response fields are absent when nothing was sent. */
 export interface GitHubFailure {
     readonly ok: false;
-    readonly failure: FailureClass;
+    readonly failure: GitHubHttpFailureClass;
     readonly status?: number;
     readonly body?: string;
     readonly headers?: Readonly<Record<string, string>>;
 }
+
+/** Why the adapter refused or could not construct a request locally. */
+export type NotSentReason =
+    "disallowedMethod" | "disallowedOrigin" | "malformedUrl" | "invalidHeaders" | "brokenSeam";
+
+/** Core owns response classes; the adapter adds only its pre-response refusal. */
+export type GitHubHttpFailureClass =
+    FailureClass | { readonly kind: "notSent"; readonly reason: NotSentReason };
 
 /** What one call to `request()` resolves to — it never throws. */
 export type GitHubOutcome = GitHubSuccess | GitHubFailure;
@@ -151,7 +156,7 @@ function notSentFailure(reason: NotSentReason): GitHubFailure {
     return { ok: false, failure: { kind: "notSent", reason } };
 }
 
-function isRetriable(failure: FailureClass): boolean {
+function isRetriable(failure: GitHubHttpFailureClass): boolean {
     return failure.kind === "tokenExpired" || failure.kind === "transient";
 }
 
@@ -200,7 +205,12 @@ export function createGitHubHttpClient({
         request: GitHubRequest,
         token: InstallationToken,
     ): Promise<GitHubOutcome> => {
-        const headers = new Headers(request.headers);
+        let headers: Headers;
+        try {
+            headers = new Headers(request.headers);
+        } catch {
+            return notSentFailure("invalidHeaders");
+        }
         const accept = headers.get("accept") ?? DEFAULT_ACCEPT;
         headers.set("accept", accept);
         // Controlled fields never select a representation. Delete any caller
@@ -210,9 +220,13 @@ export function createGitHubHttpClient({
         headers.delete("user-agent");
         headers.delete("x-github-api-version");
         const variant = JSON.stringify(headersToRecord(headers));
-        headers.set("authorization", `Bearer ${token.value}`);
-        headers.set("user-agent", USER_AGENT);
-        headers.set("x-github-api-version", GITHUB_API_VERSION);
+        try {
+            headers.set("authorization", `Bearer ${token.value}`);
+            headers.set("user-agent", USER_AGENT);
+            headers.set("x-github-api-version", GITHUB_API_VERSION);
+        } catch {
+            return notSentFailure("brokenSeam");
+        }
 
         const cached = cache.get(request.url);
         if (cached !== undefined && cached.variant === variant) {
@@ -224,7 +238,12 @@ export function createGitHubHttpClient({
 
         // Capture the local age at send time. A later clock read could turn a
         // live request into a false `tokenExpired` diagnosis.
-        const tokenPastExpiry = isPastExpiry(token, clock());
+        let tokenPastExpiry: boolean;
+        try {
+            tokenPastExpiry = isPastExpiry(token, clock());
+        } catch {
+            return notSentFailure("brokenSeam");
+        }
         // A throwing timeout factory is a wiring defect, not retriable weather.
         let signal: AbortSignal;
         try {
@@ -242,9 +261,12 @@ export function createGitHubHttpClient({
             signal,
         };
 
-        // `request()` contains a rejected transport call together with every
-        // other injected failure, and applies the same one-retry bound.
-        const response = await send(request.url, init);
+        let response: Response;
+        try {
+            response = await send(request.url, init);
+        } catch {
+            return transportFailure();
+        }
 
         const responseHeaders = headersToRecord(response.headers);
         rememberRateLimit(request.url, response.status, responseHeaders);
@@ -268,28 +290,16 @@ export function createGitHubHttpClient({
             };
         }
 
-        if (response.status >= 300 && response.status < 400) {
-            // Named here so a refused 3xx cannot fall through classification
-            // as retriable. Documented, never probed — REPROBE(redirect-3xx).
-            const location = response.headers.get("location");
-            return {
-                ok: false,
-                status: response.status,
-                headers: responseHeaders,
-                failure: {
-                    kind: "redirected",
-                    status: response.status,
-                    permanent: response.status === 301 || response.status === 308,
-                    ...(location === null ? {} : { location }),
-                },
-            };
-        }
-
         let body: string;
         try {
             body = await response.text();
         } catch {
-            return transportFailure();
+            return {
+                ok: false,
+                status: response.status,
+                headers: responseHeaders,
+                failure: { kind: "transient" },
+            };
         }
 
         if (response.ok) {
@@ -343,6 +353,23 @@ export function createGitHubHttpClient({
                 let tokenOutcome;
                 try {
                     tokenOutcome = await tokenSource.current();
+                    if (
+                        typeof tokenOutcome !== "object" ||
+                        tokenOutcome === null ||
+                        typeof tokenOutcome.ok !== "boolean" ||
+                        (tokenOutcome.ok
+                            ? typeof tokenOutcome.token !== "object" ||
+                              tokenOutcome.token === null ||
+                              typeof tokenOutcome.token.value !== "string" ||
+                              !(tokenOutcome.token.expiresAt instanceof Date) ||
+                              !Number.isFinite(tokenOutcome.token.expiresAt.getTime()) ||
+                              !Array.isArray(tokenOutcome.token.grants)
+                            : typeof tokenOutcome.failure !== "object" ||
+                              tokenOutcome.failure === null ||
+                              typeof tokenOutcome.failure.kind !== "string")
+                    ) {
+                        return notSentFailure("brokenSeam");
+                    }
                 } catch {
                     // `current()` promises not to throw.
                     return notSentFailure("brokenSeam");
@@ -353,8 +380,9 @@ export function createGitHubHttpClient({
                 try {
                     outcome = await sendOnce(safeRequest, tokenOutcome.token);
                 } catch {
-                    // A thrown transport call is the one failure worth the retry.
-                    outcome = transportFailure();
+                    // `sendOnce()` contains expected transport failures itself.
+                    // Anything escaping it is a broken local seam, never weather.
+                    return notSentFailure("brokenSeam");
                 }
                 if (outcome.ok || !isRetriable(outcome.failure)) return outcome;
                 if (outcome.failure.kind === "tokenExpired") {

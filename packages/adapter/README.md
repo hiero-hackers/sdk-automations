@@ -25,7 +25,8 @@ the bounded per-URL ETag cache, timeouts, rate-limit snapshots, core failure cla
 one permitted retry. It pins credentials to GitHub's HTTPS API, exposes only the GET reads this
 stage has proved, and refuses to follow redirects — a 3xx comes back classified as `redirected`,
 carrying its `location`, rather than being silently chased or retried. Its fetch and clock are
-injected too, so no test reaches the network.
+injected too, so no test reaches the network. GitHub response classes remain core's observed
+vocabulary; the adapter-local `notSent` result covers only requests that never reached GitHub.
 
 **Minting is injected rather than called** because that one request authenticates with the assertion
 instead of with a token. It cannot travel through the HTTP client, since the client is what needs the
