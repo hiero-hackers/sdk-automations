@@ -12,12 +12,16 @@ import {
     decide,
     describeChange,
     declareCapability,
+    deriveManagedMarker,
     intentFactory,
     deriveIdempotencyKey,
+    MANAGED_MARKER_PREFIX,
+    matchesManagedComment,
     problems,
     toEngine,
     type AnyIntent,
     type Capability,
+    type ClosureReason,
     type DecideExternals,
     type EngineCapability,
     type Intent,
@@ -31,6 +35,7 @@ const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: [],
+    requiredMeanings: [],
     observations: ["issueUpdated"],
     resolvers: [],
     intents: ["applyMappedLabel"],
@@ -75,7 +80,7 @@ const REV = "rev-engine-1";
 const TRIAGE_LABELS = { awaitingTriage: "status: triage" };
 
 /** The shared triage repository, stamped with this file's revision. */
-const configIn = (mode: "active" | "dry-run", enabled = true): RepositoryConfig =>
+const configIn = (mode: "active" | "dry-run" | "observe", enabled = true): RepositoryConfig =>
     triageConfig(mode, REV, enabled);
 
 const externals: DecideExternals = {
@@ -102,8 +107,10 @@ describe("the apply path, on a real delivery", () => {
         );
         expect(decision.approved).toHaveLength(1);
         expect(decision.approved[0]).toMatchObject({
-            operation: "applyMappedLabel",
-            item: { kind: "issue", number: 164 },
+            intent: { operation: "applyMappedLabel", item: { kind: "issue", number: 164 } },
+            // A label carries no comment identity, and minting one would be
+            // an effect nobody asked for (D125).
+            managedComment: null,
         });
         // D92 3d resolved the phase-1 note: an acting intent's explanation
         // IS a finding, beside its verdict.
@@ -115,7 +122,7 @@ describe("the apply path, on a real delivery", () => {
         expect(decision.report.revision).toBe("rev-engine-1");
     });
 
-    it("dry-run tells the same story and approves nothing", async () => {
+    it("dry-run tells the same story, names the change, and approves nothing", async () => {
         const decision = await decide(
             delivery("issues.opened.json"),
             configIn("dry-run"),
@@ -126,6 +133,7 @@ describe("the apply path, on a real delivery", () => {
         expect(decision.report.findings.map((f) => `${f.code}:${f.severity}`)).toEqual([
             "capabilityExplained:info",
             "modeRecordsOnly:notice",
+            "wouldApply:info",
         ]);
     });
 
@@ -138,6 +146,123 @@ describe("the apply path, on a real delivery", () => {
         );
         expect(decision.approved).toEqual([]);
         expect(decision.report.findings).toEqual([]);
+    });
+});
+
+/**
+ * The one thing `dry-run` says that `observe` does not (stage E). The claim is
+ * narrow on purpose: a rehearsal DESCRIBES, so the mode still approves nothing
+ * and still mints no identity — the pin the marker suite states as its own.
+ */
+describe("dry-run rehearses, observe records", () => {
+    const observedAt = new Date("2026-08-07T00:00:00Z");
+    const item = { kind: "issue", number: 7 } as const;
+    const repository = { owner: "o", repo: "r" } as const;
+
+    /** One capability, two intents — so "one per intent" is observable. */
+    const noisy: EngineCapability = {
+        declaration: declareCapability({
+            ...declaration,
+            intents: ["applyMappedLabel", "postManagedComment"],
+        }) as never,
+        async evaluate(): Promise<readonly AnyIntent[]> {
+            const make = intentFactory("triage", { repository, item, observedAt });
+            return [
+                make({
+                    operation: "applyMappedLabel",
+                    desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+                    expected: { meaningsAbsent: ["awaitingTriage"] },
+                    cause: "issueWithoutPosition",
+                    explain: { summary: "New issue placed in triage." },
+                }),
+                make({
+                    operation: "postManagedComment",
+                    desired: { kind: "notice", body: "what the App would say" },
+                    cause: "issueWithoutPosition",
+                    explain: { summary: "New issue announced." },
+                }),
+            ];
+        },
+    };
+
+    const observation = {
+        kind: "issueUpdated",
+        repository,
+        item,
+        position: {
+            kind: "position",
+            state: { meaning: null, blocked: false, closedBy: null },
+            ignored: [],
+        },
+        observedAt,
+    } as const;
+
+    const rehearse = (mode: "dry-run" | "observe", capability = noisy) =>
+        decide({ kind: "observation", observation }, configIn(mode), [capability], externals);
+
+    it("names every intent that got as far as the mode rule, one finding each", async () => {
+        const decision = await rehearse("dry-run");
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "modeRecordsOnly",
+            "wouldApply",
+            "capabilityExplained",
+            "modeRecordsOnly",
+            "wouldApply",
+        ]);
+        const rehearsed = decision.report.findings.filter((f) => f.code === "wouldApply");
+        expect(rehearsed.map((f) => f.summary)).toEqual([
+            "dry-run: triage would applyMappedLabel on o/r#7 — set mapped position awaitingTriage. Nothing was written.",
+            "dry-run: triage would postManagedComment on o/r#7 — managed notice comment from triage. Nothing was written.",
+        ]);
+        // The subject is the effect arm, so an operator surface groups a
+        // rehearsal with the verdict that explains why it stayed one.
+        expect(rehearsed.map((f) => f.subject)).toEqual([
+            { kind: "effect", capability: "triage", item, operation: "applyMappedLabel" },
+            { kind: "effect", capability: "triage", item, operation: "postManagedComment" },
+        ]);
+    });
+
+    it("says nothing extra in observe: that mode's promise is unchanged", async () => {
+        const decision = await rehearse("observe");
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "modeRecordsOnly",
+            "capabilityExplained",
+            "modeRecordsOnly",
+        ]);
+    });
+
+    /**
+     * The rehearsal is what the mode rule reached, never what an earlier rule
+     * turned away. A refused intent that reported one would tell an operator
+     * promoting the repository to `active` that a write is coming which the
+     * ladder has already refused.
+     */
+    it("stays silent for an intent an earlier rule refused", async () => {
+        const decision = await decide(
+            { kind: "observation", observation },
+            configIn("dry-run"),
+            [noisy],
+            { ...externals, installationGrants: [] },
+        );
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "permissionMissing",
+            "permissionMissing",
+        ]);
+    });
+
+    /**
+     * The invariant D125 fixed, restated where the rehearsal could break it:
+     * a description that derived a marker would be minting the name of a write
+     * nobody is going to make.
+     */
+    it("derives no managed identity, and prints none", async () => {
+        const decision = await rehearse("dry-run");
+        expect(decision.approved).toEqual([]);
+        for (const found of decision.report.findings) {
+            expect(found.summary).not.toContain(MANAGED_MARKER_PREFIX);
+        }
     });
 });
 
@@ -225,7 +350,7 @@ describe("the gates, each visible in the report", () => {
                         meaningsAbsent: ["awaitingTriage"],
                         closed: false,
                     },
-                    desired: { marker: "<!-- stale -->", body: "stale claim" },
+                    desired: { kind: "summary", body: "stale claim" },
                     cause: { cause: "issueWithoutPosition", observedAt: o.observedAt },
                     explanation: { capability: "triage", summary: "s", detail: [] },
                 } as const satisfies Omit<Intent<"postManagedComment">, "idempotencyKey">;
@@ -568,6 +693,304 @@ describe("paths the delivery tests never walk", () => {
     });
 });
 
+/**
+ * Pause was platform-enforced and closure was not: the only thing standing
+ * between a capability and a closed item was `expected.closed: false`, which
+ * `intentFactory` defaults to no claim at all. These run a capability that
+ * makes no claim whatsoever, so nothing but the rule can refuse it.
+ */
+describe("closure is a platform fact, not a capability's claim", () => {
+    const commenter = declareCapability({ ...declaration, intents: ["postManagedComment"] });
+
+    /** Every `expected` field left to its default, which is "I claim nothing". */
+    const claimless: EngineCapability = {
+        declaration: commenter as never,
+        async evaluate(observation: never): Promise<readonly AnyIntent[]> {
+            const o = observation as {
+                repository: { owner: string; repo: string };
+                item: { kind: "issue"; number: number };
+                observedAt: Date;
+            };
+            return [
+                intentFactory("triage", {
+                    repository: o.repository,
+                    item: o.item,
+                    observedAt: o.observedAt,
+                })({
+                    operation: "postManagedComment",
+                    desired: { kind: "notice", body: "b" },
+                    cause: "sawTheItem",
+                    explain: { summary: "Saw the item." },
+                }),
+            ];
+        },
+    };
+
+    const observedAs = (closedBy: ClosureReason | null) =>
+        ({
+            kind: "issueUpdated",
+            repository: { owner: "o", repo: "r" },
+            item: { kind: "issue", number: 7 },
+            position: {
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy },
+                ignored: [],
+            },
+            observedAt: new Date("2026-08-07T00:00:00Z"),
+        }) as const;
+
+    it.each(["closedByHuman", "completedByLinkedMerge"] as const)(
+        "refuses a write to an item closed as %s",
+        async (closedBy) => {
+            const decision = await decide(
+                { kind: "observation", observation: observedAs(closedBy) },
+                configIn("active"),
+                [claimless],
+                externals,
+            );
+            expect(decision.approved).toEqual([]);
+            expect(decision.report.findings.map((f) => f.code)).toEqual(["itemClosed"]);
+        },
+    );
+
+    /** The other half: nothing about an OPEN item changed. */
+    it("the same capability still acts on the same item while it is open", async () => {
+        const decision = await decide(
+            { kind: "observation", observation: observedAs(null) },
+            configIn("active"),
+            [claimless],
+            externals,
+        );
+        expect(decision.approved).toHaveLength(1);
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityExplained",
+            "applied",
+        ]);
+    });
+});
+
+/**
+ * `decide()` claims to be total, and a shell that cannot get a report back
+ * reclaims the delivery for good. Three seams can throw — the capability, the
+ * resolver source, the ordering lookup — and each becomes a recorded defect
+ * instead. The neighbour in each run is the second half of the claim: one
+ * capability's crash is not the platform's.
+ */
+describe("every fallible seam is contained", () => {
+    const brittle = declareCapability({ ...declaration, name: "brittle", intents: [] });
+    const twoCapabilities = configWith({
+        capabilities: ["triage", "brittle"],
+        labels: TRIAGE_LABELS,
+        revision: REV,
+    });
+
+    it("a capability that throws is a problem finding, and its neighbour still decides", async () => {
+        const exploding: EngineCapability = {
+            declaration: brittle as never,
+            async evaluate(): Promise<readonly AnyIntent[]> {
+                throw new TypeError("cannot read properties of undefined");
+            },
+        };
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            twoCapabilities,
+            [exploding, triage],
+            externals,
+        );
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "capabilityFailed",
+            "capabilityExplained",
+            "applied",
+        ]);
+        expect(problems(decision.report)).toHaveLength(1);
+        expect(problems(decision.report)[0]).toMatchObject({
+            code: "capabilityFailed",
+            subject: { kind: "capability", capability: "brittle" },
+            // The thrown message survives into the finding. Without it the
+            // report says only that something broke, which is unactionable.
+            summary: expect.stringContaining("cannot read properties of undefined"),
+        });
+        expect(decision.approved).toHaveLength(1);
+    });
+
+    it("a resolver source that rejects answers unavailable, and is a problem finding", async () => {
+        const asker: EngineCapability = {
+            declaration: declareCapability({
+                ...brittle,
+                resolvers: ["linkedIssues"],
+            }) as never,
+            async evaluate(_o: never, _c: never, platform: never): Promise<readonly AnyIntent[]> {
+                const handle = platform as {
+                    resolve(q: string, i: unknown): Promise<{ ok: boolean; reason?: string }>;
+                };
+                // resolvers.md §6: a broken lookup is never an empty answer.
+                expect(
+                    await handle.resolve("linkedIssues", { item: { kind: "issue", number: 1 } }),
+                ).toMatchObject({ ok: false, reason: "unavailable" });
+                return [];
+            },
+        };
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            twoCapabilities,
+            [asker, triage],
+            {
+                ...externals,
+                resolve: async () => {
+                    throw new Error("socket hang up");
+                },
+            },
+        );
+        expect(decision.report.findings.map((f) => f.code)).toEqual([
+            "resolverFailed",
+            "capabilityExplained",
+            "applied",
+        ]);
+        expect(problems(decision.report)[0]!.summary).toContain("socket hang up");
+        expect(decision.approved).toHaveLength(1);
+    });
+
+    /**
+     * A lookup that threw established NOTHING, so the ordering becomes
+     * `"unknown"` — D51's conflict, not `null`'s "checked and found none".
+     * Reporting the absence would silently restore the unsafe behaviour the
+     * package README names as a standing debt.
+     */
+    it.each([
+        [
+            "throws synchronously",
+            (): never => {
+                throw new Error("timeline unreadable");
+            },
+        ],
+        ["rejects", () => Promise.reject(new Error("timeline unreadable"))],
+    ])(
+        "an ordering lookup that %s refuses fail-closed and records the defect",
+        async (_n, fail) => {
+            const decision = await decide(
+                delivery("issues.opened.json"),
+                configIn("active"),
+                [triage],
+                {
+                    ...externals,
+                    latestHumanChangeAt: fail,
+                },
+            );
+            expect(decision.approved).toEqual([]);
+            expect(decision.report.findings.map((f) => f.code)).toEqual([
+                "humanOrderingLookupFailed",
+                "humanOrderingUnknown",
+            ]);
+            expect(decision.report.findings[0]).toMatchObject({
+                severity: "problem",
+                summary: expect.stringContaining("timeline unreadable"),
+                subject: { kind: "item", capability: "triage" },
+            });
+        },
+    );
+
+    /** Anything is throwable; a non-`Error` must still produce a report. */
+    it("contains a thrown value that is not an Error", async () => {
+        const rude: EngineCapability = {
+            declaration: brittle as never,
+            async evaluate(): Promise<readonly AnyIntent[]> {
+                throw "just a string";
+            },
+        };
+        const decision = await decide(
+            delivery("issues.opened.json"),
+            twoCapabilities,
+            [rude],
+            externals,
+        );
+        expect(decision.report.findings).toEqual([
+            expect.objectContaining({
+                code: "capabilityFailed",
+                summary: expect.stringContaining("just a string"),
+            }),
+        ]);
+    });
+});
+
+/**
+ * D125: the capability supplies purpose and wording, the platform supplies
+ * identity, and identity attaches at APPROVAL — an intent that will never be
+ * written has no write to name.
+ */
+describe("managed-comment identity is minted here, not by the capability", () => {
+    const commenter = declareCapability({ ...declaration, intents: ["postManagedComment"] });
+    const observedAt = new Date("2026-08-07T00:00:00Z");
+    const item = { kind: "issue", number: 7 } as const;
+
+    const speaking = (kind: "summary" | "warning" | "notice"): EngineCapability => ({
+        declaration: commenter as never,
+        async evaluate(observation: never): Promise<readonly AnyIntent[]> {
+            const o = observation as { repository: { owner: string; repo: string } };
+            return [
+                intentFactory("triage", { repository: o.repository, item, observedAt })({
+                    operation: "postManagedComment",
+                    desired: { kind, body: "wording nobody's identity depends on" },
+                    cause: "sawTheItem",
+                    explain: { summary: "Saw the item." },
+                }),
+            ];
+        },
+    });
+
+    const observation = {
+        kind: "issueUpdated",
+        repository: { owner: "o", repo: "r" },
+        item,
+        position: {
+            kind: "position",
+            state: { meaning: null, blocked: false, closedBy: null },
+            ignored: [],
+        },
+        observedAt,
+    } as const;
+
+    const decideWith = (capability: EngineCapability, mode: "active" | "dry-run" = "active") =>
+        decide({ kind: "observation", observation }, configIn(mode), [capability], externals);
+
+    it("stamps the approved comment with the marker its own fields derive", async () => {
+        const decision = await decideWith(speaking("summary"));
+        expect(decision.approved).toHaveLength(1);
+        const effect = decision.approved[0]!;
+        expect(effect.managedComment).toEqual({
+            identity: {
+                capability: "triage",
+                kind: "summary",
+                effectId: effect.intent.idempotencyKey,
+            },
+            marker: deriveManagedMarker({
+                capability: "triage",
+                kind: "summary",
+                effectId: effect.intent.idempotencyKey,
+            }),
+        });
+        expect(
+            matchesManagedComment(
+                { body: effect.managedComment!.marker, authoredByApp: true },
+                effect.managedComment!.identity,
+            ),
+        ).toEqual({ matches: true });
+    });
+
+    /** The kind the capability chose is the kind that reaches the marker. */
+    it("carries the capability's purpose into the identity, and only that", async () => {
+        const warning = await decideWith(speaking("warning"));
+        expect(warning.approved[0]!.managedComment!.identity.kind).toBe("warning");
+        expect(warning.approved[0]!.managedComment!.marker).not.toBe(
+            (await decideWith(speaking("notice"))).approved[0]!.managedComment!.marker,
+        );
+    });
+
+    /** Nothing is minted for an effect that will not happen. */
+    it("mints nothing in dry-run, because nothing will be written", async () => {
+        expect((await decideWith(speaking("summary"), "dry-run")).approved).toEqual([]);
+    });
+});
+
 describe("describeChange — effects.md's exact item and value, pinned", () => {
     it("names each operation's change precisely", () => {
         const base = intentFactory("triage", {
@@ -579,12 +1002,28 @@ describe("describeChange — effects.md's exact item and value, pinned", () => {
             describeChange(
                 base({
                     operation: "postManagedComment",
-                    desired: { marker: "<!-- m -->", body: "b" },
+                    desired: { kind: "summary", body: "b" },
                     cause: "c",
                     explain: { summary: "s" },
                 }),
             ),
-        ).toBe("managed comment <!-- m -->");
+        ).toBe("managed summary comment from triage");
+        // Both halves vary, and neither is the marker: the description names
+        // who is writing and for what purpose (D125).
+        expect(
+            describeChange(
+                intentFactory("inactivity", {
+                    repository: { owner: "o", repo: "r" },
+                    item: { kind: "issue", number: 1 },
+                    observedAt: new Date("2026-08-07T00:00:00Z"),
+                })({
+                    operation: "postManagedComment",
+                    desired: { kind: "warning", body: "b" },
+                    cause: "c",
+                    explain: { summary: "s" },
+                }),
+            ),
+        ).toBe("managed warning comment from inactivity");
         expect(
             describeChange(
                 base({

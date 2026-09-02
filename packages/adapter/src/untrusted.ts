@@ -7,9 +7,17 @@
  * next operation does not invent a second dialect.
  */
 
-/** A property read that cannot throw, whatever shape arrived. */
+/**
+ * A property read that cannot throw, whatever shape arrived.
+ *
+ * Own properties only. A plain `[name]` read walks the prototype chain, so
+ * `field(response, "__proto__")` answers `Object.prototype` and
+ * `"constructor"` or `"toString"` answer functions — values GitHub never
+ * sent, arriving as if it had. The caller checks the type it wants next,
+ * but "absent" is the honest answer, and it is the one a caller can refuse.
+ */
 export const field = (value: unknown, name: string): unknown =>
-    typeof value === "object" && value !== null
+    typeof value === "object" && value !== null && Object.hasOwn(value, name)
         ? (value as Record<string, unknown>)[name]
         : undefined;
 

@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
     validateCapabilityDeclarations,
+    deriveWorld,
     projectIssueObservation,
     applyIssueTransition,
     evaluateWrite,
@@ -12,13 +13,13 @@ import {
     type WorkItemState,
     type IssueMeaning,
 } from "../src/index.js";
-import { assertedWorld } from "../src/safety/world.js";
 import { configWith } from "./config/builders.js";
 
 const assignment: CapabilityDeclaration = {
     name: "assignment",
     triggers: [{ kind: "event", event: "issue_comment.created" }],
     configKeys: ["maxOpenAssignments"],
+    requiredMeanings: [],
     observations: ["issueUpdated"],
     resolvers: [],
     intents: ["applyMappedLabel"],
@@ -65,7 +66,14 @@ describe("the assignment story, end to end in pure logic", () => {
         expect(verdict).toEqual({ allowed: true });
         expect(state.meaning).toBe("inProgress");
 
-        // 5. The write that realizes it passes every safety rule.
+        // 5. The write that realizes it passes every safety rule, against the
+        //    world DERIVED from what was observed — the projection above,
+        //    read against the claim the capability made to get here.
+        const world = deriveWorld(projection, {
+            meaningsPresent: ["ready"],
+            meaningsAbsent: [],
+            closed: false,
+        });
         const write = evaluateWrite(
             {
                 actionClass: "reversibleStateChange",
@@ -79,7 +87,7 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"], // shell fact, from the App's grants
                 killSwitchActive: false,
-                world: assertedWorld(state.blocked ? (["blocked"] as const) : [], true),
+                world,
                 latestHumanChangeAt: new Date("2026-07-25T09:59:00Z"), // older: no conflict
             },
         );
@@ -101,8 +109,17 @@ describe("the assignment story, end to end in pure logic", () => {
         });
         expect(stale.verdict).toMatchObject({ allowed: false, code: "itemClosed" });
 
-        // And even if the state machine were bypassed, safety refuses
-        // on the newer human change alone.
+        // And even if the state machine were bypassed, safety refuses on the
+        // newer human change ALONE — so the world here is the one a recheck
+        // that MISSED the close would derive: still open, still inProgress,
+        // precondition intact. Every other rule is satisfied; only the close's
+        // timestamp is left to refuse, which is the whole claim.
+        const missedTheClose = deriveWorld(
+            projectIssueObservation({ closedBy: null, meanings: ["inProgress"] }),
+            { meaningsPresent: ["inProgress"], meaningsAbsent: [], closed: false },
+        );
+        expect(missedTheClose).toMatchObject({ preconditionHolds: true, closure: null });
+
         const write = evaluateWrite(
             {
                 actionClass: "reversibleStateChange",
@@ -116,11 +133,11 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                world: assertedWorld([], false), // recheck saw the close
+                world: missedTheClose,
                 latestHumanChangeAt: new Date("2026-07-25T10:05:00Z"), // the close
             },
         );
-        expect(write.outcome).toBe("refuse");
+        expect(write).toMatchObject({ outcome: "refuse", code: "newerHumanChange" });
     });
 
     it("a conflicted observation never reaches the state machine — there is no state to pass", () => {
@@ -128,9 +145,23 @@ describe("the assignment story, end to end in pure logic", () => {
             closedBy: null,
             meanings: ["ready", "inProgress"],
         });
-        expect(projection.kind).toBe("conflict");
-        // The structural point: only the `position` branch carries a
-        // WorkItemState, so the reference walk is unreachable from here.
+        expect(projection).toMatchObject({
+            kind: "conflict",
+            positions: ["ready", "inProgress"],
+            blocked: false,
+            closedBy: null,
+        });
+
+        // The structural point, asserted rather than described: only the
+        // `position` branch carries a WorkItemState, so a consumer that would
+        // transition anything it can reach has nothing to hand the machine.
+        // The stub stands where that call would go — the day a conflict grows
+        // a state, this test throws instead of quietly passing.
+        const machine = (): never => {
+            throw new Error("must not run: a conflict carries no state to transition");
+        };
+        const walked = projection.kind === "position" ? machine() : "nothing to transition";
+        expect(walked).toBe("nothing to transition");
     });
 
     it("dry-run mode records the same story instead of applying it", () => {
@@ -152,7 +183,16 @@ describe("the assignment story, end to end in pure logic", () => {
             {
                 installationGrants: ["issues:write"],
                 killSwitchActive: false,
-                world: assertedWorld([], true),
+                // The same clean, open item as the applying story — so mode is
+                // demonstrably the only thing that differs between them.
+                world: deriveWorld(
+                    projectIssueObservation({ closedBy: null, meanings: ["ready"] }),
+                    {
+                        meaningsPresent: ["ready"],
+                        meaningsAbsent: [],
+                        closed: false,
+                    },
+                ),
                 latestHumanChangeAt: null,
             },
         );

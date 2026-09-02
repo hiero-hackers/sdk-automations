@@ -51,6 +51,21 @@ module.exports = {
             to: { path: `${P}(?:store|shell|probes|checks|lab)/` },
         },
         {
+            name: "core-and-probes-stay-pure",
+            severity: "error",
+            comment:
+                "core's central claim is that decide() does no I/O, and probes live behind the " +
+                "same boundary: externals arrive as data and lookups, never as sockets, files " +
+                "or timers. The claim rested on review alone; this rule mechanizes it. " +
+                "node:crypto is the one argued exception (HMAC verification and content-hash " +
+                "revisions, argued in-file at both import sites).",
+            from: { path: `${P}(?:core|probes)/src/` },
+            to: {
+                dependencyTypes: ["core"],
+                pathNot: "^(?:node:)?crypto$",
+            },
+        },
+        {
             name: "store-imports-core-only",
             severity: "error",
             comment: "The owned operational store sits directly on core and on nothing else.",

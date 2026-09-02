@@ -8,6 +8,7 @@ const declaration: CapabilityDeclaration = {
     name: "prQuality",
     triggers: [{ kind: "event", event: "pull_request" }],
     configKeys: ["checks"],
+    requiredMeanings: ["needsReview"],
     observations: ["pullRequestUpdated"],
     resolvers: ["linkedIssues"],
     intents: ["postManagedComment", "applyMappedLabel"],
@@ -37,6 +38,7 @@ describe("validateCapabilityDeclarations", () => {
                 name: "PR-Quality",
                 triggers: [],
                 configKeys: ["checks", "checks"],
+                requiredMeanings: ["almostReady", "almostReady"],
                 observations: ["unknownObservation", "unknownObservation"],
                 resolvers: ["unknownResolver", "unknownResolver"],
                 intents: ["unknownOperation", "unknownOperation"],
@@ -76,6 +78,15 @@ describe("validateCapabilityDeclarations", () => {
             'capability "PR-Quality": declares a schedule trigger',
         );
         expect(errors.join("\n")).toContain('duplicate configKeys entry "checks"');
+        expect(errors.join("\n")).toContain('duplicate requiredMeanings entry "almostReady"');
+        /**
+         * D84 — a meaning no repository may map is a requirement no repository
+         * can satisfy, so the catalogue check covers `requiredMeanings` the
+         * way it already covered observations, resolvers, and intents.
+         */
+        expect(errors.join("\n")).toContain(
+            'capability "PR-Quality": required meaning "almostReady" is not a mappable meaning',
+        );
         expect(errors.join("\n")).toContain('duplicate observations entry "unknownObservation"');
         expect(errors.join("\n")).toContain('duplicate resolvers entry "unknownResolver"');
         expect(errors.join("\n")).toContain('duplicate intents entry "unknownOperation"');
@@ -93,6 +104,7 @@ describe("validateCapabilityDeclarations", () => {
             "name",
             "observations",
             "operationalNeeds",
+            "requiredMeanings",
             "resolvers",
             "triggers",
         ]);

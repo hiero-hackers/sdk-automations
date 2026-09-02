@@ -27,7 +27,7 @@
  */
 
 import { expect } from "vitest";
-import type { ConfigErrorCode, ConfigResult } from "../../src/config/index.js";
+import type { AdmittedCapability, ConfigErrorCode, ConfigResult } from "../../src/config/index.js";
 
 /**
  * What every rejection says, whatever it was parsed from.
@@ -78,8 +78,13 @@ export interface DocumentRejection extends RejectionCase {
 /** A rejection of an already-parsed value. Drives `parseConfig`. */
 export interface ValueRejection extends RejectionCase {
     readonly raw: unknown;
-    /** The application's admitted capability names. Empty admits nothing. */
-    readonly known?: readonly string[];
+    /**
+     * What the application admits. Empty admits nothing. A bare NAME admits
+     * only the name, so the rows about settings keys and required meanings
+     * pass `AdmittedCapability` objects — those two checks have nothing to
+     * judge against otherwise (D84).
+     */
+    readonly known?: readonly (string | AdmittedCapability)[];
 }
 
 /**
@@ -253,6 +258,29 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         why: "mentioning a capability that does not ship",
         yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  autoMerge:\n    enabled: true\n`,
     },
+    /**
+     * D84, as the file a maintainer actually types. The misspelt setting is
+     * the whole defect: YAML accepted it, the parser kept it, and the
+     * capability never saw it — so the file said announce was on and nothing
+     * announced anything.
+     */
+    {
+        code: "unknownKey",
+        why: "a settings key the capability never declared",
+        yaml:
+            `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n` +
+            `    settings:\n      annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
+        path: "capabilities.intake.settings.annouce",
+        errorCount: 1,
+    },
+    {
+        code: "meaningRequired",
+        why: "intake is enabled in a file that never maps the meaning it needs",
+        yaml: `schemaVersion: 1\nmode: observe\ncapabilities:\n  intake:\n    enabled: true\n`,
+        path: "mappings.labels.awaitingTriage",
+        errorCount: 1,
+        messageIncludes: ['"intake"', "add mappings.labels.awaitingTriage"],
+    },
 
     // ---- mappings ----
     {
@@ -317,6 +345,28 @@ const INTAKE = ["intake"];
 
 /** Two shipped capabilities, for the rows about what the App admits. */
 const SHIPPED = ["prQuality", "assignment"];
+
+/**
+ * What the DOCUMENT driver admits: two probes declared rather than named, so
+ * a document row reaches the two rules that need a declaration (D84). Shaped
+ * on the real probes, so a row fails the way a repository would.
+ */
+export const DOCUMENT_ADMISSIONS = [
+    { name: "intake", configKeys: ["announce"], requiredMeanings: ["awaitingTriage"] },
+    { name: "prQuality", configKeys: ["marker"], requiredMeanings: [] },
+] as const satisfies readonly AdmittedCapability[];
+
+/** `intake` alone, for the value rows about one capability's declaration. */
+const INTAKE_DECLARED = [DOCUMENT_ADMISSIONS[0]];
+
+/** A capability needing two meanings, for the rows about accumulation. */
+const TRIAGE_DECLARED = [
+    {
+        name: "triage",
+        configKeys: [],
+        requiredMeanings: ["awaitingTriage", "needsReview"],
+    },
+] as const satisfies readonly AdmittedCapability[];
 
 export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     // ---- document level: what arrived was not a mapping at all ----
@@ -497,6 +547,149 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: { ...COMPLETE, capabilities: { intake: { enabled: true, stray: 1 } } },
         known: INTAKE,
         path: "capabilities.intake.stray",
+    },
+
+    // ---- settings keys, judged against the capability's declaration (D84) ----
+    /**
+     * The defect D84 is named for. `annouce` configured nothing: the parser
+     * kept it, `projectCapabilityView` dropped it, and the maintainer read a
+     * file that said announce was on while the capability never saw it. The
+     * path has to reach the KEY, because that is the character to fix.
+     */
+    {
+        code: "unknownKey",
+        why: "a misspelt settings key configured nothing and said nothing",
+        raw: {
+            schemaVersion: 1,
+            capabilities: {
+                intake: { enabled: true, settings: { annouce: true } },
+            },
+            mappings: { labels: { awaitingTriage: "status: triage" } },
+        },
+        known: INTAKE_DECLARED,
+        path: "capabilities.intake.settings.annouce",
+        errorCount: 1,
+        messageIncludes: ['unknown setting "annouce"', "it declares: announce"],
+    },
+    /**
+     * A DISABLED block is checked too. The typo is otherwise a latent
+     * surprise: it sits until somebody flips `enabled`, and then the
+     * capability runs with a setting nobody notices is missing.
+     */
+    {
+        code: "unknownKey",
+        why: "a typo in a disabled block is caught now, not on the day it is enabled",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { intake: { enabled: false, settings: { annouce: true } } },
+        },
+        known: INTAKE_DECLARED,
+        path: "capabilities.intake.settings.annouce",
+        errorCount: 1,
+    },
+    {
+        code: "unknownKey",
+        why: "a capability declaring no settings says so rather than showing a blank list",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { triage: { enabled: false, settings: { anything: 1 } } },
+        },
+        known: TRIAGE_DECLARED,
+        path: "capabilities.triage.settings.anything",
+        messageIncludes: ["it declares: no settings"],
+    },
+    /**
+     * Settings keys are not name-checked the way capability names are, so
+     * `__proto__` reaches this rule as an ordinary key — and must be reported
+     * rather than silently skipped by a lookup that walks a prototype.
+     */
+    {
+        code: "unknownKey",
+        why: "__proto__ as a settings key is an ordinary undeclared one",
+        raw: JSON.parse(
+            '{"schemaVersion":1,"capabilities":{"intake":{"enabled":false,"settings":{"__proto__":{"announce":true}}}}}',
+        ),
+        known: INTAKE_DECLARED,
+        path: "capabilities.intake.settings.__proto__",
+        errorCount: 1,
+    },
+    /**
+     * A name-only admission buys neither new check. `intake` is admitted as a
+     * bare string here and the same typo passes — which is the seam stated as
+     * behaviour, not an oversight: a caller that declares nothing has told the
+     * parser nothing to judge against.
+     */
+    {
+        code: "capabilityUnknown",
+        why: "a name-only admission still judges the NAME, and nothing more",
+        raw: {
+            schemaVersion: 1,
+            capabilities: {
+                intake: { enabled: false, settings: { annouce: true } },
+                ghost: { enabled: false },
+            },
+        },
+        known: INTAKE,
+        path: "capabilities.ghost",
+        errorCount: 1,
+    },
+
+    // ---- enabled without a meaning the capability requires (D84) ----
+    /**
+     * The gap `configuration.md` used to document honestly: this file was
+     * VALID, and intake skipped itself at runtime saying so only in a report.
+     * The path points at the line to add, not at the capability block.
+     */
+    {
+        code: "meaningRequired",
+        why: "intake is enabled without the triage meaning it declares it needs",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { intake: { enabled: true } },
+            mappings: { labels: { ready: "status: ready" } },
+        },
+        known: INTAKE_DECLARED,
+        path: "mappings.labels.awaitingTriage",
+        errorCount: 1,
+        messageIncludes: [
+            '"intake"',
+            '"awaitingTriage"',
+            "add mappings.labels.awaitingTriage",
+            "capabilities.intake.enabled to false",
+        ],
+    },
+    {
+        code: "meaningRequired",
+        why: "a repository mapping nothing at all is missing it just the same",
+        raw: { schemaVersion: 1, capabilities: { intake: { enabled: true } } },
+        known: INTAKE_DECLARED,
+        path: "mappings.labels.awaitingTriage",
+        errorCount: 1,
+    },
+    /**
+     * Accumulation, the humane half of D38 applied to this rule: a maintainer
+     * two meanings short hears about both, rather than adding one and being
+     * told about the other on the next push.
+     */
+    {
+        code: "meaningRequired",
+        why: "both missing meanings are reported, not just the first",
+        raw: { schemaVersion: 1, capabilities: { triage: { enabled: true } } },
+        known: TRIAGE_DECLARED,
+        errorCount: 2,
+        messageIncludes: ['"awaitingTriage"', '"needsReview"'],
+    },
+    {
+        code: "meaningRequired",
+        why: "a partially mapped repository is told only about what is missing",
+        raw: {
+            schemaVersion: 1,
+            capabilities: { triage: { enabled: true } },
+            mappings: { labels: { awaitingTriage: "status: triage" } },
+        },
+        known: TRIAGE_DECLARED,
+        path: "mappings.labels.needsReview",
+        errorCount: 1,
     },
     /**
      * Three sections wrong, three sections heard from — the humane half of

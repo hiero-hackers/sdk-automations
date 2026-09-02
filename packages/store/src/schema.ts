@@ -8,10 +8,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 
 /** The newest storage schema this package can safely read and write. */
-export const CURRENT_STORAGE_SCHEMA_VERSION = 4;
+export const CURRENT_STORAGE_SCHEMA_VERSION = 5;
 
 /** A deliberate interruption point after one migration step. */
-export type MigrationFaultPoint = "migration:1" | "migration:2" | "migration:3" | "migration:4";
+export type MigrationFaultPoint =
+    "migration:1" | "migration:2" | "migration:3" | "migration:4" | "migration:5";
 
 type FaultInjector = (point: MigrationFaultPoint) => void;
 
@@ -45,6 +46,61 @@ const SEEN_DELIVERY_V3 = `
             (state = 'done' AND payload IS NULL
                 AND claim_worker IS NULL AND claim_token IS NULL
                 AND claimed_at IS NULL AND completed_at IS NOT NULL)
+        )
+    )`;
+
+/**
+ * Version 5 adds the two columns a bounded retry needs, and the terminal
+ * state it ends in.
+ *
+ * `attempts` counts failed processing attempts, and `retry_not_before` is
+ * the instant a `pending` row becomes claimable again — NULL meaning now.
+ * Both are meaningless outside the pending queue, so the per-state CHECK
+ * pins `retry_not_before` to NULL everywhere else.
+ *
+ * `failed` is dead-lettering: a delivery whose attempts reached the
+ * caller's cap. It is claimable by nothing, and it KEEPS its payload,
+ * unlike `done`. A completed delivery's bytes are superseded by its
+ * canonical report; a dead-lettered one has no report, so those bytes are
+ * the only surviving copy of a delivery GitHub will not send again, and
+ * the only thing a manual redrive could work from.
+ *
+ * `completed_at` is the terminal instant for both terminal states: the
+ * completion time of a `done` row, the dead-letter time of a `failed` one.
+ */
+const SEEN_DELIVERY_V5 = `
+    CREATE TABLE seen_delivery (
+        delivery_id   TEXT PRIMARY KEY,
+        event_name    TEXT NOT NULL,
+        payload       BLOB,
+        payload_digest TEXT NOT NULL,
+        received_at   TEXT NOT NULL,
+        state         TEXT NOT NULL CHECK (state IN ('pending', 'processing', 'done', 'failed')),
+        claim_worker  TEXT,
+        claim_token   TEXT,
+        claimed_at    TEXT,
+        completed_at  TEXT,
+        attempts      INTEGER NOT NULL CHECK (attempts >= 0),
+        retry_not_before TEXT,
+        CHECK (
+            (state = 'pending' AND payload IS NOT NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NULL)
+            OR
+            (state = 'processing' AND payload IS NOT NULL
+                AND claim_worker IS NOT NULL AND claim_token IS NOT NULL
+                AND claimed_at IS NOT NULL AND completed_at IS NULL
+                AND retry_not_before IS NULL)
+            OR
+            (state = 'done' AND payload IS NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NOT NULL
+                AND retry_not_before IS NULL)
+            OR
+            (state = 'failed' AND payload IS NOT NULL
+                AND claim_worker IS NULL AND claim_token IS NULL
+                AND claimed_at IS NULL AND completed_at IS NOT NULL
+                AND retry_not_before IS NULL AND attempts > 0)
         )
     )`;
 
@@ -142,10 +198,19 @@ const SCHEMA_BY_VERSION = {
         schedule: SCHEDULE_V2,
         seen_delivery: SEEN_DELIVERY_V3,
     },
+    5: {
+        delivery_report: DELIVERY_REPORT_V4,
+        delivery_work: DELIVERY_WORK,
+        effect_claim: EFFECT_CLAIM,
+        effect_journal: EFFECT_JOURNAL_V2,
+        open_intents: OPEN_INTENTS,
+        schedule: SCHEDULE_V2,
+        seen_delivery: SEEN_DELIVERY_V5,
+    },
 } as const;
 
 type StorageSchemaVersion = keyof typeof SCHEMA_BY_VERSION;
-type DetectedStorageSchemaVersion = 0 | Exclude<StorageSchemaVersion, 4>;
+type DetectedStorageSchemaVersion = 0 | Exclude<StorageSchemaVersion, 4 | 5>;
 
 function schemaObjects(
     db: DatabaseSync,
@@ -241,6 +306,33 @@ function addCanonicalDeliveryReports(db: DatabaseSync): void {
     db.exec(`${DELIVERY_REPORT_V4};`);
 }
 
+/**
+ * Existing rows start at zero attempts with no retry deadline: an attempt
+ * this schema never counted cannot be reconstructed, and inventing one
+ * would spend a delivery's retry budget on history nobody recorded.
+ *
+ * The rename carries `delivery_work` onto the old table, so dropping that
+ * table drops the index and the last statement puts it back.
+ */
+function addBoundedDeliveryRetries(db: DatabaseSync): void {
+    db.exec(`
+        ALTER TABLE seen_delivery RENAME TO seen_delivery_v4;
+        ${SEEN_DELIVERY_V5};
+        INSERT INTO seen_delivery (
+            delivery_id, event_name, payload, payload_digest, received_at,
+            state, claim_worker, claim_token, claimed_at, completed_at,
+            attempts, retry_not_before
+        )
+        SELECT delivery_id, event_name, payload, payload_digest, received_at,
+               state, claim_worker, claim_token, claimed_at, completed_at,
+               0, NULL
+        FROM seen_delivery_v4;
+        DROP TABLE seen_delivery_v4;
+
+        ${DELIVERY_WORK};
+    `);
+}
+
 const MIGRATIONS: ReadonlyArray<{
     readonly version: StorageSchemaVersion;
     readonly apply: (db: DatabaseSync) => void;
@@ -249,6 +341,7 @@ const MIGRATIONS: ReadonlyArray<{
     { version: 2, apply: addRecoveryOwnershipState },
     { version: 3, apply: addDurableDeliveryWork },
     { version: 4, apply: addCanonicalDeliveryReports },
+    { version: 5, apply: addBoundedDeliveryRetries },
 ];
 
 /** Read SQLite's native application schema version. */

@@ -9,8 +9,11 @@
 export * from "./types.js";
 export { evaluateWrite } from "./write.js";
 // The rule ORDER is contract (D39, D52), so the list is public for tests to
-// assert directly. The rules themselves stay internal.
-export { GENERAL_RULES } from "./rules.js";
+// assert directly. The rules themselves stay internal, with one exception:
+// `evaluateStandingRules` runs the item-independent subset for a caller that
+// holds no item — the write path's resume gate, which would otherwise restate
+// them.
+export { evaluateStandingRules, GENERAL_RULES, type RuleScope } from "./rules.js";
 export * from "./destructive.js";
 /**
  * The derived world (D92 phase 4): the type, the derivation, and its two

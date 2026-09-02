@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 const DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000001")!;
+const SECOND_DELIVERY_ID = asDeliveryGuid("00000000-0000-0000-0000-000000000002")!;
 const AT = "2026-07-23T10:00:00.000Z";
 
 const VERSION3_SEEN_DELIVERY = `
@@ -191,6 +192,22 @@ function createVersion3Schema(path: string): void {
     db.close();
 }
 
+/** Version 4 = version 3 plus the canonical-report table, declared as 4. */
+function createVersion4Schema(path: string): void {
+    createVersion3Schema(path);
+    const db = new DatabaseSync(path);
+    db.exec(`
+        CREATE TABLE delivery_report (
+            delivery_id TEXT PRIMARY KEY,
+            claim_token TEXT NOT NULL,
+            report_json TEXT NOT NULL,
+            completed_at TEXT NOT NULL
+        );
+        PRAGMA user_version = 4;
+    `);
+    db.close();
+}
+
 function replaceVersion3DeliveryDefinition(definition: string, declaredVersion: 0 | 3): void {
     createVersion3Schema(databasePath);
     const db = new DatabaseSync(databasePath);
@@ -206,6 +223,24 @@ function replaceVersion3DeliveryDefinition(definition: string, declaredVersion: 
         PRAGMA user_version = ${String(declaredVersion)};
     `);
     db.close();
+}
+
+/** Every owned SQLite object's exact definition, whitespace-insensitive. */
+function schemaFingerprint(path: string): Record<string, string> {
+    const db = new DatabaseSync(path);
+    const objects = db
+        .prepare(
+            `
+        SELECT name, sql FROM sqlite_schema
+        WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+        ORDER BY name
+    `,
+        )
+        .all() as { name: string; sql: string }[];
+    db.close();
+    return Object.fromEntries(
+        objects.map((object) => [object.name, object.sql.replace(/\s+/g, " ")]),
+    );
 }
 
 function schemaState(path: string): {
@@ -241,7 +276,13 @@ describe("storage schema versions", () => {
         });
         store.close();
 
-        expect(points).toEqual(["migration:1", "migration:2", "migration:3", "migration:4"]);
+        expect(points).toEqual([
+            "migration:1",
+            "migration:2",
+            "migration:3",
+            "migration:4",
+            "migration:5",
+        ]);
         expect(schemaState(databasePath)).toEqual({
             version: CURRENT_STORAGE_SCHEMA_VERSION,
             tables: [
@@ -339,16 +380,66 @@ describe("storage schema versions", () => {
         store.close();
     });
 
+    it("migrates the report-bearing schema into a bounded-retry queue", () => {
+        createVersion4Schema(databasePath);
+        const reported = new DatabaseSync(databasePath);
+        reported
+            .prepare(
+                `INSERT INTO delivery_report
+                 (delivery_id, claim_token, report_json, completed_at)
+                 VALUES (?, ?, ?, ?)`,
+            )
+            .run(SECOND_DELIVERY_ID, "v4-token", "{}", AT);
+        reported.close();
+
+        const store = new Store(databasePath);
+        const claim = store.claimNextDelivery(
+            "worker",
+            "2026-07-23T10:01:00.000Z",
+            "2026-07-23T09:00:00.000Z",
+        );
+
+        // A delivery the old schema could not have counted starts unspent.
+        expect(claim).toMatchObject({ deliveryId: DELIVERY_ID, attempts: 0 });
+        expect(Buffer.from(claim!.payload)).toEqual(Buffer.from("work"));
+        expect(store.deadLetteredDeliveries()).toEqual([]);
+        expect(store.deliveryReports()).toEqual([
+            { deliveryId: SECOND_DELIVERY_ID, reportJson: "{}", completedAt: AT },
+        ]);
+        store.close();
+        expect(schemaState(databasePath).version).toBe(CURRENT_STORAGE_SCHEMA_VERSION);
+    });
+
+    it("upgrades every old version into the schema a fresh database creates", () => {
+        const fresh = temp.file("fresh.sqlite");
+        new Store(fresh).close();
+        const expected = schemaFingerprint(fresh);
+        // The fingerprint is the contract: a migration that reaches the
+        // right version with a different CHECK is the failure worth naming.
+        expect(expected["seen_delivery"]).toContain("retry_not_before");
+        expect(expected["seen_delivery"]).toContain("'failed'");
+
+        for (const create of [createVersion1Schema, createVersion2Schema, createVersion3Schema]) {
+            const upgraded = temp.file(`${create.name}.sqlite`);
+            create(upgraded);
+            new Store(upgraded).close();
+            expect(schemaFingerprint(upgraded), create.name).toEqual(expected);
+        }
+        createVersion4Schema(databasePath);
+        new Store(databasePath).close();
+        expect(schemaFingerprint(databasePath)).toEqual(expected);
+    });
+
     it("refuses newer versions without rewriting their database", () => {
         const db = new DatabaseSync(databasePath);
-        db.exec("CREATE TABLE future_marker (value TEXT); PRAGMA user_version = 5;");
+        db.exec("CREATE TABLE future_marker (value TEXT); PRAGMA user_version = 6;");
         db.close();
 
         expect(() => new Store(databasePath)).toThrow(
-            "storage schema version 5 is newer than supported version 4",
+            "storage schema version 6 is newer than supported version 5",
         );
         expect(schemaState(databasePath)).toEqual({
-            version: 5,
+            version: 6,
             tables: ["future_marker"],
         });
     });
@@ -480,7 +571,7 @@ describe("migration interruption", () => {
         expect(schemaState(databasePath).version).toBe(CURRENT_STORAGE_SCHEMA_VERSION);
     });
 
-    it.each(["migration:1", "migration:2", "migration:3", "migration:4"] as const)(
+    it.each(["migration:1", "migration:2", "migration:3", "migration:4", "migration:5"] as const)(
         "rolls back %s and repeats cleanly on reopen",
         (faultPoint) => {
             if (faultPoint !== "migration:1") createVersion1Schema(databasePath);

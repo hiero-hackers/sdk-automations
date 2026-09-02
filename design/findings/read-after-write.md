@@ -30,7 +30,7 @@ the design exists to prevent — so the rule below spends one cheap delay on the
   462 ms; 1 s is ~2× that). "Absent" triggers a re-send, and for non-idempotent calls a wrong "absent"
   duplicates — the second read is insurance priced at one API call, only on the rare recovery path.
 
-The constants and executor described by D46 are **not implemented in the current workspace**. This finding
-is the measured requirement a future write adapter and recovery path must encode: accept presence on first
-sight, but require two reads at least one second apart before concluding absence. Re-measure if the resolver
-uses GraphQL or search-based reads — those paths were not measured and search indexing is known to lag.
+The read-back constants landed in the adapter on 2026-09-02 (`packages/adapter/src/readback.ts`:
+presence on first sight; absence only after a clock-confirmed gap of at least one second, else
+`unknown`). The executor that consumes them remains unbuilt. Re-measure if the resolver ever uses
+GraphQL or search-based reads — those paths were not measured and search indexing is known to lag.

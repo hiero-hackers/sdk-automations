@@ -39,8 +39,8 @@ Two things that prevent most mistakes:
 
 - In headings below, dots mean **nesting**, not key names: `capabilities.<name>.enabled` is the
   `enabled` line inside one capability's block, three levels deep.
-- Any shared key not on this tree is an error. Keys inside `settings` are the one exception: the shared
-  parser preserves them for the capability and does not validate their names or values.
+- Any shared key not on this tree is an error. Inside `settings` the names are checked against the
+  capability's own declaration; the values are not, and stay the capability's business.
 
 Nothing is required except `schemaVersion`. Every default is non-writing—an empty file is valid and
 produces an `observe` decision rather than an active effect.
@@ -67,20 +67,28 @@ migration/deprecation policy for any future version remains deliberately undecid
 | Default | `observe` |
 | Allowed | `disabled`, `observe`, `dry-run`, `active` |
 
-Core recognizes all four values, but the runnable shell supports the three non-active modes. Active is
-reserved and rejected before a decision. Values are case-sensitive, and unquoted `no` is a YAML boolean
-rather than a mode — quote anything you are unsure of.
+Core recognizes all four values. Whether `active` is honoured depends on the composition the endpoint
+was started as: one that wires no write path — the shipped default — rejects it before a decision and
+records `modeUnsupported`, explained in
+[Troubleshooting](troubleshooting.md#it-never-got-as-far-as-deciding). Values are case-sensitive, and
+unquoted `no` is a YAML boolean rather than a mode — quote anything you are unsure of.
 
 | Mode | Reads | Reports | Records what it would do | Writes |
 |---|---|---|---|---|
 | `disabled` | yes | findings plus `modeDisabled` refusals | no | no |
 | `observe` | yes | yes | yes—record-only | no |
-| `dry-run` | yes | yes | yes—currently the same path as `observe` | no |
+| `dry-run` | yes | yes | yes—record-only, plus a `wouldApply` line naming each change | no |
 | `active` | configuration only | unsupported-mode rejection | no | no |
 
 Enabled capabilities and their declared resolvers run before the mode verdict, including in `disabled`.
-The distinction between `observe` and `dry-run` is reserved but not implemented in decision output yet.
-Active GitHub writes and effect recovery are not implemented.
+`observe` and `dry-run` refuse identically; the difference is what they say. For every effect that
+reaches the mode rule, `dry-run` adds one `wouldApply` finding naming the capability, the operation,
+the item and the exact change — a rehearsal to read before promoting a repository to `active`. An
+effect an earlier rule refused is never rehearsed, and nothing is prepared: no comment marker is
+minted for a write that will not happen.
+
+`active` is rejected before a decision by any composition that wires no write path, which is the
+shipped default. See [Troubleshooting](troubleshooting.md#it-never-got-as-far-as-deciding).
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
 
@@ -115,10 +123,14 @@ consent, and consent is not inferred from anything that merely looks true.
 | Required | no |
 | Default | `{}` |
 
-The capability's own options. The shared schema checks only that `settings` is a mapping. No shipped
-capability-specific settings validator exists yet, and a disabled capability is not invoked, so arbitrary
-contents are accepted and dormant rather than prevalidated. A real capability must validate its settings
-before it can ship; until then, enabling cannot be treated as a pre-reviewed one-word activation.
+The capability's own options. Every capability declares which setting names it reads, and a name outside
+that list is an `unknownKey` error naming the exact path — so `annouce:` fails instead of configuring
+nothing. Disabled blocks are checked too: a typo that waits for the day you flip `enabled` is the
+surprise this rule exists to end.
+
+Names only. The **values** are not validated, because they belong to the capability rather than to this
+schema. A real capability must validate its own settings before it can ship; until then, enabling cannot
+be treated as a pre-reviewed one-word activation.
 
 Each capability only ever sees its own block. It cannot read another capability's settings.
 
@@ -159,15 +171,16 @@ Two consequences worth knowing:
 
 ### Do I have to map all of them?
 
-No. **It depends on which capabilities you enable** — each one uses only the meanings it needs, and
-skips itself entirely if one is missing, saying so in its report.
+No. **It depends on which capabilities you enable** — each one uses only the meanings it needs.
 
-Today the App cannot tell you in advance which meanings a capability needs; you find out from the
-report when it skips. That is a known gap and it will be closed by capabilities declaring their
-meanings, so that enabling `intake` without `awaitingTriage` becomes an error in this file rather than
-a silence at runtime.
+You are told in this file, not later in a report. Every capability declares the meanings it requires, and
+enabling one whose meaning you have not mapped is a `meaningRequired` error naming the capability, the
+meaning, and the line to add. A capability you leave disabled requires nothing.
 
-Map nothing and the App writes no labels at all — which is a legitimate way to run it.
+Capabilities still skip themselves at report time when a meaning is missing, but that path is now only
+reachable for a configuration the parser never saw — it is a safety net, not the thing you find out from.
+
+Map nothing, enable nothing, and the App writes no labels at all — which is a legitimate way to run it.
 
 | Meaning | Typical use |
 |---|---|
@@ -188,8 +201,8 @@ to match your real GitHub label character for character.
 - **Any error rejects the whole file.** The shell stores one `configRejected` record, completes the
   delivery, and never evaluates capabilities with a partial or no-config fallback. Every error is reported
   at once, not one per push.
-- **Unknown shared keys are errors, not ignored.** A typo like `capabilties:` fails loudly. Keys inside
-  `settings` remain opaque until a capability owns their validation.
+- **Unknown keys are errors, not ignored.** A typo like `capabilties:` fails loudly, and so does a
+  `settings` key the capability never declared. Setting *values* remain the capability's own business.
 - **An empty file, or no file, means `observe`.** Never `active`.
 - **Duplicate keys are errors.** YAML would otherwise keep the last value silently — the one case
   where a typo could change your mode while the file still looks right.
@@ -203,13 +216,14 @@ The exact codes the App reports, and what to fix.
 | `documentUnparseable` | The YAML itself is broken; the message names the line and column |
 | `duplicateKey` | The same key appears twice; delete one |
 | `notAMapping` | Something is a list or a bare value where `key: value` pairs belong |
-| `unknownKey` | A key the schema does not have — usually a typo |
+| `unknownKey` | A key the schema does not have — usually a typo. Includes a `settings` name the capability never declared |
 | `schemaVersionUnsupported` | `schemaVersion` must be the number `1`, present and unquoted |
 | `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prQuality` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |
 | `capabilityUnknown` | The capability is not available in this application; remove its block or run an application that ships it |
 | `meaningNotMappable` | A key under `mappings.labels` is not in the meanings table above |
+| `meaningRequired` | An enabled capability needs a meaning you have not mapped; the message names the line to add |
 | `labelInvalid` | A label that is empty, only spaces, or not a string |
 | `labelNotInjective` | Two meanings map to the same label; give one a different name |
 | `principalNotAString` | A principal must be a single name, as a string |

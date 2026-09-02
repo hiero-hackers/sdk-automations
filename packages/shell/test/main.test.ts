@@ -2,9 +2,9 @@
  * The composition root run as the real process: `node --import tsx
  * src/main.ts`, an environment, a socket and a SQLite file. Everything
  * main.ts owns is observable from outside it. The
- * refusal to boot without its three variables, the line naming the port
- * and both file paths, and a signed delivery coming back as a persisted
- * report under exactly the store path that line announced.
+ * refusal to boot without its three variables, the startup event naming the
+ * port and both file paths, and a signed delivery coming back as a persisted
+ * report under exactly the store path that event announced.
  *
  * The mocked predecessor replaced node:fs, node:url, all three workspace
  * packages and all three sibling modules, so it could only prove that main
@@ -25,32 +25,62 @@
 import { describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { signBody, SIGNATURE_HEADER, type Report } from "@hiero-hackers/automation-core";
+import {
+    asDeliveryGuid,
+    signBody,
+    SIGNATURE_HEADER,
+    type Report,
+} from "@hiero-hackers/automation-core";
 import { Store } from "@hiero-hackers/automation-store";
-import { capture } from "@hiero-hackers/automation-testkit";
+import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 
 const SHELL_DIR = fileURLToPath(new URL("../", import.meta.url));
-/** The same `../data/` main.ts resolves, computed one directory over. */
-const DATA_DIR = fileURLToPath(new URL("../data/", import.meta.url));
+
+/**
+ * Every child gets its own state home. The default store path is derived
+ * from `XDG_STATE_HOME`, so a suite that left it alone would write the
+ * operator's real store — and the case that boots with no `STORE_PATH` at
+ * all is exactly the one that must not.
+ */
+const state = useTempDir("shell-main-state-");
 
 const LOOPBACK = "127.0.0.1";
 /** An address no machine owns: bindable nowhere, routable nowhere (RFC 5737). */
 const UNBINDABLE = "203.0.113.1";
 
 const SECRET = "main-test-secret";
-const OWNER = "owner-sandbox";
-const REPO = "automation-sandbox";
+/**
+ * The repository the captured fixtures name. The shell refuses a payload
+ * from anywhere else, so the endpoint under test has to be started for the
+ * repository the deliveries below actually come from — the mismatch is its
+ * own case at the end of this file.
+ */
+const OWNER = "scrubbed-1";
+const REPO = "scrubbed-2";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
 const UNREADABLE_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6a";
 const FIXTURE = capture("issues.opened.json").bytes();
 const PULL_REQUEST_FIXTURE = capture("pull_request.opened.json").bytes();
 const PULL_REQUEST_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6b";
 const READ_ONLY_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6c";
+/** Seeded straight into a running child's store, where only a sweep can find it. */
+const SWEPT_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6d";
+/** The one active-mode delivery, whose effects reach the fake GitHub below. */
+const ACTIVE_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6e";
+
+/** The issue `issues.opened.json` carries, which the write routes answer for. */
+const ISSUE_NUMBER = 164;
+/** The App the child is told it is: the id it authenticates as, and its slug. */
+const APP_ID = "123";
+const APP_SLUG = "hiero-hackers-sandbox";
+const TRIAGE_LABEL = "status: triage";
+/** The default timeline's one human label — later than any fixture's cause. */
+const TIMELINE_AT = "2026-08-06T23:10:51Z";
 
 const MISSING_VARIABLES =
     "WEBHOOK_SECRET, REPO_OWNER and REPO_NAME are required (the sandbox App's secret and the repository this endpoint serves).";
@@ -74,6 +104,25 @@ capabilities:
     enabled: true
 `;
 
+/**
+ * The write path's own configuration. `announce: false` on purpose: intake's
+ * second intent claims the triage meaning is ABSENT, and by the time it is
+ * gated the first effect has already put the label there — so the comment
+ * would be refused as `preconditionStale` and the case would be about that
+ * instead of about the composition.
+ */
+const ACTIVE_CONFIG = `schemaVersion: 1
+mode: active
+capabilities:
+  intake:
+    enabled: true
+    settings:
+      announce: false
+mappings:
+  labels:
+    awaitingTriage: "${TRIAGE_LABEL}"
+`;
+
 /** Everything main.ts reads, cleared from the inherited environment. */
 const SHELL_VARIABLES = [
     "WEBHOOK_SECRET",
@@ -81,12 +130,15 @@ const SHELL_VARIABLES = [
     "REPO_NAME",
     "CONFIG_FILE",
     "APP_ID",
+    "APP_SLUG",
     "PRIVATE_KEY_PATH",
     "INSTALLATION_ID",
     "STORE_PATH",
     "PORT",
     "HOST",
     "KILL_SWITCH",
+    "SWEEP_INTERVAL_SECONDS",
+    "XDG_STATE_HOME",
 ];
 
 /** Longer than any boot, shorter than the per-test timeout below it. */
@@ -105,6 +157,8 @@ interface Shell {
     readonly exit: Promise<number | null>;
     /** Settled in the same sense: gone, and its output all here. */
     exited(): boolean;
+    /** Ask it to stop the way a hosting platform does. */
+    signal(name: NodeJS.Signals): void;
 }
 
 async function until<T>(probe: () => T | undefined, what: string): Promise<T> {
@@ -295,6 +349,9 @@ async function withShell<T>(
             stderr: () => error,
             exit,
             exited: () => done,
+            signal: (name) => {
+                child.kill(name);
+            },
         });
     } finally {
         clearTimeout(hardKill);
@@ -319,7 +376,45 @@ async function withShell<T>(
  * network, and a wildcard bind asks the operating system to say so.
  */
 function bootEnvironment(): Record<string, string> {
-    return { WEBHOOK_SECRET: SECRET, REPO_OWNER: OWNER, REPO_NAME: REPO, HOST: LOOPBACK };
+    return {
+        WEBHOOK_SECRET: SECRET,
+        REPO_OWNER: OWNER,
+        REPO_NAME: REPO,
+        HOST: LOOPBACK,
+        XDG_STATE_HOME: state.dir,
+    };
+}
+
+/**
+ * The events a stream has whole lines for. A line that will not parse is
+ * skipped rather than thrown on: the last one is often half-written, and
+ * node's own crash output is not JSON at all.
+ */
+function events(text: string): Record<string, unknown>[] {
+    const parsed: Record<string, unknown>[] = [];
+    for (const line of text.split("\n")) {
+        try {
+            const event: unknown = JSON.parse(line);
+            if (typeof event === "object" && event !== null) {
+                parsed.push(event as Record<string, unknown>);
+            }
+        } catch {
+            // Not a whole line, or not one of ours.
+        }
+    }
+    return parsed;
+}
+
+/** The first event of a kind, once the child has written one. */
+async function awaitEvent(shell: Shell, name: string): Promise<Record<string, unknown>> {
+    return until(() => {
+        const found = events(shell.stdout() + shell.stderr()).find(
+            (event) => event["event"] === name,
+        );
+        if (found !== undefined) return found;
+        if (shell.exited()) throw new Error(`the shell exited before ${name}: ${shell.stderr()}`);
+        return undefined;
+    }, `the ${name} event`);
 }
 
 /** A port nothing holds at the moment the child is told to take it. */
@@ -333,14 +428,9 @@ async function freePort(): Promise<number> {
     return port;
 }
 
-/** The single line main.ts prints once the socket is actually bound. */
-async function listeningLine(shell: Shell): Promise<string> {
-    return until(() => {
-        const end = shell.stdout().indexOf("\n");
-        if (end !== -1) return shell.stdout().slice(0, end);
-        if (shell.exited()) throw new Error(`the shell exited before listening: ${shell.stderr()}`);
-        return undefined;
-    }, "the listening line");
+/** The single event main.ts writes once the socket is actually bound. */
+async function listening(shell: Shell): Promise<Record<string, unknown>> {
+    return awaitEvent(shell, "startup");
 }
 
 async function post(
@@ -368,6 +458,13 @@ interface StoredRecord {
     readonly deliveryId: string;
     readonly event: string;
     readonly report?: Report;
+    /** What became of each approved effect. Present on a decision record. */
+    readonly effects?: readonly {
+        readonly capability: string;
+        readonly operation: string;
+        readonly outcome: string;
+        readonly code: string | null;
+    }[];
 }
 
 /** A locked database is the child mid-commit — the answer is "not yet". */
@@ -423,14 +520,43 @@ async function withPaths<T>(
     }
 }
 
-/** A child-only fetch double: it proves live composition without network access. */
-function writeFetchPreload(
-    path: string,
-    logPath: string,
-    mintStatus = 201,
-    config = CONFIG,
-    issuesPermission = "write",
-): void {
+/** How one child's GitHub answers, for the cases that need it to misbehave. */
+interface FakeGitHub {
+    readonly mintStatus?: number;
+    readonly config?: string;
+    readonly issuesPermission?: string;
+    /** The timeline is the last route: anything unmatched is one. */
+    readonly timelineStatus?: number;
+    /**
+     * The timeline entries the item's reads answer with. The default is one
+     * human label, which is what makes an ordinary delivery report
+     * `newerHumanChange`; the write case passes `[]` so the ladder gets past
+     * the ordering rule and reaches the applier.
+     */
+    readonly timeline?: readonly unknown[];
+}
+
+/**
+ * A child-only fetch double: it proves live composition without network
+ * access.
+ *
+ * The label and comment routes are STATEFUL, held in the child's own module
+ * scope for the life of the process. A stateless double cannot exercise the
+ * write path at all: the applier reads the item back before it gates, sends,
+ * and then reads again to prove the postcondition held — so a GitHub that
+ * answered the same thing before and after a write would either refuse the
+ * write it was about to make or fail to confirm the one it made.
+ */
+function writeFetchPreload(path: string, logPath: string, github: FakeGitHub = {}): void {
+    const {
+        mintStatus = 201,
+        config = CONFIG,
+        issuesPermission = "write",
+        timelineStatus = 200,
+        timeline = [
+            { event: "labeled", actor: { type: "User", login: "human" }, created_at: TIMELINE_AT },
+        ],
+    } = github;
     const configBody = JSON.stringify({
         type: "file",
         encoding: "base64",
@@ -440,15 +566,56 @@ function writeFetchPreload(
     writeFileSync(
         path,
         `import { appendFileSync } from "node:fs";
+const labels = new Set();
+const comments = [];
+let nextCommentId = 1;
+const ITEM = ${JSON.stringify(`/issues/${String(ISSUE_NUMBER)}`)};
+const labelList = () => [...labels].map((name) => ({ name }));
 globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
     const headers = Object.fromEntries(new Headers(init.headers).entries());
     appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({
-        url: String(input),
-        method: init.method ?? "GET",
+        url,
+        method,
         authorization: headers.authorization ?? null,
         body: init.body ?? null,
     }) + "\\n");
-    if (String(input).includes("/access_tokens")) {
+    if (url.includes(ITEM + "/labels")) {
+        if (method === "POST") {
+            for (const name of JSON.parse(init.body).labels) labels.add(name);
+            return new Response(JSON.stringify(labelList()), { status: 200 });
+        }
+        if (method === "DELETE") {
+            labels.delete(decodeURIComponent(url.split(ITEM + "/labels/")[1]));
+            return new Response(JSON.stringify(labelList()), { status: 200 });
+        }
+        return new Response(JSON.stringify(labelList()), { status: 200 });
+    }
+    if (url.includes(ITEM + "/comments")) {
+        if (method === "POST") {
+            comments.push({
+                id: nextCommentId++,
+                body: JSON.parse(init.body).body,
+                performed_via_github_app: { id: ${String(APP_ID)} },
+            });
+            return new Response(JSON.stringify(comments.at(-1)), { status: 201 });
+        }
+        return new Response(JSON.stringify(comments), { status: 200 });
+    }
+    if (url.includes("/timeline")) {
+        if (${String(timelineStatus)} !== 200) {
+            return new Response("nope", { status: ${String(timelineStatus)} });
+        }
+        return new Response(${JSON.stringify(JSON.stringify(timeline))}, { status: 200 });
+    }
+    if (new URL(url).pathname.endsWith(ITEM)) {
+        return new Response(
+            JSON.stringify({ state: "open", labels: labelList() }),
+            { status: 200 },
+        );
+    }
+    if (url.includes("/access_tokens")) {
         if (${String(mintStatus)} !== 201) return new Response("{}", { status: ${String(mintStatus)} });
         return new Response(JSON.stringify({
             token: "shell-test-installation-token",
@@ -467,14 +634,80 @@ globalThis.fetch = async (input, init = {}) => {
             } },
         } } }), { status: 200 });
     }
-    return new Response(JSON.stringify([{
-        event: "labeled",
-        actor: { type: "User", login: "human" },
-        created_at: "2026-08-06T23:10:51Z",
-    }]), { status: 200 });
+    // The last route: anything unmatched is a timeline, as it always was.
+    if (${String(timelineStatus)} !== 200) {
+        return new Response("nope", { status: ${String(timelineStatus)} });
+    }
+    return new Response(${JSON.stringify(JSON.stringify(timeline))}, { status: 200 });
 };
 `,
     );
+}
+
+/** One line of the fetch log — what the child asked GitHub for, and how. */
+interface LoggedRequest {
+    readonly url: string;
+    readonly method: string;
+    readonly authorization: string | null;
+    readonly body: string | null;
+}
+
+function requestsIn(logPath: string): LoggedRequest[] {
+    return readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as LoggedRequest);
+}
+
+/** What a live-composition case gets to look at. */
+interface LiveShell {
+    readonly shell: Shell;
+    readonly port: number;
+    readonly storeFile: string;
+    readonly fetchLog: string;
+}
+
+/**
+ * A child wired to App credentials and a scripted GitHub, for the duration of
+ * `body`.
+ *
+ * A real RSA key is generated per case rather than committed: the child signs
+ * a genuine App assertion with it, and a fixture key in the tree is a secret
+ * shaped like a secret.
+ */
+async function withLiveGitHub(
+    github: FakeGitHub & { readonly slug?: string },
+    body: (live: LiveShell) => Promise<void>,
+): Promise<void> {
+    await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
+        // Deliberately not the config GitHub serves: a local copy that could
+        // satisfy the case would hide a live read that never happened.
+        writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
+        const { privateKey } = generateKeyPairSync("rsa", {
+            modulusLength: 2048,
+            privateKeyEncoding: { type: "pkcs8", format: "pem" },
+            publicKeyEncoding: { type: "spki", format: "pem" },
+        });
+        writeFileSync(privateKeyFile, privateKey);
+        const fetchLog = `${privateKeyFile}.fetch.log`;
+        const preload = `${privateKeyFile}.fetch.mjs`;
+        writeFetchPreload(preload, fetchLog, github);
+        const port = await freePort();
+        await withShell(
+            {
+                ...bootEnvironment(),
+                APP_ID,
+                PRIVATE_KEY_PATH: privateKeyFile,
+                INSTALLATION_ID: "789",
+                CONFIG_FILE: configFile,
+                STORE_PATH: storeFile,
+                PORT: String(port),
+                ...(github.slug === undefined ? {} : { APP_SLUG: github.slug }),
+            },
+            (shell) => body({ shell, port, storeFile, fetchLog }),
+            preload,
+        );
+    });
 }
 
 describe("the sandbox entry point, as a process", () => {
@@ -534,6 +767,122 @@ describe("the sandbox entry point, as a process", () => {
         TEST_TIMEOUT_MS,
     );
 
+    it.each(["0", "-1", "1.5", "soon"])(
+        "fails closed when SWEEP_INTERVAL_SECONDS is %j",
+        async (interval) => {
+            await withShell(
+                { ...bootEnvironment(), SWEEP_INTERVAL_SECONDS: interval },
+                async (shell) => {
+                    await until(
+                        () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                        "the sweep interval to be refused",
+                    );
+                    expect(shell.stdout()).toBe("");
+                    expect(await shell.exit).toBe(1);
+                    expect(shell.stderr().trim()).toBe(
+                        "SWEEP_INTERVAL_SECONDS must be a whole number of seconds, 1 or more.",
+                    );
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * `Number("nope")` is NaN, and node reads NaN as "any free port": the
+     * unvalidated version bound a port nobody could predict and announced
+     * it as `:NaN`. 0 is the same request spelled deliberately, and is
+     * refused for the same reason — an endpoint GitHub cannot reach.
+     */
+    it.each(["nope", "", "0", "-1", "8790.5", "65536", " "])(
+        "fails closed when PORT is %j",
+        async (port) => {
+            await withShell({ ...bootEnvironment(), PORT: port }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the port to be refused",
+                );
+                expect(shell.stdout()).toBe("");
+                expect(await shell.exit).toBe(1);
+                expect(shell.stderr().trim()).toBe(
+                    "PORT must be a whole number between 1 and 65535.",
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * Both ends of the range are IN it. A privileged 1 and the last port
+     * 65535 are values an operator may legitimately be handed, and what
+     * happens to them next is the operating system's business — a refusal
+     * here would be this shell inventing a narrower range than it documents.
+     */
+    it.each(["1", "65535"])(
+        "does not refuse PORT %j: the range includes both its ends",
+        async (port) => {
+            await withShell({ ...bootEnvironment(), PORT: port }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the boot to settle",
+                );
+                expect(shell.stderr()).not.toContain("PORT must be");
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * An empty HOST is a typo for absent, and node answers it by resolving
+     * the empty host rather than by refusing. Whitespace is the same typo
+     * with a space in it, and reads the same way.
+     */
+    it.each(["", "   "])(
+        "fails closed when HOST is %j",
+        async (host) => {
+            await withShell({ ...bootEnvironment(), HOST: host }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the empty host to be refused",
+                );
+                expect(shell.stdout()).toBe("");
+                expect(await shell.exit).toBe(1);
+                expect(shell.stderr().trim()).toBe(
+                    "HOST must be a host name or address, or unset to bind every interface.",
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * An UNSET host is the unnamed bind — the one value that is not a typo
+     * — so the boot has to walk past that check and reach the ones below
+     * it. Proved by refusing the next variable instead of by listening: a
+     * suite that bound every interface is a suite the machine asks its
+     * operator about.
+     */
+    it(
+        "reads an unset HOST as the unnamed bind and goes on to the next check",
+        async () => {
+            const environment = bootEnvironment();
+            delete environment["HOST"];
+
+            await withShell({ ...environment, SWEEP_INTERVAL_SECONDS: "0" }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the sweep interval to be refused",
+                );
+                expect(shell.stdout()).toBe("");
+                expect(await shell.exit).toBe(1);
+                expect(shell.stderr().trim()).toBe(
+                    "SWEEP_INTERVAL_SECONDS must be a whole number of seconds, 1 or more.",
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
     it(
         "fails closed when PRIVATE_KEY_PATH names no readable file",
         async () => {
@@ -541,7 +890,7 @@ describe("the sandbox entry point, as a process", () => {
                 await withShell(
                     {
                         ...bootEnvironment(),
-                        APP_ID: "123",
+                        APP_ID,
                         PRIVATE_KEY_PATH: privateKeyFile,
                         INSTALLATION_ID: "789",
                     },
@@ -618,12 +967,12 @@ describe("the sandbox entry point, as a process", () => {
                 writeFileSync(privateKeyFile, privateKey);
                 const fetchLog = `${privateKeyFile}.fetch.log`;
                 const preload = `${privateKeyFile}.fetch.mjs`;
-                writeFetchPreload(preload, fetchLog, mintStatus, config, issuesPermission);
+                writeFetchPreload(preload, fetchLog, { mintStatus, config, issuesPermission });
                 const port = await freePort();
                 await withShell(
                     {
                         ...bootEnvironment(),
-                        APP_ID: "123",
+                        APP_ID,
                         PRIVATE_KEY_PATH: privateKeyFile,
                         INSTALLATION_ID: "789",
                         CONFIG_FILE: configFile,
@@ -631,27 +980,21 @@ describe("the sandbox entry point, as a process", () => {
                         PORT: String(port),
                     },
                     async (shell) => {
-                        expect(await listeningLine(shell)).toBe(
-                            `shell listening on :${String(port)} for ${OWNER}/${REPO} ` +
-                                `(live config from ${OWNER}/${REPO}'s default branch: automations.yml); ` +
-                                `canonical reports stored in ${storeFile}`,
-                        );
+                        expect(await listening(shell)).toMatchObject({
+                            event: "startup",
+                            port,
+                            host: LOOPBACK,
+                            repository: `${OWNER}/${REPO}`,
+                            configSource: "live",
+                            configPath: "automations.yml",
+                            storePath: storeFile,
+                        });
                         expect(await post(port, deliveryId, fixture, event)).toBe(202);
                         if (failureText === null) {
                             const decided = await persisted(storeFile, deliveryId);
                             expect(decided.report?.mode).toBe("dry-run");
                             expect(codes(decided)).toEqual(expectedCodes);
-                            const requests = readFileSync(fetchLog, "utf8")
-                                .trim()
-                                .split("\n")
-                                .map(
-                                    (line) =>
-                                        JSON.parse(line) as {
-                                            url: string;
-                                            method: string;
-                                            authorization: string | null;
-                                        },
-                                );
+                            const requests = requestsIn(fetchLog);
                             const mint = requests.find((request) =>
                                 request.url.endsWith("/app/installations/789/access_tokens"),
                             );
@@ -700,6 +1043,277 @@ describe("the sandbox entry point, as a process", () => {
         TEST_TIMEOUT_MS,
     );
 
+    /**
+     * A refusal by GitHub, a nonsense body and a timeline too long to read
+     * all reach a decision as the same word — "unknown" — and they need
+     * different fixes. The adapter leaves the reason through a seam; this
+     * is the wire that carries it to the operator, under the delivery whose
+     * evidence could not be read.
+     */
+    it(
+        "says why an ordering answer was unknown, naming the delivery that asked",
+        async () => {
+            await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
+                writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
+                const { privateKey } = generateKeyPairSync("rsa", {
+                    modulusLength: 2048,
+                    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+                    publicKeyEncoding: { type: "spki", format: "pem" },
+                });
+                writeFileSync(privateKeyFile, privateKey);
+                const preload = `${privateKeyFile}.fetch.mjs`;
+                writeFetchPreload(preload, `${privateKeyFile}.fetch.log`, {
+                    config: PULL_REQUEST_CONFIG,
+                    // The timeline read is refused, so the item's ordering
+                    // cannot be established from anything.
+                    timelineStatus: 500,
+                });
+                const port = await freePort();
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        APP_ID,
+                        PRIVATE_KEY_PATH: privateKeyFile,
+                        INSTALLATION_ID: "789",
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                    },
+                    async (shell) => {
+                        await listening(shell);
+                        expect(
+                            await post(
+                                port,
+                                PULL_REQUEST_GUID,
+                                PULL_REQUEST_FIXTURE,
+                                "pull_request",
+                            ),
+                        ).toBe(202);
+
+                        expect(await awaitEvent(shell, "orderingUnknown")).toMatchObject({
+                            deliveryId: PULL_REQUEST_GUID,
+                            detail: expect.stringContaining("GitHub refused the read"),
+                        });
+                        // The refusal it explains, in the same delivery's report.
+                        const decided = await persisted(storeFile, PULL_REQUEST_GUID);
+                        expect(codes(decided)).toContain("humanOrderingUnknown");
+                    },
+                    preload,
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    // ── APP_SLUG: the variable that arms the write path ──────────────
+
+    /**
+     * The slug becomes `"<slug>[bot]"`, the login a read-back recognises the
+     * App's own comment by. A value that cannot spell one is a typo that
+     * would otherwise be discovered as the App failing to recognise its own
+     * writing — which is how a capability posts a second comment.
+     */
+    it.each(["", "   ", "sandbox[bot]", " sandbox"])(
+        "fails closed when APP_SLUG is %j",
+        async (slug) => {
+            await withShell({ ...bootEnvironment(), APP_SLUG: slug }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the slug to be refused",
+                );
+                expect(shell.stdout()).toBe("");
+                expect(await shell.exit).toBe(1);
+                expect(shell.stderr().trim()).toBe(
+                    'APP_SLUG must be the App\'s URL slug, with no surrounding spaces and no brackets — the bot login is derived from it as "<slug>[bot]".',
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /** An identity with nothing to write with is a half-typed live setup. */
+    it(
+        "fails closed when APP_SLUG arrives without the credentials to write with",
+        async () => {
+            await withShell({ ...bootEnvironment(), APP_SLUG }, async (shell) => {
+                await until(
+                    () => (shell.exited() || shell.stdout() !== "" ? true : undefined),
+                    "the credential-free slug to be refused",
+                );
+                expect(shell.stdout()).toBe("");
+                expect(await shell.exit).toBe(1);
+                expect(shell.stderr().trim()).toBe(
+                    "APP_SLUG arms the write path and needs APP_ID, PRIVATE_KEY_PATH and INSTALLATION_ID to write with.",
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * The credential triad buys READS. Without a slug there is no identity, so
+     * no read-back can verify authorship, so no applier exists — and `active`
+     * is still refused before a decision, exactly as it shipped. The startup
+     * line says so before any delivery arrives.
+     */
+    it(
+        "boots the live read path with no slug, and still refuses active mode",
+        async () => {
+            await withLiveGitHub({ config: ACTIVE_CONFIG }, async ({ port, shell, storeFile }) => {
+                expect(await listening(shell)).toMatchObject({
+                    configSource: "live",
+                    writes: "absent",
+                });
+                expect(await post(port, ACTIVE_GUID, FIXTURE)).toBe(202);
+
+                const record = await persisted(storeFile, ACTIVE_GUID);
+                expect(record).toMatchObject({
+                    kind: "modeUnsupported",
+                    deliveryId: ACTIVE_GUID,
+                });
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * The whole composition, end to end and in one process: an active-mode
+     * delivery is decided, its approved effect is journalled, sent to the fake
+     * GitHub, and read back — and the canonical record says `applied`.
+     *
+     * The label POST is asserted separately from the record because they prove
+     * different things. The record says the applier ran and believed itself;
+     * the request log says a write actually left the process, under the
+     * installation token, at the endpoint the matrix confirmed.
+     */
+    it(
+        "with APP_SLUG an active delivery reaches GitHub through the applier",
+        async () => {
+            await withLiveGitHub(
+                { config: ACTIVE_CONFIG, timeline: [], slug: APP_SLUG },
+                async ({ fetchLog, port, shell, storeFile }) => {
+                    expect(await listening(shell)).toMatchObject({ writes: "armed" });
+                    expect(await post(port, ACTIVE_GUID, FIXTURE)).toBe(202);
+
+                    const record = await persisted(storeFile, ACTIVE_GUID);
+                    expect(record.kind).toBe("decision");
+                    expect(record.effects).toEqual([
+                        expect.objectContaining({
+                            capability: "intake",
+                            operation: "applyMappedLabel",
+                            outcome: "applied",
+                            code: null,
+                        }),
+                    ]);
+
+                    const written = requestsIn(fetchLog).filter(
+                        (request) =>
+                            request.method === "POST" &&
+                            request.url.includes(`/issues/${String(ISSUE_NUMBER)}/labels`),
+                    );
+                    expect(written).toEqual([
+                        expect.objectContaining({
+                            authorization: "Bearer shell-test-installation-token",
+                            body: JSON.stringify({ labels: [TRIAGE_LABEL] }),
+                        }),
+                    ]);
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * The state home is the operator's directory, and on the machines this
+     * default exists for — a fresh container, a volume mounted empty — none
+     * of it is there yet. Every missing segment on the way to the store is
+     * this process's to create, not just the last one.
+     */
+    it(
+        "creates the whole path to a state home that is not there yet",
+        async () => {
+            const home = join(state.dir, "not", "created", "yet");
+            const port = await freePort();
+
+            await withShell(
+                { ...bootEnvironment(), XDG_STATE_HOME: home, PORT: String(port) },
+                async (shell) => {
+                    const store = join(home, "sdk-automations", "shell.sqlite");
+                    expect(await listening(shell)).toMatchObject({ storePath: store });
+                    expect(existsSync(store)).toBe(true);
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * SWEEP_INTERVAL_SECONDS is seconds. A shell told to sweep hourly and
+     * sweeping every few milliseconds instead looks like working software
+     * — the recovery is only ever early — while running a timer against
+     * the store a thousand times faster than the operator asked for.
+     */
+    it(
+        "sweeps on the interval in SECONDS, so an hour is not four milliseconds",
+        async () => {
+            await withPaths(async ({ configFile, storeFile }) => {
+                const port = await freePort();
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                        SWEEP_INTERVAL_SECONDS: "3600",
+                    },
+                    async (shell) => {
+                        await listening(shell);
+                        // One delivery the ordinary way, so the drain a
+                        // start performs is demonstrably over before the
+                        // queue below is seeded behind the child's back.
+                        expect(await post(port, GUID, FIXTURE)).toBe(202);
+                        await persisted(storeFile, GUID);
+
+                        // Nothing will wake the child for this one: no
+                        // webhook arrives, and the next sweep is an hour off.
+                        const seeded = await until(
+                            () => ifUnlocked(() => new Store(storeFile)),
+                            `the store at ${storeFile}`,
+                        );
+                        try {
+                            expect(
+                                seeded.acceptDelivery({
+                                    deliveryId: asDeliveryGuid(SWEPT_GUID)!,
+                                    eventName: "issues",
+                                    payload: FIXTURE,
+                                    receivedAt: new Date().toISOString(),
+                                }),
+                            ).toMatchObject({ outcome: "accepted" });
+                        } finally {
+                            seeded.close();
+                        }
+                        await new Promise<void>((resolve) => {
+                            setTimeout(resolve, 1_000);
+                        });
+
+                        const store = await until(
+                            () => ifUnlocked(() => new Store(storeFile)),
+                            `the store at ${storeFile}`,
+                        );
+                        try {
+                            expect(
+                                store.deliveryReports().map((report) => String(report.deliveryId)),
+                            ).toEqual([GUID]);
+                        } finally {
+                            store.close();
+                        }
+                    },
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
     it(
         "announces where it listens, then turns a signed delivery into that store's report",
         async () => {
@@ -711,15 +1325,36 @@ describe("the sandbox entry point, as a process", () => {
                         CONFIG_FILE: configFile,
                         STORE_PATH: storeFile,
                         PORT: String(port),
+                        // The fastest interval the validation accepts, so a
+                        // boot that swept every second is proved to work.
+                        SWEEP_INTERVAL_SECONDS: "1",
                     },
                     async (shell) => {
-                        expect(await listeningLine(shell)).toBe(
-                            `shell listening on :${String(port)} for ${OWNER}/${REPO} ` +
-                                `(config copy of automations.yml: ${configFile}); ` +
-                                `canonical reports stored in ${storeFile}`,
-                        );
+                        const startup = await listening(shell);
+                        expect(startup).toEqual({
+                            // A real line, parsed as JSON, carrying the two
+                            // fields every line carries.
+                            at: expect.stringMatching(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/),
+                            event: "startup",
+                            port,
+                            host: LOOPBACK,
+                            repository: `${OWNER}/${REPO}`,
+                            configSource: "local",
+                            configPath: configFile,
+                            storePath: storeFile,
+                            // No credentials, so no identity, so no applier:
+                            // the shipped composition writes nothing.
+                            writes: "absent",
+                        });
 
                         expect(await post(port, GUID, FIXTURE)).toBe(202);
+                        // The delivery's whole passage, under its own id.
+                        await awaitEvent(shell, "deliveryCompleted");
+                        expect(
+                            events(shell.stdout())
+                                .filter((event) => event["deliveryId"] === GUID)
+                                .map((event) => event["event"]),
+                        ).toEqual(["deliveryAccepted", "deliveryClaimed", "deliveryCompleted"]);
                         const decided = await persisted(storeFile, GUID);
                         expect(decided).toMatchObject({
                             kind: "decision",
@@ -730,8 +1365,10 @@ describe("the sandbox entry point, as a process", () => {
                         expect(codes(decided)).toEqual([
                             "capabilityExplained",
                             "modeRecordsOnly",
+                            "wouldApply",
                             "capabilityExplained",
                             "modeRecordsOnly",
+                            "wouldApply",
                         ]);
 
                         // An unreadable payload is the one report that has to
@@ -765,12 +1402,130 @@ describe("the sandbox entry point, as a process", () => {
                         KILL_SWITCH: "1",
                     },
                     async (shell) => {
-                        await listeningLine(shell);
+                        await listening(shell);
                         expect(await post(port, GUID, FIXTURE)).toBe(202);
 
                         const decided = await persisted(storeFile, GUID);
                         expect(decided.kind).toBe("decision");
                         expect(codes(decided)).toEqual(["killSwitch", "killSwitch"]);
+                    },
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * A killed shell must not leave a claim behind: a delivery interrupted
+     * mid-decision is invisible for the full stale-claim window, and the
+     * point of the handler is that the process finishes what it holds and
+     * says so before it goes.
+     */
+    it.each(["SIGTERM", "SIGINT"] as const)(
+        "stops cleanly on %s, exit 0",
+        async (signal) => {
+            await withPaths(async ({ configFile, storeFile }) => {
+                const port = await freePort();
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                    },
+                    async (shell) => {
+                        await listening(shell);
+                        expect(await post(port, GUID, FIXTURE)).toBe(202);
+                        await persisted(storeFile, GUID);
+
+                        // Twice: impatience is not new information, and a
+                        // second shutdown would close a closed store.
+                        shell.signal(signal);
+                        shell.signal(signal);
+                        expect(await shell.exit).toBe(0);
+                        // Once, and last: the line is written after the store
+                        // closed, and the exit waits behind it leaving.
+                        const written = events(shell.stdout());
+                        expect(written.filter((event) => event["event"] === "shutdown")).toEqual([
+                            { at: expect.any(String), event: "shutdown", signal },
+                        ]);
+                        expect(written.at(-1)).toMatchObject({ event: "shutdown" });
+                        expect(shell.stderr()).toBe("");
+                    },
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * Why the exit is explicit rather than a hope. A handle something else
+     * in the process left open — a library's timer, a socket nobody closed
+     * — would keep a shut-down shell alive until the platform lost patience
+     * and killed it, which is a SIGKILL in the logs for a clean stop. The
+     * last line has left; the process goes.
+     */
+    it(
+        "leaves on time even when something else is still holding the event loop",
+        async () => {
+            await withPaths(async ({ configFile, storeFile }) => {
+                const port = await freePort();
+                const lingering = `${storeFile}.lingering.mjs`;
+                // Referenced on purpose: an unref'd timer would let node end
+                // the process on its own, which is the thing not being tested.
+                writeFileSync(lingering, "setInterval(() => undefined, 60_000);\n");
+
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                    },
+                    async (shell) => {
+                        await listening(shell);
+                        shell.signal("SIGTERM");
+
+                        expect(await shell.exit).toBe(0);
+                        expect(events(shell.stdout()).at(-1)).toMatchObject({ event: "shutdown" });
+                    },
+                    lingering,
+                );
+            });
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    /**
+     * The endpoint serves exactly one repository, and a delivery from
+     * another is refused before its configuration is even read — the
+     * report it would otherwise carry would name the wrong repository, and
+     * the write path it will one day reach would act on it.
+     */
+    it(
+        "refuses a delivery from a repository it was not started for",
+        async () => {
+            await withPaths(async ({ configFile, storeFile }) => {
+                const port = await freePort();
+                await withShell(
+                    {
+                        ...bootEnvironment(),
+                        REPO_NAME: "a-repository-this-endpoint-does-not-serve",
+                        CONFIG_FILE: configFile,
+                        STORE_PATH: storeFile,
+                        PORT: String(port),
+                    },
+                    async (shell) => {
+                        await listening(shell);
+                        expect(await post(port, GUID, FIXTURE)).toBe(202);
+
+                        const record = await persisted(storeFile, GUID);
+                        expect(record).toMatchObject({
+                            kind: "repositoryMismatch",
+                            deliveryId: GUID,
+                            event: "issues",
+                        });
+                        expect(record).not.toHaveProperty("report");
                     },
                 );
             });
@@ -793,8 +1548,13 @@ describe("the sandbox entry point, as a process", () => {
         TEST_TIMEOUT_MS,
     );
 
+    /**
+     * The store's default is under the operator's state home, never inside
+     * this package: in a container `packages/shell/data/` is an image layer,
+     * and a redeploy would take the canonical reports with it.
+     */
     it(
-        "with only the three required variables it takes :8790 and the data/ paths",
+        "with only the three required variables it takes :8790 and the state home's paths",
         async () => {
             await withShell(bootEnvironment(), async (shell) => {
                 const outcome = await until(
@@ -809,11 +1569,14 @@ describe("the sandbox entry point, as a process", () => {
                     expect(shell.stderr()).toMatch(/EADDRINUSE[^\n]*8790/);
                     return;
                 }
-                expect(await listeningLine(shell)).toBe(
-                    `shell listening on :8790 for ${OWNER}/${REPO} ` +
-                        `(config copy of automations.yml: ${DATA_DIR}automations.yml); ` +
-                        `canonical reports stored in ${DATA_DIR}shell.sqlite`,
-                );
+                const home = join(state.dir, "sdk-automations");
+                expect(await listening(shell)).toMatchObject({
+                    port: 8790,
+                    configSource: "local",
+                    configPath: join(home, "automations.yml"),
+                    storePath: join(home, "shell.sqlite"),
+                });
+                expect(existsSync(join(home, "shell.sqlite"))).toBe(true);
             });
         },
         TEST_TIMEOUT_MS,

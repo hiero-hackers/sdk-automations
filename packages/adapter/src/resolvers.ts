@@ -1,3 +1,16 @@
+/**
+ * The adapter's answers to the questions core lets a capability ask: one
+ * arm per name in core's `RESOLVER_NAMES`, and nothing else.
+ *
+ * Every answer is VERIFIED on this side rather than taken on trust. A
+ * linked-issue page must name the repository and the pull request that
+ * were asked about, a page claiming a successor must carry a cursor that
+ * is new, and paging stops at `MAX_LINKED_ISSUE_PAGES`. Whatever fails a
+ * check becomes a typed failure, never a shorter list: a capability
+ * reading `[]` as "no linked issue" would act on a rate limit
+ * (resolvers.md §6).
+ */
+
 import type {
     ItemRef,
     RepositoryRef,
@@ -6,6 +19,7 @@ import type {
     ResolverSource,
 } from "@hiero-hackers/automation-core";
 import {
+    describeFailure,
     GITHUB_GRAPHQL_URL,
     type GitHubFailure,
     type GitHubHttpClient,
@@ -40,22 +54,54 @@ export interface ResolverSourceOptions {
     readonly repository: RepositoryRef;
 }
 
+/** GitHub's own words reach an operator verbatim, so they are kept short. */
+const QUOTED_HEADER_LIMIT = 40;
+
 const unavailable = (detail: string): ResolverFailure => ({
     ok: false,
     reason: "unavailable",
     detail,
 });
 
+const rateLimited = (detail: string): ResolverFailure => ({
+    ok: false,
+    reason: "rateLimited",
+    detail,
+});
+
+/**
+ * A failed call as a resolver answer.
+ *
+ * The `reason` is the capability's half of this and stays coarse — a
+ * capability can act on "rate limited" and on nothing finer. The `detail` is
+ * the operator's half, and the three rate classes are three different
+ * problems: an hourly budget spent, a burst that must slow down, and a wait
+ * signal nobody could read. The adapter has already waited whatever was worth
+ * waiting, so what arrives here is what an operator must decide about.
+ */
 function httpFailure(outcome: GitHubFailure): ResolverFailure {
-    switch (outcome.failure.kind) {
+    const failure = outcome.failure;
+    switch (failure.kind) {
         case "permissionMissing":
             return { ok: false, reason: "noPermission", detail: "GitHub denied the query" };
         case "primaryExhausted":
+            return rateLimited(
+                "GitHub primary rate limit reached; the budget resets at " +
+                    (failure.resetAt ?? "an instant GitHub did not report"),
+            );
         case "secondaryLimit":
+            return rateLimited(
+                failure.retryAfterSeconds === undefined
+                    ? "GitHub secondary rate limit reached, with no retry-after to wait on"
+                    : `GitHub secondary rate limit reached; retry-after ${String(failure.retryAfterSeconds)}s`,
+            );
         case "rateLimitResponseUnusable":
-            return { ok: false, reason: "rateLimited", detail: "GitHub rate limit reached" };
+            return rateLimited(
+                `GitHub rate limit reached; ${failure.headerName} ` +
+                    `"${failure.headerValue.slice(0, QUOTED_HEADER_LIMIT)}" is ${failure.reason}`,
+            );
         default:
-            return unavailable(`GitHub query failed: ${outcome.failure.kind}`);
+            return unavailable(`GitHub query failed: ${describeFailure(failure)}`);
     }
 }
 
@@ -179,17 +225,32 @@ async function linkedIssues(
     return unavailable("GitHub linked-issue pagination exceeded 10 pages");
 }
 
+/** GitHub gives every App actor the `[bot]` suffix, so no call is needed. */
+function isAutomationActor(input: unknown): ResolverAnswer<boolean> {
+    const login = field(input, "login");
+    return typeof login === "string" && login.length > 0
+        ? { ok: true, value: login.toLowerCase().endsWith("[bot]") }
+        : unavailable("isAutomationActor requires a valid login");
+}
+
 export function createResolverSource(options: ResolverSourceOptions): ResolverSource {
+    // Exhaustive, with no default arm: a name added to RESOLVER_NAMES leaves
+    // this switch able to return undefined, which the declared type refuses.
+    // Adding the resolver is then a compile error, not a silent inheritance
+    // of whichever answer happened to sit last.
     const resolve = async (
         query: ResolverName,
         input: unknown,
     ): Promise<ResolverAnswer<unknown>> => {
-        if (query === "linkedIssues") return linkedIssues(options, input);
-
-        const login = field(input, "login");
-        return typeof login === "string" && login.length > 0
-            ? { ok: true, value: login.toLowerCase().endsWith("[bot]") }
-            : unavailable("isAutomationActor requires a valid login");
+        switch (query) {
+            case "linkedIssues":
+                return linkedIssues(options, input);
+            case "isAutomationActor":
+                return isAutomationActor(input);
+        }
     };
+    // The one erasure: `ResolverSource` ties each name to its own output
+    // type, and a body that dispatches at runtime cannot prove that pairing
+    // per call. The switch above is what makes the pairing true.
     return resolve as ResolverSource;
 }

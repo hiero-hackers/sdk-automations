@@ -18,9 +18,23 @@ import {
 } from "@hiero-hackers/automation-core";
 import type { RecordOnlyCode, SafetyRefusalCode } from "@hiero-hackers/automation-core";
 import { verdictFinding, type Severity } from "@hiero-hackers/automation-core";
-import { docsDir, exampleFiles, normalizeNewlines } from "./repository.js";
+import { docsDir, exampleFiles, normalizeNewlines, repoRoot } from "./repository.js";
 
 const page = (name: string): string => normalizeNewlines(readFileSync(join(docsDir, name), "utf8"));
+
+/**
+ * The kinds of record the shell persists for one delivery. `ShellRecord` is a
+ * private union rather than an exported vocabulary, so there is nothing to
+ * import: this reads the declaration's text, the way every repository check
+ * reads another package's file (D85).
+ */
+function shellRecordKinds(): string[] {
+    const source = normalizeNewlines(
+        readFileSync(join(repoRoot, "packages/shell/src/processor.ts"), "utf8"),
+    );
+    const union = source.split("type ShellRecord =")[1]?.split("\n\n")[0] ?? "";
+    return [...union.matchAll(/readonly kind: "([A-Za-z]+)"/g)].map((m) => m[1]!);
+}
 
 /** The first backtick-quoted token of each table row in one `## section`. */
 function tableCodes(markdown: string, heading: string): string[] {
@@ -171,6 +185,7 @@ describe("docs/configuration.md", () => {
             capabilityEnabledNotBoolean: true,
             capabilityUnknown: true,
             meaningNotMappable: true,
+            meaningRequired: true,
             labelInvalid: true,
             labelNotInjective: true,
             principalNotAString: true,
@@ -197,6 +212,7 @@ describe("docs/troubleshooting.md", () => {
             capabilityDisabled: true,
             permissionMissing: true,
             itemBlocked: true,
+            itemClosed: true,
             preconditionStale: true,
             newerHumanChange: true,
             humanOrderingUnknown: true,
@@ -234,6 +250,21 @@ describe("docs/troubleshooting.md", () => {
     it("'on purpose' rows are all notices — the system working", () => {
         expect(onPurpose.length).toBeGreaterThan(0);
         for (const code of onPurpose) expect(`${code}:${severityOf(code)}`).toBe(`${code}:notice`);
+    });
+
+    /**
+     * A record kind is not a verdict code, so it reaches none of the tables
+     * above and nothing else would notice a new one arriving undocumented —
+     * which is how `modeUnsupported` shipped with nowhere to look it up.
+     * `decision` is the ordinary outcome and stays out: a reader consults this
+     * page only when the App recorded something INSTEAD of deciding.
+     */
+    it("covers every shell record that is not a decision, and invents none", () => {
+        const kinds = shellRecordKinds();
+        expect(kinds, "the record union parsed").toContain("decision");
+        expect(tableCodes(doc, "It never got as far as deciding").sort()).toEqual(
+            kinds.filter((kind) => kind !== "decision").sort(),
+        );
     });
 
     it("'needs you' and 'never happen' rows are all problems", () => {

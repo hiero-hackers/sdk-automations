@@ -19,6 +19,7 @@ import {
     declareCapability,
     deriveIdempotencyKey,
     idempotencyOf,
+    intentFactoryFor,
     INTENT_OPERATIONS,
     projectCapabilityView,
     screenIntent,
@@ -30,6 +31,7 @@ const declaration = declareCapability({
     name: "fixture",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: ["announce"],
+    requiredMeanings: [],
     observations: ["issueUpdated"],
     resolvers: ["linkedIssues"],
     intents: ["applyMappedLabel", "unassign"],
@@ -43,8 +45,15 @@ const declaration = declareCapability({
 
 const AT = new Date("2026-08-05T09:00:00.000Z");
 
-const intent = (over: Record<string, unknown> = {}): AnyIntent =>
-    ({
+/**
+ * A well-formed intent, overridable field by field. The key is DERIVED from
+ * whatever the overrides produced, so every screen below is exercised against
+ * an intent the platform would accept — a literal key would refuse them all
+ * at `idempotencyKeyMismatch` instead. Pass `idempotencyKey` to test that
+ * screen itself.
+ */
+const intent = (over: Record<string, unknown> = {}): AnyIntent => {
+    const base = {
         capability: "fixture",
         repository: { owner: "o", repo: "r" },
         item: { kind: "issue", number: 1 },
@@ -53,9 +62,13 @@ const intent = (over: Record<string, unknown> = {}): AnyIntent =>
         desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
         cause: { cause: "someCause", observedAt: AT },
         explanation: { capability: "fixture", summary: "s", detail: [] },
-        idempotencyKey: "k",
         ...over,
-    }) as AnyIntent;
+    } as unknown as Omit<AnyIntent, "idempotencyKey"> & { readonly idempotencyKey?: string };
+    return {
+        ...base,
+        idempotencyKey: base.idempotencyKey ?? deriveIdempotencyKey(base),
+    } as AnyIntent;
+};
 
 describe("the operation catalogue owns platform facts", () => {
     /** Operation-owned facts cannot be restated by a capability. */
@@ -105,13 +118,19 @@ describe("screenIntent", () => {
             screenIntent(
                 intent({
                     operation: "postManagedComment",
-                    desired: { marker: "<!-- m -->", body: "b" },
+                    desired: { kind: "summary", body: "b" },
                 }),
                 declaration,
                 position(),
             ),
+            // An explicit key, because deriving one from this cause is what
+            // the screen order exists to avoid: `toISOString()` throws on an
+            // invalid date, so `invalidCause` must answer first.
             screenIntent(
-                intent({ cause: { cause: "c", observedAt: new Date(Number.NaN) } }),
+                intent({
+                    cause: { cause: "c", observedAt: new Date(Number.NaN) },
+                    idempotencyKey: "k",
+                }),
                 declaration,
                 position(),
             ),
@@ -125,6 +144,48 @@ describe("screenIntent", () => {
             expect(candidate.ok).toBe(false);
             if (!candidate.ok) expect(candidate.reason.length).toBeGreaterThan(0);
         }
+    });
+
+    /**
+     * The key is the store's `effect_id` (D65), and the screen exists for the
+     * same reason the others do: a capability is ordinary code that can be
+     * built from `unknown`, so the boundary re-derives rather than trusting
+     * what came back. A capability free to name its own key could merge two
+     * effects into one, or split a redelivery into two comments.
+     */
+    it("refuses an intent whose idempotency key is not the derived one", () => {
+        const screen = screenIntent(intent({ idempotencyKey: "k" }), declaration, position());
+        expect(screen).toMatchObject({ ok: false, code: "idempotencyKeyMismatch" });
+        if (!screen.ok) expect(screen.reason.length).toBeGreaterThan(0);
+    });
+
+    /** A key derived from a DIFFERENT occasion is as wrong as an invented one. */
+    it("refuses a key derived from another occasion", () => {
+        const elsewhere = deriveIdempotencyKey({
+            capability: "fixture",
+            repository: { owner: "o", repo: "r" },
+            item: { kind: "issue", number: 2 },
+            operation: "applyMappedLabel",
+            cause: { cause: "someCause", observedAt: AT },
+        });
+        expect(
+            screenIntent(intent({ idempotencyKey: elsewhere }), declaration, position()),
+        ).toMatchObject({ ok: false, code: "idempotencyKeyMismatch" });
+    });
+
+    it("passes an intent the factory built, key and all", () => {
+        const built = intentFactoryFor(declaration, {
+            repository: { owner: "o", repo: "r" },
+            item: { kind: "issue", number: 1 },
+            observedAt: AT,
+        })({
+            operation: "applyMappedLabel",
+            desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
+            cause: "someCause",
+            expected: { closed: false },
+            explain: { summary: "s" },
+        });
+        expect(screenIntent(built, declaration, position())).toEqual({ ok: true });
     });
 
     it("refuses a mapped-label intent when authoritative position is unavailable", () => {

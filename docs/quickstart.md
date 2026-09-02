@@ -42,16 +42,17 @@ writes and effect recovery are not implemented.
 ## Choosing a mode
 
 The runnable shell supports `disabled`, `observe` and `dry-run`. It rejects `active` configuration before
-making a decision because no real GitHub effect path is connected yet.
+making a decision unless the endpoint was started with a write path wired, which is not the default.
 
 | Mode | Use it when |
 |---|---|
 | `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
 | `observe` | You want a non-writing decision record; today it includes record-only requested effects |
-| `dry-run` | Today, the same decision path as `observe`; a distinct rollout/report treatment is deferred |
-| `active` | Unsupported by the runnable shell |
+| `dry-run` | You want the same non-writing record, plus a `wouldApply` line naming each change the App would make |
+| `active` | Unsupported unless the endpoint wires a write path |
 
-Active behavior will return only with a real GitHub effect and durable recovery path.
+`dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
+be is named.
 
 ## Common setups
 

@@ -10,9 +10,11 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { parseConfigDocument, type ConfigErrorCode } from "../../src/config/index.js";
-import { DOCUMENT_REJECTIONS, expectRejection } from "./documents.js";
+import { DOCUMENT_ADMISSIONS, DOCUMENT_REJECTIONS, expectRejection } from "./documents.js";
 
-const OPTIONS = { revision: "rev-test", knownCapabilities: ["intake", "prQuality"] };
+// Declared rather than named: a name-only admission cannot reach the
+// settings-key or required-meaning rules, and both are document-reachable (D84).
+const OPTIONS = { revision: "rev-test", knownCapabilities: DOCUMENT_ADMISSIONS };
 const parse = (yaml: string) => parseConfigDocument(yaml, OPTIONS);
 
 describe("every rejection the catalogue names is reachable", () => {
@@ -34,6 +36,7 @@ describe("every rejection the catalogue names is reachable", () => {
         capabilityEnabledNotBoolean: true,
         capabilityUnknown: true,
         meaningNotMappable: true,
+        meaningRequired: true,
         labelInvalid: true,
         labelNotInjective: true,
         principalNotAString: true,

@@ -26,6 +26,7 @@ export type ConfigErrorCode =
     | "capabilityEnabledNotBoolean"
     | "capabilityUnknown"
     | "meaningNotMappable"
+    | "meaningRequired"
     | "labelInvalid"
     | "labelNotInjective"
     | "principalNotAString";

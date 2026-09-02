@@ -11,7 +11,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isPermissionGrant, missingPermissions } from "../../src/github/index.js";
+import {
+    isPermissionGrant,
+    missingPermissions,
+    type PermissionGrant,
+} from "../../src/github/index.js";
 
 describe("isPermissionGrant — GitHub's scope:level form", () => {
     it.each([
@@ -58,5 +62,38 @@ describe("missingPermissions — the absent ones, named (D77)", () => {
 
     it("holding read does not satisfy a requirement for write", () => {
         expect(missingPermissions(["issues:write"], ["issues:read"])).toEqual(["issues:write"]);
+    });
+
+    /**
+     * The ladder, both directions. Exact set membership made an installation
+     * holding `issues:write` fail a requirement of `issues:read` — a
+     * `permissionMissing` refusal shown to a maintainer whose grants were
+     * already correct, which sends them to fix a working installation.
+     */
+    it("holding write satisfies a requirement for read on the same resource", () => {
+        expect(missingPermissions(["issues:read"], ["issues:write"])).toEqual([]);
+        expect(missingPermissions(["issues:read"], ["issues:read"])).toEqual([]);
+    });
+
+    it("the ladder is per resource: another resource's write satisfies nothing", () => {
+        expect(missingPermissions(["issues:read"], ["contents:write"])).toEqual(["issues:read"]);
+        // The prefix is not a resource: `issues_events` is its own scope.
+        expect(missingPermissions(["issues:read"], ["issues_events:write"])).toEqual([
+            "issues:read",
+        ]);
+    });
+
+    it("answers a malformed requirement by exact membership, and never throws", () => {
+        const malformed = ["issues", ":read", "read", ""] as unknown as readonly PermissionGrant[];
+        expect(() => missingPermissions(malformed, ["issues:write"])).not.toThrow();
+        expect(missingPermissions(malformed, ["issues:write"])).toEqual([
+            "issues",
+            ":read",
+            "read",
+            "",
+        ]);
+        // Held exactly, a malformed string still satisfies itself: this
+        // function judges membership, never grant validity.
+        expect(missingPermissions(malformed, malformed)).toEqual([]);
     });
 });

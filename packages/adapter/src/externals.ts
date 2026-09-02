@@ -12,7 +12,13 @@ import type {
     RepositoryRef,
     ResolverSource,
 } from "@hiero-hackers/automation-core";
-import { lastPageFromLink, repoPath, type GitHubHttpClient, type GitHubOutcome } from "./http.js";
+import {
+    describeFailure,
+    lastPageFromLink,
+    repoPath,
+    type GitHubHttpClient,
+    type GitHubOutcome,
+} from "./http.js";
 import { createResolverSource } from "./resolvers.js";
 import type { TokenSource } from "./token.js";
 import { field, jsonArrayOf } from "./untrusted.js";
@@ -61,12 +67,21 @@ export interface CauseFingerprint {
     readonly target: string | null;
 }
 
-/** What one delivery's ordering reads need; built fresh per delivery. */
+/**
+ * What one delivery's ordering reads need; built fresh per delivery.
+ *
+ * `onUnknownOrdering` exists because core's `HumanChangeOrdering` has room for
+ * `"unknown"` and nothing else. A refusal by GitHub, a nonsense body, and a
+ * timeline too long to read all reach a decision as the same word, and they
+ * need different fixes — so the reason leaves through a seam the composition
+ * root points at its log instead of dying here. It never changes an answer.
+ */
 export interface OrderingEvidenceOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
     /** Absent for sweeps and incomplete/unhandled causes — nothing to exclude. */
     readonly cause?: CauseFingerprint;
+    readonly onUnknownOrdering?: (detail: string) => void;
 }
 
 /** GitHub timestamps have second granularity; compare at that granularity. */
@@ -131,15 +146,22 @@ interface TimelinePage {
     readonly lastPage: number | null;
 }
 
-function parsePage(outcome: GitHubOutcome): TimelinePage | "unknown" {
-    if (!outcome.ok) return "unknown";
+/** A page, or the reason this read establishes nothing about ordering. */
+type PageOutcome = TimelinePage | { readonly unreadable: string };
+
+function parsePage(outcome: GitHubOutcome): PageOutcome {
+    if (!outcome.ok) {
+        return { unreadable: `GitHub refused the read: ${describeFailure(outcome.failure)}` };
+    }
     const events = jsonArrayOf(outcome.body);
-    if (events === null) return "unknown";
+    if (events === null) return { unreadable: "GitHub's timeline body was not a JSON array" };
     const link = outcome.headers.link;
     const lastPage = lastPageFromLink(link);
     // GitHub may advertise a next page without knowing the last page.
     // We cannot walk newest-first in that case; absence would be a guess.
-    if (lastPage === null && link?.includes('rel="next"')) return "unknown";
+    if (lastPage === null && link?.includes('rel="next"')) {
+        return { unreadable: "GitHub advertised a next page without naming the last" };
+    }
     return { events, lastPage };
 }
 
@@ -150,21 +172,38 @@ function parsePage(outcome: GitHubOutcome): TimelinePage | "unknown" {
  * incomplete coverage without a newest-block find must answer "unknown".
  */
 async function readOrdering(
-    { http, repository, cause }: OrderingEvidenceOptions,
+    { http, repository, cause, onUnknownOrdering }: OrderingEvidenceOptions,
     item: ItemRef,
 ): Promise<HumanChangeOrdering> {
     const pageUrl = (page: number): string =>
         `${repoPath(repository)}/issues/${String(item.number)}/timeline` +
         `?per_page=${String(TIMELINE_PAGE_SIZE)}&page=${String(page)}`;
-    const read = async (page: number): Promise<TimelinePage | "unknown"> =>
+    const read = async (page: number): Promise<PageOutcome> =>
         parsePage(await http.request({ url: pageUrl(page), method: "GET" }));
 
-    const first = await read(1);
-    if (first === "unknown") return "unknown";
-    const lastPage = first.lastPage ?? 1;
+    /** Say why, then answer the only word the contract has room for. */
+    const unknown = (detail: string): "unknown" => {
+        try {
+            onUnknownOrdering?.(`#${String(item.number)} ordering unknown: ${detail}`);
+        } catch {
+            // A diagnostic seam that throws must not change a decision.
+        }
+        return "unknown";
+    };
     const itemCause = cause?.itemNumber === item.number ? cause : undefined;
+    /** The newest human change in these events, saying why when it cannot tell. */
+    const newestOf = (events: readonly unknown[]): HumanChangeOrdering => {
+        const answer = newestIn(events, itemCause);
+        return answer === "unknown"
+            ? unknown("a timeline entry carried an unreadable actor or timestamp")
+            : answer;
+    };
+
+    const first = await read(1);
+    if ("unreadable" in first) return unknown(`page 1: ${first.unreadable}`);
+    const lastPage = first.lastPage ?? 1;
     // Stryker disable next-line ConditionalExpression: the general path below answers a one-page timeline identically; the early return is for readers.
-    if (lastPage === 1) return newestIn(first.events, itemCause);
+    if (lastPage === 1) return newestOf(first.events);
 
     const descending: number[] = [];
     for (let page = lastPage; page > 1 && descending.length < TIMELINE_READ_CAP - 1; page -= 1) {
@@ -174,17 +213,19 @@ async function readOrdering(
     const recent: unknown[] = [];
     for (const page of descending) {
         const outcome = await read(page);
-        if (outcome === "unknown") return "unknown";
+        if ("unreadable" in outcome) {
+            return unknown(`page ${String(page)}: ${outcome.unreadable}`);
+        }
         // Keep the visited block together: the cause can be excluded only once,
         // even when two same-second actions straddle a page boundary.
         recent.push(...outcome.events);
-        const newest = newestIn(recent, itemCause);
+        const newest = newestOf(recent);
         if (newest !== null) return newest;
     }
     // Nothing in the newest block; only complete coverage may answer null.
     return lastPage <= 1 + descending.length
-        ? newestIn([...recent, ...first.events], itemCause)
-        : "unknown";
+        ? newestOf([...recent, ...first.events])
+        : unknown(`the timeline is longer than ${String(TIMELINE_READ_CAP)} reads may cover`);
 }
 
 /**
@@ -249,6 +290,8 @@ export interface LiveExternalsOptions {
     readonly tokenSource: TokenSource;
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** Passed straight to `OrderingEvidenceOptions`; see that type for why. */
+    readonly onUnknownOrdering?: (detail: string) => void;
 }
 
 /**
@@ -257,7 +300,7 @@ export interface LiveExternalsOptions {
  * delivery: the ordering memo inside must not outlive it.
  */
 export async function liveExternalsForDelivery(
-    { tokenSource, http, repository }: LiveExternalsOptions,
+    { tokenSource, http, repository, onUnknownOrdering }: LiveExternalsOptions,
     payload: unknown,
 ): Promise<LiveExternalsOutcome> {
     const grants = await installationGrants(tokenSource);
@@ -272,6 +315,8 @@ export async function liveExternalsForDelivery(
                 repository,
                 // Stryker disable next-line ConditionalExpression: spreading { cause: undefined } is runtime-identical; the guard serves exactOptionalPropertyTypes.
                 ...(cause === undefined ? {} : { cause }),
+                // Stryker disable next-line ConditionalExpression: as above — the guard serves exactOptionalPropertyTypes, not behaviour.
+                ...(onUnknownOrdering === undefined ? {} : { onUnknownOrdering }),
             }),
             resolve: createResolverSource({
                 http,

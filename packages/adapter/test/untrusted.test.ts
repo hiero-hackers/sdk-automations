@@ -20,6 +20,33 @@ describe("field", () => {
     ])("answers undefined for %s without throwing", (_label, value) => {
         expect(field(value, "a")).toBeUndefined();
     });
+
+    it.each(["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf"])(
+        "answers undefined for the inherited key %s",
+        (name) => {
+            // Each of these is truthy on a plain object's prototype, so an
+            // unguarded read hands a caller a value GitHub never sent.
+            expect(field({ a: 1 }, name)).toBeUndefined();
+        },
+    );
+
+    it("answers undefined for an inherited key an ancestor defined", () => {
+        const parent = { inherited: "from the prototype" };
+        expect(field(Object.create(parent) as object, "inherited")).toBeUndefined();
+    });
+
+    it("still reads a key the payload itself carries under a prototype name", () => {
+        // JSON.parse defines `__proto__` as an OWN property, so this one was
+        // genuinely in the bytes and the reader must not hide it.
+        const record = jsonRecordOf('{"__proto__":{"a":1},"constructor":"c"}');
+        expect(field(record, "__proto__")).toEqual({ a: 1 });
+        expect(field(record, "constructor")).toBe("c");
+    });
+
+    it("reads own properties whose value is falsy or undefined", () => {
+        expect(field({ a: 0 }, "a")).toBe(0);
+        expect(field({ a: undefined }, "a")).toBeUndefined();
+    });
 });
 
 describe("jsonRecordOf", () => {

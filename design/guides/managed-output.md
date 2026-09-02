@@ -20,11 +20,14 @@
 ## 2. Managed comment identity
 
 ```html
-<!-- hiero-automation:v1:pr-quality:summary -->
+<!-- hiero-automation:{"schemaVersion":1,"capability":"prQuality","kind":"summary","effect":"0a70e62c14228dbe"} -->
 ```
 
 - One short marker per purpose on the current issue or pull request.
-- The marker contains a schema version, capability, and comment kind.
+- The marker contains a schema version, capability, comment kind, and effect identity.
+- `effect` is a digest of the effect id, not the id: the id carries free text that has no business
+  being published, and a reader only ever compares digests (D125).
+- Core derives the whole marker; a capability supplies the kind and the body and can write none.
 - The repository and item are already known from the comment's location.
 - A marker counts only when the GitHub App authored the comment.
 - The adapter finds the App-authored marker and creates the comment when it is missing.
@@ -124,7 +127,9 @@ A safety warning must state all five facts.
 
 ## 9. Questions that remain open
 
-- The project must choose the marker and metadata schema after the sandbox experiment.
+- ~~The project must choose the marker and metadata schema after the sandbox experiment.~~
+  Decided by D125 (2026-09-02): platform-owned, carrying schema version, capability, comment kind,
+  and the effect id — the 6.5 harness's proven shape.
 - The project must decide which output types use comments, issues, checks, or operator-only records.
 - SQLite is the owned operational store; the executor design must define the exact command and safety
   progress records while comments remain user-facing receipts, not coordination state.

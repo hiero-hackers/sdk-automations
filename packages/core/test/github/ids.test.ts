@@ -37,6 +37,11 @@ describe("delivery identifier separation (experiment 6.2)", () => {
         expect(asDeliveryRecordId(guid)).toBeUndefined();
     });
 
+    it("rejects an uppercased GUID: a case-variant would be a second delivery, not a duplicate", () => {
+        expect(asDeliveryGuid("0B989BA4-242F-11E5-81E1-C7B6966D2516")).toBeUndefined();
+        expect(asDeliveryGuid("0b989ba4-242f-11e5-81e1-c7b6966d251A")).toBeUndefined();
+    });
+
     it("accepts a >2^53 digit string unchanged", () => {
         const raw = "3832900504397021184"; // a real observed id; > Number.MAX_SAFE_INTEGER
         expect(asDeliveryRecordId(raw)).toBe(raw);

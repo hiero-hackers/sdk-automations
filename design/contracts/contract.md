@@ -14,6 +14,7 @@ interface CapabilityDeclaration {
   readonly name: string;
   readonly triggers: readonly Trigger[];
   readonly configKeys: readonly string[];
+  readonly requiredMeanings: readonly string[];
   readonly observations: readonly string[];
   readonly resolvers: readonly string[];
   readonly intents: readonly string[];
@@ -34,7 +35,12 @@ interface OperationalNeeds {
 
 - `validateCapabilityDeclarations` validates the complete directly admitted set: name syntax, at least one
   trigger, schedule consistency, duplicates, catalogue membership, and duplicate capability names.
-- `TypedDeclaration` narrows observation, resolver, and intent names to the closed platform catalogues.
+- `configKeys` and `requiredMeanings` are the two fields the CONFIGURATION layer reads: the first says
+  which `settings` names are legal, the second which label meanings must be mapped before the capability
+  may be enabled. Both are empty rather than absent for a capability that wants neither, and a required
+  meaning outside the closed catalogue is a boot error (D84).
+- `TypedDeclaration` narrows meaning, observation, resolver, and intent names to the closed platform
+  catalogues, which is also what lets a declaration serve as an `AdmittedCapability` uncast.
 - `declareCapability<const D>` preserves those lists as literal tuples so the boundary can project exact
   types instead of widening them to every name.
 - There is no runtime retirement registry, `describe`, or tombstone lookup. The application passes one

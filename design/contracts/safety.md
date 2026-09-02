@@ -32,8 +32,8 @@ reported, and the tests freeze the sequence (D39, D52).
    recorded warning, warning-to-request match, plan validity, grace floor, grace elapsed, cancelling
    activity.
 3. **General rules**, shared by both doors, in the order `GENERAL_RULES` lists them: observation,
-   capability enabled, permissions, item paused, human ordering known, timestamps valid, no newer
-   human change, mode not disabled, mode not record-only.
+   capability enabled, permissions, item open, item paused, human ordering known, timestamps valid,
+   no newer human change, mode not disabled, mode not record-only.
 4. Nothing objected — `apply`.
 
 ## 3. Refusal codes
@@ -48,6 +48,7 @@ table, not this document's.
 | `preventiveGateUnavailable` | `write.ts` | The immediate-preventive class has no gate yet. |
 | `capabilityDisabled` | general rules | The repository did not enable this capability. |
 | `permissionMissing` | general rules | The installation lacks a grant the request requires. |
+| `itemClosed` | general rules | The observed item is closed; a closed item accepts no capability write. Reported ahead of `itemBlocked`, because closure is terminal where a pause is not. |
 | `itemBlocked` | general rules | A mapped `blocked` meaning pauses capability writes for this item. |
 | `preconditionStale` | preflight | The authoritative precondition is unavailable, conflicted, or no longer holds. |
 | `newerHumanChange` | general rules | A human changed the item at or after the cause; ties go to the human. |
@@ -83,5 +84,5 @@ The write rules the engine can decide from a single request. Rules 6–10 cannot
 | 3 — the capability supplied a dated cause and expected state | `invalidTimestamp` |
 | 4 — mutable preconditions rechecked before the write | `preconditionStale` |
 | 5 — a newer human change is a conflict, and so is unknown ordering | `newerHumanChange`, `humanOrderingUnknown` |
-| pause and kill switches | `itemBlocked`, `killSwitch` |
+| closure, pause and kill switches | `itemClosed`, `itemBlocked`, `killSwitch` |
 | class routing | `wrongEntryPoint`, `preventiveGateUnavailable`, `wrongActionClass` |

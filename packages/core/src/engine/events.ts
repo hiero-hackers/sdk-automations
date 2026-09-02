@@ -102,6 +102,20 @@ function repositoryOf(
 }
 
 /**
+ * The repository a payload readably names — total over `unknown`, `null`
+ * when it names none. Exported for the shell's serving-boundary check, so
+ * the one reading of these three fields lives beside the normalizer that
+ * owns them; a payload this cannot read is one `normalizeDelivery` reports
+ * as `payloadNotObject` or `repositoryUnreadable`, and a caller must not
+ * pre-empt that with a refusal of its own.
+ */
+export function repositoryNamedBy(
+    payload: unknown,
+): { readonly owner: string; readonly repo: string } | null {
+    return isRecord(payload) ? repositoryOf(payload) : null;
+}
+
+/**
  * Issue closure, from what the webhook alone can see. GitHub reports
  * `state` and `state_reason`; whether a closure was CAUSED by a linked
  * merge (`completedByLinkedMerge`, D47) is not on this payload — it needs

@@ -4,7 +4,8 @@
  * capability; the platform catalogues remain authoritative for operation facts.
  */
 
-import { CAPABILITY_NAME_PATTERN } from "../config/schema.js";
+import { CAPABILITY_NAME_PATTERN, MAPPABLE_MEANINGS } from "../config/schema.js";
+import type { MappableMeaning } from "../config/schema.js";
 import type { IntentOperation, ObservationName, ResolverName } from "./catalogue.js";
 import { INTENT_OPERATIONS, OBSERVATION_NAMES, RESOLVER_NAMES } from "./catalogue.js";
 
@@ -21,11 +22,20 @@ export interface OperationalNeeds {
     readonly externalDelivery: boolean;
 }
 
-/** A capability's self-description — `design/contracts/contract.md` §1. */
+/**
+ * A capability's self-description — `design/contracts/contract.md` §1.
+ *
+ * `configKeys` and `requiredMeanings` are the two the CONFIGURATION layer
+ * reads: the first says which `settings` names are legal, the second which
+ * label meanings must be mapped before the capability may be enabled. Both
+ * are empty rather than absent for a capability that wants neither, so
+ * "declares nothing" is a written answer instead of a forgotten field (D84).
+ */
 export interface CapabilityDeclaration {
     readonly name: string;
     readonly triggers: readonly Trigger[];
     readonly configKeys: readonly string[];
+    readonly requiredMeanings: readonly string[];
     readonly observations: readonly string[];
     readonly resolvers: readonly string[];
     readonly intents: readonly string[];
@@ -36,8 +46,12 @@ export interface CapabilityDeclaration {
  * A declaration whose names are catalogue keys. `CapabilityDeclaration`
  * keeps `readonly string[]` so malformed external declarations remain
  * runtime-validatable; the runtime boundary needs key-constrained names.
+ *
+ * Narrowing `requiredMeanings` here is also what makes a declaration usable
+ * as `AdmittedCapability` without a cast — the shape `parseConfig` admits.
  */
 export interface TypedDeclaration extends CapabilityDeclaration {
+    readonly requiredMeanings: readonly MappableMeaning[];
     readonly observations: readonly ObservationName[];
     readonly resolvers: readonly ResolverName[];
     readonly intents: readonly IntentOperation[];
@@ -87,6 +101,7 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
 
     for (const list of [
         ["configKeys", d.configKeys],
+        ["requiredMeanings", d.requiredMeanings],
         ["observations", d.observations],
         ["resolvers", d.resolvers],
         ["intents", d.intents],
@@ -103,11 +118,21 @@ function isIntentOperation(name: string): name is IntentOperation {
     return Object.hasOwn(INTENT_OPERATIONS, name);
 }
 
-/** Do the declared observation, resolver, and intent names exist? */
+/** Do the declared meaning, observation, resolver, and intent names exist? */
 function checkAgainstCatalogue(declaration: CapabilityDeclaration): readonly string[] {
     const errors: string[] = [];
     const at = `capability "${declaration.name}"`;
 
+    /**
+     * A meaning nobody can map is a requirement nobody can satisfy: the
+     * capability would be enabled-and-refused in every repository, and the
+     * configuration error would name a meaning the file is forbidden to spell.
+     */
+    for (const meaning of declaration.requiredMeanings) {
+        if (!MAPPABLE_MEANINGS.some((name) => name === meaning)) {
+            errors.push(`${at}: required meaning "${meaning}" is not a mappable meaning`);
+        }
+    }
     for (const observation of declaration.observations) {
         if (!OBSERVATION_NAMES.some((name) => name === observation)) {
             errors.push(`${at}: observation "${observation}" is not in the observation catalogue`);

@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    parseConfig,
     projectCapabilityView,
     type ObservationCatalogue,
     type ObservationProjection,
@@ -22,7 +23,6 @@ import { prQuality, type PrQualityDeclaration } from "../src/index.js";
 import { configEnabling } from "./world.js";
 
 const AT = new Date("2026-08-03T09:00:00.000Z");
-const OWN_MARKER = "<!-- hiero-automation:prQuality -->";
 const REPO = { owner: "hiero-hackers", repo: "sandbox" } as const;
 const ITEM = { kind: "pullRequest", number: 12 } as const;
 
@@ -136,7 +136,7 @@ describe("prQuality", () => {
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
-                    marker: OWN_MARKER,
+                    kind: "summary",
                     body: "This pull request does not reference an issue. Adding a closing reference keeps the issue and the pull request in step.",
                 },
                 expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
@@ -151,16 +151,37 @@ describe("prQuality", () => {
         ]);
     });
 
-    it("marks its comment with the repository's marker, or its own", async () => {
-        const marked = async (settings: Readonly<Record<string, unknown>>) =>
-            await prQuality.evaluate(pullRequest({}), view(settings), noneFound.platform);
+    /**
+     * D125 removed the marker from the configuration surface, and the D84
+     * machinery is what makes that removal load-bearing rather than polite: a
+     * file still setting one is refused before the shell ever constructs the
+     * capability. The `enabled: false` block is deliberate — an unknown key is
+     * a document defect, so it is refused whether or not anyone runs it.
+     */
+    it("refuses a configuration that still supplies a marker", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { prQuality: { enabled: false, settings: { marker: "<!-- x -->" } } },
+            },
+            {
+                revision: "rev-marker",
+                knownCapabilities: [
+                    {
+                        name: prQuality.declaration.name,
+                        configKeys: prQuality.declaration.configKeys,
+                        requiredMeanings: prQuality.declaration.requiredMeanings,
+                    },
+                ],
+            },
+        );
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
+            "unknownKey @ capabilities.prQuality.settings.marker",
+        ]);
+    });
 
-        expect((await marked({}))[0]).toMatchObject({
-            operation: "postManagedComment",
-            desired: { marker: OWN_MARKER },
-        });
-        expect((await marked({ marker: "<!-- repo:prq -->" }))[0]).toMatchObject({
-            desired: { marker: "<!-- repo:prq -->" },
-        });
+    /** The negative control: the declaration admits nothing at all now. */
+    it("declares no settings keys for a repository to supply", () => {
+        expect(prQuality.declaration.configKeys).toEqual([]);
     });
 });

@@ -371,6 +371,119 @@ describe("ordering evidence", () => {
     });
 });
 
+/**
+ * Four different problems reach a decision as the same word. These pin that
+ * an operator can still tell them apart (D20).
+ */
+describe("why an ordering came back unknown", () => {
+    /** An ordering source that keeps every reason it gave. */
+    function reasoned(steps: Parameters<typeof harness>[0]) {
+        const details: string[] = [];
+        const built = harness(steps);
+        return {
+            lookup: orderingEvidenceSource({
+                http: built.client,
+                repository: REPOSITORY,
+                onUnknownOrdering: (detail) => details.push(detail),
+            }),
+            details,
+        };
+    }
+
+    it("names the classified failure behind a refused read", async () => {
+        const { lookup, details } = reasoned([failure(500, "[]"), failure(500, "[]")]);
+
+        expect(await lookup(ITEM)).toBe("unknown");
+        expect(details).toEqual([
+            "#7 ordering unknown: page 1: GitHub refused the read: transient",
+        ]);
+    });
+
+    it("tells a nonsense body from a page count GitHub would not name", async () => {
+        const nonArray = reasoned([success('{"events": []}')]);
+        expect(await nonArray.lookup(ITEM)).toBe("unknown");
+        expect(nonArray.details).toEqual([
+            "#7 ordering unknown: page 1: GitHub's timeline body was not a JSON array",
+        ]);
+
+        const advertised = reasoned([page([], { link: `<${TIMELINE_URL}?page=2>; rel="next"` })]);
+        expect(await advertised.lookup(ITEM)).toBe("unknown");
+        expect(advertised.details).toEqual([
+            "#7 ordering unknown: page 1: GitHub advertised a next page without naming the last",
+        ]);
+    });
+
+    it("names the page a later read failed on", async () => {
+        const { lookup, details } = reasoned([
+            page([], linkTo(2)),
+            failure(500, "boom"),
+            failure(500, "boom"),
+        ]);
+
+        expect(await lookup(ITEM)).toBe("unknown");
+        expect(details).toEqual([
+            "#7 ordering unknown: page 2: GitHub refused the read: transient",
+        ]);
+    });
+
+    it("tells an unreadable entry from a timeline the cap cannot cover", async () => {
+        const broken = reasoned([page([entry("labeled", "maintainer", "not a date")])]);
+        expect(await broken.lookup(ITEM)).toBe("unknown");
+        expect(broken.details).toEqual([
+            "#7 ordering unknown: a timeline entry carried an unreadable actor or timestamp",
+        ]);
+
+        const tooLong = reasoned([page([], linkTo(5)), page([]), page([])]);
+        expect(await tooLong.lookup(ITEM)).toBe("unknown");
+        expect(tooLong.details).toEqual([
+            "#7 ordering unknown: the timeline is longer than 3 reads may cover",
+        ]);
+    });
+
+    it("says nothing when the ordering is established", async () => {
+        const found = reasoned([page([entry("labeled", "maintainer", AT)])]);
+        expect(await found.lookup(ITEM)).toEqual(new Date(AT));
+        expect(found.details).toEqual([]);
+
+        const absent = reasoned([page([])]);
+        expect(await absent.lookup(ITEM)).toBeNull();
+        expect(absent.details).toEqual([]);
+    });
+
+    it("contains a diagnostic seam that throws, and answers anyway", async () => {
+        const lookup = orderingEvidenceSource({
+            http: harness([success("not json")]).client,
+            repository: REPOSITORY,
+            onUnknownOrdering: () => {
+                throw new Error("the log is gone");
+            },
+        });
+
+        expect(await lookup(ITEM)).toBe("unknown");
+    });
+
+    it("carries the sink from a delivery's live externals to the read", async () => {
+        const details: string[] = [];
+        const built = harness([success("not json")]);
+        const outcome = await liveExternalsForDelivery(
+            {
+                tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+                http: built.client,
+                repository: REPOSITORY,
+                onUnknownOrdering: (detail) => details.push(detail),
+            },
+            PAYLOAD,
+        );
+
+        expect(outcome.ok).toBe(true);
+        if (!outcome.ok) return;
+        expect(await outcome.facts.latestHumanChangeAt(ITEM)).toBe("unknown");
+        expect(details).toEqual([
+            "#7 ordering unknown: page 1: GitHub's timeline body was not a JSON array",
+        ]);
+    });
+});
+
 describe("the cause fingerprint", () => {
     it("reads the sender and the item's updated_at, the normalizer's field", () => {
         expect(

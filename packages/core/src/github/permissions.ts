@@ -19,17 +19,37 @@ export function isPermissionGrant(value: string): value is PermissionGrant {
     return PERMISSION_PATTERN.test(value);
 }
 
+const READ_SUFFIX = ":read";
+
+/**
+ * The write grant on the same resource, when the requirement is a read one.
+ *
+ * GitHub's levels are a ladder per resource, so `issues:write` covers
+ * `issues:read` and never the reverse. Total on a malformed string: anything
+ * not ending in `:read` has no wider grant and is answered by exact
+ * membership alone.
+ */
+function widerGrantFor(required: PermissionGrant): PermissionGrant | null {
+    return required.endsWith(READ_SUFFIX)
+        ? `${required.slice(0, -READ_SUFFIX.length)}:write`
+        : null;
+}
+
 /**
  * Does an installation's grant cover everything an operation needs?
  *
  * Returns the MISSING grants, not a boolean. An operator message that names
  * the absent permission is the difference between a fix and an investigation
- * (D77).
+ * (D77) — and a maintainer told `issues:read` is missing while the App holds
+ * `issues:write` is sent to fix a working installation.
  */
 export function missingPermissions(
     required: readonly PermissionGrant[],
     granted: readonly PermissionGrant[],
 ): readonly PermissionGrant[] {
-    const held = new Set(granted);
-    return required.filter((r) => !held.has(r));
+    const held: ReadonlySet<string> = new Set(granted);
+    return required.filter((r) => {
+        const wider = widerGrantFor(r);
+        return !held.has(r) && (wider === null || !held.has(wider));
+    });
 }

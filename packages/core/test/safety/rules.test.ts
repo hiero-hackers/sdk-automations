@@ -26,6 +26,7 @@ describe("the check order is contract, and now assertable directly", () => {
             "observation",
             "capabilityDisabled",
             "permissionMissing",
+            "itemClosed",
             "itemBlocked",
             "humanOrderingUnknown",
             "invalidTimestamp",
@@ -56,8 +57,10 @@ describe("the check order is contract, and now assertable directly", () => {
     it.each(GENERAL_RULES.map(([name, rule]) => [name, rule] as const))(
         "%s answers unestablished ordering on its own, without the rule above it",
         (_name, rule) => {
+            const write = request();
             const facts = {
-                request: request(),
+                request: write,
+                actionClass: write.actionClass,
                 config: config(),
                 context: context({ latestHumanChangeAt: "unknown" }),
                 capabilityEnabled: true,

@@ -62,6 +62,12 @@ export interface CapabilityView<D extends TypedDeclaration> {
  * Build that view. Undeclared settings keys are dropped rather than
  * rejected — the capability's own schema owns its block (§2), and this
  * function's job is the isolation cut, not validation.
+ *
+ * Since D84 `parseConfig` rejects an undeclared settings key outright, so for
+ * a parsed configuration the drop below never fires. It stays as the
+ * boundary's own defense: this function takes a `RepositoryConfig`, not a
+ * promise about where one came from, and the isolation cut must hold for
+ * `NO_CONFIG` and for any caller that builds one another way.
  */
 export function projectCapabilityView<const D extends TypedDeclaration>(
     declaration: D,

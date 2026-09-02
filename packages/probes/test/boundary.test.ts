@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    deriveIdempotencyKey,
     idempotencyOf,
     projectCapabilityView,
     screenIntent,
@@ -21,15 +22,16 @@ const NAMES = ALL.map((c) => c.declaration.name);
  * A declaration is the whole of what the platform will let a capability see,
  * ask and write, so each is pinned as a literal rather than sampled. The
  * triad is also deliberately unalike — event and schedule triggers, one
- * empty resolver list, one `durableState: "required"` — and only the full
- * shapes side by side show that.
+ * empty resolver list, one `durableState: "required"`, one non-empty
+ * `requiredMeanings` — and only the full shapes side by side show that.
  */
 describe("declared shape", () => {
     it("prQuality declares one event trigger, one resolver, and one comment", () => {
         expect(prQuality.declaration).toEqual({
             name: "prQuality",
             triggers: [{ kind: "event", event: "pull_request" }],
-            configKeys: ["marker"],
+            configKeys: [],
+            requiredMeanings: [],
             observations: ["pullRequestUpdated"],
             resolvers: ["linkedIssues"],
             intents: ["postManagedComment"],
@@ -42,11 +44,17 @@ describe("declared shape", () => {
         });
     });
 
-    it("intake declares no resolver, and two intents from one observation", () => {
+    /**
+     * The only probe that requires a meaning, and the one D84 is about: this
+     * list is what makes enabling intake without `awaitingTriage` a file
+     * error instead of a runtime silence.
+     */
+    it("intake declares no resolver, two intents from one observation, and one required meaning", () => {
         expect(intake.declaration).toEqual({
             name: "intake",
             triggers: [{ kind: "event", event: "issues" }],
             configKeys: ["announce"],
+            requiredMeanings: ["awaitingTriage"],
             observations: ["issueUpdated"],
             resolvers: [],
             intents: ["applyMappedLabel", "postManagedComment"],
@@ -64,6 +72,7 @@ describe("declared shape", () => {
             name: "inactivity",
             triggers: [{ kind: "schedule", description: "daily stale-assignment sweep" }],
             configKeys: ["gracePeriodDays"],
+            requiredMeanings: [],
             observations: ["staleItemsDue"],
             resolvers: ["isAutomationActor"],
             intents: ["postManagedComment", "unassign"],
@@ -135,8 +144,16 @@ describe("intent screening", () => {
         expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
         cause: { cause: "c", observedAt: new Date("2026-08-03T00:00:00.000Z") },
         explanation: { capability: "intake", summary: "s", detail: [] },
-        idempotencyKey: "k",
     } as const;
+    /**
+     * The candidate under test, keyed the way the platform keys it. A literal
+     * key would be refused by the idempotency screen before any of the
+     * screens below it ever ran.
+     */
+    const candidate = (over: Record<string, unknown>): AnyIntent => {
+        const draft = { ...base, ...over } as unknown as Parameters<typeof deriveIdempotencyKey>[0];
+        return { ...draft, idempotencyKey: deriveIdempotencyKey(draft) } as AnyIntent;
+    };
     const position = {
         kind: "position" as const,
         state: { meaning: null, blocked: false, closedBy: null },
@@ -144,37 +161,31 @@ describe("intent screening", () => {
     };
 
     it("refuses an intent the capability did not declare", () => {
-        const candidate = {
-            ...base,
-            operation: "unassign",
-            desired: { login: "someone" },
-        } as AnyIntent;
-        expect(screenIntent(candidate, intake.declaration, position)).toMatchObject({
+        const undeclared = candidate({ operation: "unassign", desired: { login: "someone" } });
+        expect(screenIntent(undeclared, intake.declaration, position)).toMatchObject({
             ok: false,
             code: "undeclaredIntent",
         });
     });
 
     it("refuses an intent attributed to another capability", () => {
-        const candidate = {
-            ...base,
+        const foreign = candidate({
             capability: "prQuality",
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-        } as AnyIntent;
-        expect(screenIntent(candidate, intake.declaration, position)).toMatchObject({
+        });
+        expect(screenIntent(foreign, intake.declaration, position)).toMatchObject({
             ok: false,
             code: "foreignCapability",
         });
     });
 
     it("refuses a label transition when authoritative position is unavailable", () => {
-        const candidate = {
-            ...base,
+        const unprojected = candidate({
             operation: "applyMappedLabel",
             desired: { meaning: "awaitingTriage", cause: "intakeObserved" },
-        } as AnyIntent;
-        expect(screenIntent(candidate, intake.declaration, null)).toMatchObject({
+        });
+        expect(screenIntent(unprojected, intake.declaration, null)).toMatchObject({
             ok: false,
             code: "authoritativePositionUnavailable",
         });

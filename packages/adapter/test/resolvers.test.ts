@@ -323,7 +323,7 @@ describe("linkedIssues", () => {
             ]),
         ).toMatchObject({ detail: "GitHub denied the query" });
         expect(await answer([failure(403, "secondary rate limit")])).toMatchObject({
-            detail: "GitHub rate limit reached",
+            detail: "GitHub secondary rate limit reached, with no retry-after to wait on",
         });
         expect(await answer([failure(500, "weather")])).toMatchObject({
             detail: "GitHub query failed: transient",
@@ -368,6 +368,67 @@ describe("linkedIssues", () => {
         });
         expect(await repeated.resolve("isAutomationActor", { login: "" })).toMatchObject({
             detail: "isAutomationActor requires a valid login",
+        });
+    });
+
+    /**
+     * One `reason` covers all three rate classes because a capability can act
+     * on nothing finer. An operator can: these assertions are the wait signal
+     * surviving the collapse (D20).
+     */
+    it("says which rate limit was reached and what wait signal it carried", async () => {
+        const answer = async (steps: readonly ResponseStep[]) => linked(source(steps).resolve);
+
+        expect(
+            await answer([
+                failure(403, "API rate limit exceeded", {
+                    "x-ratelimit-remaining": "0",
+                    "x-ratelimit-reset": "1787310000",
+                }),
+            ]),
+        ).toEqual({
+            ok: false,
+            reason: "rateLimited",
+            detail: "GitHub primary rate limit reached; the budget resets at 1787310000",
+        });
+        expect(
+            await answer([failure(403, "exhausted", { "x-ratelimit-remaining": "0" })]),
+        ).toMatchObject({
+            reason: "rateLimited",
+            detail: "GitHub primary rate limit reached; the budget resets at an instant GitHub did not report",
+        });
+        expect(
+            await answer([failure(403, "secondary rate limit", { "retry-after": "30" })]),
+        ).toMatchObject({
+            reason: "rateLimited",
+            detail: "GitHub secondary rate limit reached; retry-after 30s",
+        });
+        expect(await answer([failure(429, "slow down", { "retry-after": "" })])).toMatchObject({
+            reason: "rateLimited",
+            detail: 'GitHub rate limit reached; retry-after "" is invalid',
+        });
+    });
+
+    it("keeps GitHub's own words out of an unbounded detail", async () => {
+        const answer = await linked(
+            source([failure(429, "slow down", { "retry-after": "9".repeat(60) })]).resolve,
+        );
+
+        expect(answer).toMatchObject({
+            reason: "rateLimited",
+            detail: `GitHub rate limit reached; retry-after "${"9".repeat(40)}" is invalid`,
+        });
+    });
+
+    it("names the broken seam behind a request that never left the process", async () => {
+        const harness = httpHarness([page()], { outcomes: [new Error("token source down")] });
+
+        expect(
+            await linked(createResolverSource({ http: harness.client, repository: REPOSITORY })),
+        ).toEqual({
+            ok: false,
+            reason: "unavailable",
+            detail: "GitHub query failed: notSent (broken seam: tokenSource)",
         });
     });
 });

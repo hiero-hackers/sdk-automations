@@ -23,7 +23,7 @@ flowchart LR
 |---|---|---|
 | ① Verify the signature before anything else | [`src/receiver.ts`](src/receiver.ts) | core's `verifyBody` — the receiver never parses what it has not verified |
 | ② Persist durably, only then `202` | [`src/receiver.ts`](src/receiver.ts) → [`src/shell.ts`](src/shell.ts) | the store's `acceptDelivery` (P9): a crash after the ack loses nothing |
-| ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config becomes `configRejected`, while `active` becomes `modeUnsupported` before `decide()` |
+| ③ Prepare: config text → `parseConfigDocument`, externals assembled | [`src/processor.ts`](src/processor.ts), [`src/config.ts`](src/config.ts), [`src/externals.ts`](src/externals.ts) | core's config layer; a broken config becomes `configRejected`, while `active` becomes `modeUnsupported` before `decide()` in any composition that wires no write path — the default |
 | ④ Decide with one verb | [`src/processor.ts`](src/processor.ts) | core's `decide()`; the shell cannot assert a world — `DerivedWorld` has no public constructor |
 | ⑤ Commit report plus completion | [`src/processor.ts`](src/processor.ts) → store's `completeDeliveryWithReport` | store verifies delivery identity and claim ownership, then creates one canonical report and marks the delivery done in one transaction |
 
@@ -38,6 +38,7 @@ price every crash:
 | before the durable row | nothing — no 202 was sent, so GitHub redelivers |
 | after the 202 | nothing — the row waits; the next drain (or next start) finds it |
 | mid-decision | nothing — the claim stales after 15 minutes and is reclaimed |
+| mid-effect, once a call was sent | nothing lands twice — the journal row stays open, and the sweep reads GitHub back before it ever resends |
 
 The counterfactual is the reason: handle a delivery in memory and there is a window between the
 202 and the finished work where a crash loses it **permanently** — and experiment 6.2 measured
@@ -79,16 +80,46 @@ REPO_NAME=automation-sandbox
 APP_ID=…                    # optional App credentials; provide all three together
 PRIVATE_KEY_PATH=…
 INSTALLATION_ID=…
+APP_SLUG=…                  # optional; the App's URL slug. Arms the write path
 PORT=8790                   # optional
 HOST=127.0.0.1              # optional; omit to use Node's default bind host
-CONFIG_FILE=…               # credential-free fallback; default data/automations.yml
-STORE_PATH=…                # optional; default data/shell.sqlite
-KILL_SWITCH=1               # optional; refuse everything, loudly
+CONFIG_FILE=…               # credential-free fallback; default <state home>/automations.yml
+STORE_PATH=…                # optional; default <state home>/shell.sqlite
+SWEEP_INTERVAL_SECONDS=60   # optional; requeue stale claims and drain on this clock
+KILL_SWITCH=1               # optional; refuse everything, loudly — including armed writes
+XDG_STATE_HOME=…            # optional; where the state home lives
 ```
+
+**`APP_SLUG` is the only thing that arms writes, and it is not a fourth credential.** The triad buys
+reads; writing needs one thing more, because a read-back that cannot tell this App's own comment from
+a person's cannot recognise what it wrote — which is the check that stops a duplicate comment and
+stops the platform editing someone else's writing. The slug becomes the bot login `<slug>[bot]`, and
+`APP_ID` supplies the other half of the identity. Credentials with no slug boot exactly as they do
+today; a slug with no credentials, or one that cannot spell a login (empty, spaced, bracketed), fails
+closed before the process listens. The `startup` line carries `writes: "armed" | "absent"`, so which
+composition is running is readable before any delivery arrives.
+
+`KILL_SWITCH=1` refuses at the decision gate as it always has, and an armed write path meets it again
+between deciding and applying: the applier re-checks it before every send and before every resend, so
+pulling the brake stops effects a decision already approved.
+
+The **state home** is `$XDG_STATE_HOME/sdk-automations`, or `~/.local/state/sdk-automations` when that
+variable is unset or relative. It is deliberately outside the package: in a container
+`packages/shell/data/` is an image layer, and a redeploy would take the canonical reports with it. A
+sandbox that ran before this default moved keeps its old store — nothing is copied automatically, and
+startup writes a `legacyStoreFound` line naming both paths so the choice is the operator's.
 
 ```bash
 pnpm --filter @hiero-hackers/automation-shell start
 ```
+
+`GET /healthz` answers `200 ok` for platform liveness probes; every other GET is still 405.
+
+Everything the process does after it is alive is one JSON line per event ([`src/log.ts`](src/log.ts)):
+`at`, `event` from a closed vocabulary, and that event's own fields, with `deliveryId` on every line
+about one delivery — so `grep` on a GUID returns its whole passage. Lines an operator should notice
+go to stderr and the rest to stdout. The refusals to boot are the exception, and stay human sentences:
+they precede the process being alive, and have no delivery to name.
 
 Point the existing smee channel at it and open an issue on the sandbox. The canonical report and
 delivery completion are committed together in `shell.sqlite`. Startup still starts draining pending
@@ -97,7 +128,8 @@ operator report/query surface has not been built yet. `Store.deliveryReports()` 
 programmatic access to canonical reports.
 
 `data/` is never tracked (see the root `.gitignore`), the same rule as
-`packages/dev/lab/evidence/`.
+`packages/dev/lab/evidence/`. It is no longer the default home, but it stays covered: an operator who
+points `STORE_PATH` back at it is still writing raw payloads and real repository names.
 
 ## Deliberately out of the first slice
 
@@ -105,10 +137,14 @@ programmatic access to canonical reports.
   `decide()`, not a second pipeline.
 - **Config schema migration** — live and local reads intentionally share today's schema; migrations
   remain separate work.
-- **Active mode** — the runnable shell supports disabled, observe and dry-run and rejects active
-  configuration.
-  Active GitHub writes are not implemented yet; each real effect will need its own write and durable
-  recovery path before active behavior can be enabled.
+- **Active mode by default** — with no `APP_SLUG` in the environment, `main.ts` wires no applier and
+  `mode: active` still ends as `modeUnsupported` before a decision. That record now means what it
+  says: *this composition wires no write path*, not *no write path exists*. The write path is built
+  — [`src/effects.ts`](src/effects.ts) plans the calls one approved effect takes and defines the
+  journal row a resend reads, and [`src/apply.ts`](src/apply.ts) drives them: lease, journal before
+  send, an apply-time re-gate against a live read, and a read-back that proves each call landed —
+  and `APP_SLUG` is what arms it (see below). Running a repository in `active` for the first time is
+  its own reviewed step.
 - **Multi-repository routing** — one endpoint, one configured repository, matching the sandbox.
 
 The capture receiver in `packages/dev/lab/src/capture.ts` was this package's embryo: same verify-first line,

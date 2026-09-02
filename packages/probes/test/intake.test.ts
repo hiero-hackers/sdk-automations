@@ -156,13 +156,16 @@ describe("intake", () => {
     });
 
     /**
-     * Both requests in full. The pair shares one occasion and one claim —
-     * `meaningsAbsent: ["awaitingTriage"]` — so the announcement is refused
-     * on the same evidence as the label it announces, never on its own.
+     * Both requests in full. The pair shares one occasion, but NOT one
+     * claim: the label claims the meaning absent, while the announcement
+     * claims only openness — its own sibling puts the label there first,
+     * so an absence claim would refuse the announcement OF the label it
+     * just applied at any apply-time re-gate (8.2 pre-flight, 2026-09-02).
      */
-    it("asks for the label and the announcement, on one claim, in that order", async () => {
+    it("asks for the label and the announcement, in that order, on their own claims", async () => {
         const occasion = { cause: "issueWithoutPosition", observedAt: AT };
         const claim = { meaningsPresent: [], meaningsAbsent: ["awaitingTriage"], closed: false };
+        const announceClaim = { meaningsPresent: [], meaningsAbsent: [], closed: false };
 
         expect(
             await intake.evaluate(
@@ -192,10 +195,10 @@ describe("intake", () => {
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
-                    marker: "<!-- hiero-automation:intake -->",
+                    kind: "notice",
                     body: "Thanks for opening this. It has been placed in the triage queue.",
                 },
-                expected: claim,
+                expected: announceClaim,
                 cause: occasion,
                 explanation: {
                     capability: "intake",

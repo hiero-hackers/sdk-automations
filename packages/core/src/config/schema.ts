@@ -108,15 +108,38 @@ export type TopLevelKey = (typeof TOP_LEVEL_KEYS)[number];
 // ─── Parsing input ───────────────────────────────────────────────────
 
 /**
+ * One admitted capability, as much of it as the parser can use.
+ *
+ * The fields are exactly the two a `CapabilityDeclaration` states about
+ * CONFIGURATION, so a declaration is an admission with no adapting: the
+ * shell may pass its declarations straight through. Everything else a
+ * declaration says — triggers, observations, resolvers, intents — is about
+ * running, and a document cannot be wrong about it.
+ */
+export interface AdmittedCapability {
+    readonly name: string;
+    /** The legal `settings` key names. Any other is `unknownKey` (D84). */
+    readonly configKeys: readonly string[];
+    /** Meanings that must be mapped before this may be enabled (D84). */
+    readonly requiredMeanings: readonly MappableMeaning[];
+}
+
+/**
  * What the caller knows that the document does not say.
  *
- * `knownCapabilities` is the application's directly admitted name list. Any
+ * `knownCapabilities` is the application's directly admitted list. Any
  * capability outside it is an error, whether enabled or disabled. The field is
  * required because omitting the admission authority would silently skip the
  * unknown-capability check (D58).
+ *
+ * An entry may be a bare NAME or an `AdmittedCapability`. A name admits the
+ * name and states nothing else, so the two checks that need more than a name —
+ * settings keys and required meanings — do not run for it. That is the honest
+ * reading: treating "nothing declared" as "no legal settings key" would reject
+ * every block a name-only caller admits.
  */
 export interface ParseConfigOptions {
     /** The revision of the document being parsed. See `RepositoryConfig`. */
     readonly revision: string;
-    readonly knownCapabilities: readonly string[];
+    readonly knownCapabilities: readonly (string | AdmittedCapability)[];
 }
