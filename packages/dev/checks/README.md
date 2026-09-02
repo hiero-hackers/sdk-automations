@@ -46,8 +46,8 @@ One row per file; the summary is that file's own header, not a paraphrase.
 | [`contract-drift.test.ts`](test/contract-drift.test.ts) | The capability contract's declaration and operational-needs interfaces match the TypeScript types exactly |
 | [`safety-drift.test.ts`](test/safety-drift.test.ts) | The safety contract lists every refusal and record-only verdict code exactly |
 | [`spec-drift.test.ts`](test/spec-drift.test.ts) | The configuration contract's modes, top-level keys, and rejection codes exactly match the parser vocabularies |
-| [`docs.test.ts`](test/docs.test.ts) | User-doc mode, key, meaning and error-code membership stays aligned with code; troubleshooting codes stay in their implementation-derived severity groups; entry links, examples and scoped drift promises stay intact |
-| [`examples.test.ts`](test/examples.test.ts) | `docs/examples/` is documentation that runs: the shipped configurations still parse, and still mean what they say |
+| [`docs.test.ts`](test/docs.test.ts) | User-doc mode, key, meaning and error-code membership stays aligned with code; troubleshooting codes stay in their implementation-derived severity groups and its record kinds stay in the shell's union; entry links, examples and scoped drift promises stay intact |
+| [`examples.test.ts`](test/examples.test.ts) | `docs/examples/` is documentation that runs: the shipped configurations still parse against the capability list the composition root actually wires, and still mean what they say |
 | [`commands.test.ts`](test/commands.test.ts) | Contributor-facing `pnpm` commands resolve to real scripts, and every ordinary CI gate is documented where contributors will see it |
 | [`doc-drift.test.ts`](test/doc-drift.test.ts) | The drift detector `core/README.md` promised and did not have: the design document's diagrams against the transition tables in code |
 | [`workflows.test.ts`](test/workflows.test.ts) | The three security claims the workflow comments make: actions stay SHA-pinned with version comments, and fork code never runs privileged |

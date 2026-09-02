@@ -27,6 +27,26 @@ export {
     type ConfigSource,
 };
 
+/**
+ * Errnos no retry can outlast: the path is not a readable file, and only an
+ * operator changes that. `permanent` sends them the way a defective committed
+ * file goes — the delivery completes as `configRejected`, naming the problem,
+ * instead of releasing the claim and asking the filesystem the same question
+ * forever. Everything else (EIO, EBUSY, anything unrecognised) stays weather.
+ */
+const PERMANENT_READ_ERRNOS: ReadonlySet<string> = new Set([
+    "EACCES",
+    // Stryker disable next-line StringLiteral: no local path provokes EPERM from a read — it is listed from Node's errno set, and only an owner-level restriction reaches it.
+    "EPERM",
+    "EISDIR",
+    "ENOTDIR",
+    "ELOOP",
+]);
+
+const isPermanentReadFailure = (code: string | undefined): boolean =>
+    // Stryker disable next-line ConditionalExpression: Set.has answers false for an undefined code already; the leading arm is for readers.
+    code !== undefined && PERMANENT_READ_ERRNOS.has(code);
+
 /** The credential-free source: an operator-maintained local copy. */
 export function fileConfigSource(path: string): ConfigSource {
     return {
@@ -35,12 +55,12 @@ export function fileConfigSource(path: string): ConfigSource {
             try {
                 raw = await readFile(path, "utf8");
             } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-                    return {
-                        ok: false,
-                        permanent: false,
-                        detail: `local config unreadable: ${(error as Error).message}`,
-                    };
+                const code = (error as NodeJS.ErrnoException).code;
+                if (code !== "ENOENT") {
+                    const detail = `local config unreadable: ${(error as Error).message}`;
+                    return isPermanentReadFailure(code)
+                        ? { ok: false, permanent: true, detail }
+                        : { ok: false, permanent: false, detail };
                 }
                 // ENOENT genuinely proves absence locally. An absent file and
                 // an empty file agree by construction: both parse to

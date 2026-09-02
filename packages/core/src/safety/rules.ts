@@ -7,9 +7,9 @@
  * decided from one request and are `design/guides/effects.md`'s.
  *
  * Precedence is policy: kill switch → authoritative precondition → observation
- * → consent → permissions → pause → human conflict → mode. Only the kill
- * switch changes an OUTCOME; the rest decide which `code` gets reported, and
- * the tests freeze that order.
+ * → consent → permissions → closure → pause → human conflict → mode. Only the
+ * kill switch changes an OUTCOME; the rest decide which `code` gets reported,
+ * and the tests freeze that order.
  * **If you are asking "why was my write refused?", this is the file.**
  * Both doors — `write.ts` and `destructive.ts` — arrive here after their
  * own policy; only the rule ORDER is exported, because order is contract
@@ -105,6 +105,26 @@ export const GENERAL_RULES: readonly (readonly [string, Rule])[] = [
                 : refuse(
                       "permissionMissing",
                       `the installation lacks ${f.missing.join(", ")} (rule 2)`,
+                  ),
+    ],
+    [
+        // Closure ahead of the pause, the order `workflow/reference.ts`'s walk
+        // already uses: a pause is a state a human lifts, closure is where the
+        // item's flow ended. Reporting the pause on a closed item would name
+        // the reversible fact and hide the terminal one.
+        //
+        // A capability may still claim `expected.closed: false`, but that
+        // claim is optional and defaults to no claim (D47, `factory.ts`), so
+        // it protects only the capabilities that remember to make it. This
+        // rule reads the derived world instead, and therefore holds for every
+        // capability including one built from `unknown`.
+        "itemClosed",
+        (f) =>
+            f.context.world.closure === null
+                ? null
+                : refuse(
+                      "itemClosed",
+                      `the item is closed (${f.context.world.closure}) — a closed item accepts no capability write`,
                   ),
     ],
     [

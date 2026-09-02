@@ -12,9 +12,11 @@ import type { PermissionGrant } from "../github/index.js";
 export type { RepositoryMode } from "../config/index.js";
 
 /**
- * How risky an action is, least to most (`design/contracts/safety.md`). The ladder is
- * ordered: `INTENT_OPERATIONS` states a floor per operation and a capability
- * may declare stricter, never laxer.
+ * How risky an action is, least to most (`design/contracts/safety.md`).
+ *
+ * The class is the platform's. `INTENT_OPERATIONS` states one per operation
+ * and `decide()` reads it there; a capability has no field to declare one in,
+ * so it can neither relax nor tighten the class it acts under (D57).
  */
 export type ActionClass =
     | "observation"
@@ -24,10 +26,12 @@ export type ActionClass =
     | "immediatePreventive";
 
 /**
- * What a capability must supply with every write request (`design/contracts/safety.md`).
+ * What one write request states (`design/contracts/safety.md`).
  *
- * `requiredPermissions` is supplied rather than derived, because core must
- * not depend on the capability layer to learn what an operation needs.
+ * Nothing here comes from a capability's declaration. `decide()` fills
+ * `requiredPermissions` and `actionClass` from `INTENT_OPERATIONS`, so a
+ * capability cannot understate what its operation needs (D57); the remaining
+ * fields come from the intent it returned.
  */
 export interface WriteRequest {
     readonly requiredPermissions: readonly PermissionGrant[];
@@ -75,6 +79,7 @@ export type SafetyRefusalCode =
     | "preventiveGateUnavailable"
     | "capabilityDisabled"
     | "permissionMissing"
+    | "itemClosed"
     | "itemBlocked"
     | "preconditionStale"
     | "newerHumanChange"

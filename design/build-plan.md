@@ -6,8 +6,8 @@
 flowchart TD
     DONE["✓ Design aligned · feasibility experiments run · pure logic built<br/>the platform runs observe and dry-run in the sandbox"]
     NEEDS["◌ Maintainer needs confirmed — the register's 'stage two'"]
-    RAT["▶ Ratify the minimum architecture — the register's 'stage four'"]
-    PLAT["◐ Finish the platform foundation<br/>adapter port · read-after-write measurement · PR-time config validation<br/>configuration report · operator surface"]
+    RAT["✓ Ratified for ring-zero — D126, 2026-09-02; scope past the sandbox stays with the pilot gate"]
+    PLAT["▶ Finish the platform foundation<br/>PR-time config validation · configuration report · operator surface<br/>(adapter port and read-after-write landed 2026-09-02)"]
     FX["○ Prove reversible effects — one managed comment · one mapped label"]
     SOAK["○ First capability, then sandbox soak"]
     PILOT(["◌ Volunteer-repository pilot — needs maintainers and an operator"])

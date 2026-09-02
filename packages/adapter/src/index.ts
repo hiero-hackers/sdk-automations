@@ -37,7 +37,23 @@ export {
     type TokenSourceOptions,
 } from "./token.js";
 export {
+    createWriteVerbs,
+    type WriteResult,
+    type WriteVerbs,
+    type WriteVerbsOptions,
+} from "./writes.js";
+export {
+    createReadBack,
+    type AppIdentity,
+    type CommentFact,
+    type Presence,
+    type ReadBack,
+    type ReadBackOptions,
+    type ReadBackOutcome,
+} from "./readback.js";
+export {
     createGitHubHttpClient,
+    wait,
     type BrokenSeam,
     type FetchLike,
     type GitHubFailure,
@@ -47,6 +63,9 @@ export {
     type GitHubOutcome,
     type GitHubRequest,
     type GitHubSuccess,
+    type GitHubWriteRequest,
     type NotSentReason,
     type RateLimitSnapshot,
+    type WriteEndpoint,
+    type WriteIdempotency,
 } from "./http.js";

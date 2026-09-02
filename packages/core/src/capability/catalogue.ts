@@ -171,7 +171,31 @@ export type ResolverAnswer<T> =
 // ─── The intent catalogue ────────────────────────────────────────────
 
 /**
+ * The purposes a managed comment may serve — one per comment, and the half of
+ * its identity a capability chooses.
+ *
+ * managed-output.md §2 allows one short marker per PURPOSE per item, so the
+ * purpose has to be part of the identity: without it a capability holding both
+ * a standing summary and a warning on one item could not tell them apart. The
+ * vocabulary is closed for the reason the rest of the catalogue is (D61) — a
+ * writer must never receive a purpose it has no rendering for.
+ *
+ * `summary` is a standing statement about the item, updated in place.
+ * `warning` is advance notice of an action the App will take, and carries
+ * §6's five facts. `notice` records that something already happened.
+ */
+export const MANAGED_COMMENT_KINDS = ["summary", "warning", "notice"] as const;
+
+/** One of `MANAGED_COMMENT_KINDS`. */
+export type ManagedCommentKind = (typeof MANAGED_COMMENT_KINDS)[number];
+
+/**
  * The desired-outcome payload per operation (contract.md §3 `desired`).
+ *
+ * `postManagedComment` carries content and purpose, and no marker: identity is
+ * platform-owned (D125), derived in `managed.ts` from the intent's own fields
+ * and its idempotency key. A capability that could write a marker could address
+ * another capability's comment, or an effect that is not its own.
  *
  * `applyMappedLabel` SETS the item's position; it is not "add a label". The
  * adapter removes the position label the item previously held as part of
@@ -187,7 +211,7 @@ export type ResolverAnswer<T> =
  */
 export interface IntentCatalogue {
     readonly postManagedComment: {
-        readonly marker: string;
+        readonly kind: ManagedCommentKind;
         readonly body: string;
     };
     readonly applyMappedLabel: {

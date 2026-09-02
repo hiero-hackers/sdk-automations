@@ -155,31 +155,24 @@ describe("the live configuration source", () => {
         });
     });
 
-    it("believes a corroborated absence for the TTL, then re-asks", async () => {
-        let now = 0;
+    it("re-corroborates absence on every load, so a first commit binds at once", async () => {
         const built = harness([
             failure(404, "Not Found"),
             success('{"id":1}'),
-            failure(404, "Not Found"),
-            success('{"id":1}'),
+            success(fileBody("schemaVersion: 1\n")),
         ]);
-        const src = githubConfigSource({
-            client: built.client,
-            repository: REPOSITORY,
-            clock: () => new Date(now),
-        });
+        const src = githubConfigSource({ client: built.client, repository: REPOSITORY });
 
-        await src.load();
-        now = 59_999;
         await expect(src.load()).resolves.toEqual({
             ok: true,
             document: { revision: ABSENT_CONFIG_REVISION, text: "" },
         });
-        expect(built.scripted.calls).toHaveLength(2);
-
-        now = 60_000;
-        await src.load();
-        expect(built.scripted.calls).toHaveLength(4);
+        const second = await src.load();
+        expect(second.ok).toBe(true);
+        if (second.ok) {
+            expect(second.document.text).toBe("schemaVersion: 1\n");
+        }
+        expect(built.scripted.calls).toHaveLength(3);
     });
 
     it("encodes repository names as path components", async () => {

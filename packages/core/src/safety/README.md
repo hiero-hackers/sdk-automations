@@ -49,6 +49,11 @@ obtain a world: derive it from the observation you were given** (D92). Missing o
 projection data sets `preconditionHolds` false; only a clean projection can verify requested facts.
 A shell or capability has no type with which to assert otherwise.
 
+The world carries `closure` for the same reason. A capability may claim `expected.closed: false`,
+but that claim is optional and defaults to no claim, so before the `itemClosed` rule a closed item
+was protected only by the capabilities that remembered to make it. The pause was platform-enforced
+and closure was not; now both are.
+
 `DestructiveWarning` works the same way: only `createDestructiveWarning` mints one, and it carries
 an immutable snapshot of the request it authorises, so a warning cannot be reused across a different
 capability, item, change or cause (D60).
@@ -61,8 +66,8 @@ impossible to construct.
 `evaluatePreflight` checks the kill switch, then authoritative precondition availability, before
 either write door applies its own policy. `GENERAL_RULES` is the remaining ordered list, and tests
 assert both layers directly: kill switch → authoritative precondition → observation → consent →
-permission → pause → human conflict → mode. Precedence decides which code a maintainer sees and is
-therefore policy rather than style.
+permission → closure → pause → human conflict → mode. Precedence decides which code a maintainer
+sees and is therefore policy rather than style.
 
 The write-path rules in [`design/guides/effects.md`](../../../../design/guides/effects.md) are absent here on purpose — postcondition verification, unclear-outcome
 reconciliation, tested rollback and staged rollout cannot be decided from a single request. They

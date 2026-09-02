@@ -163,8 +163,8 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    I["intent"] --> SC{"screen — eight refusal codes"}
-    SC -->|"foreignCapability, undeclaredIntent, invalidCause, authoritativePositionUnavailable, positionConflict, pauseNotCapabilityWritable, meaningWrongEntity, transitionNotOnMap"| SF["finding (problem) — the gate never runs"]
+    I["intent"] --> SC{"screen — nine refusal codes"}
+    SC -->|"foreignCapability, undeclaredIntent, invalidCause, idempotencyKeyMismatch, authoritativePositionUnavailable, positionConflict, pauseNotCapabilityWritable, meaningWrongEntity, transitionNotOnMap"| SF["finding (problem) — the gate never runs"]
     SC -->|ok| DW["deriveWorld(projection, expected) — claims are checked, never trusted"]
     DW --> PRE{"preflight"}
     PRE -->|"killSwitch, preconditionStale"| R
@@ -172,7 +172,7 @@ flowchart TD
     DOOR -->|"wrongEntryPoint, preventiveGateUnavailable"| R
     DOOR --> GEN["general rules, in order — precedence is contract"]
     GEN -->|observation| RO["record-only"]
-    GEN -->|"capabilityDisabled, permissionMissing, itemBlocked, humanOrderingUnknown, invalidTimestamp, newerHumanChange, modeDisabled"| R["refuse + SafetyRefusalCode"]
+    GEN -->|"capabilityDisabled, permissionMissing, itemClosed, itemBlocked, humanOrderingUnknown, invalidTimestamp, newerHumanChange, modeDisabled"| R["refuse + SafetyRefusalCode"]
     GEN -->|modeRecordsOnly| RO
     GEN -->|"no rule fired"| AP["apply"]
     AP --> APPR["Decision.approved"]
@@ -197,7 +197,7 @@ unchecked one.
 
 | Table | The question it answers |
 |---|---|
-| `seen_delivery` | is this delivery durable, claimed, or done? |
+| `seen_delivery` | is this delivery durable, claimed, done, or dead-lettered? |
 | `delivery_report` | what did we decide for this delivery? |
 | `effect_journal` | did this call reach GitHub? |
 | `effect_claim` | who holds this effect's lease right now? |
@@ -211,11 +211,13 @@ erDiagram
         BLOB payload "NULL iff done"
         TEXT payload_digest "sha256 hex"
         TEXT received_at
-        TEXT state "pending, processing, done"
+        TEXT state "pending, processing, done, failed"
         TEXT claim_worker
         TEXT claim_token
         TEXT claimed_at
         TEXT completed_at
+        INTEGER attempts "failed attempts so far"
+        TEXT retry_not_before "claimable again after; pending only"
     }
     delivery_report {
         TEXT delivery_id PK

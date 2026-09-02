@@ -21,6 +21,7 @@ export const intakeDeclaration = declareCapability({
     name: "intake",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: ["announce"],
+    requiredMeanings: ["awaitingTriage"],
     observations: ["issueUpdated"],
     resolvers: [],
     intents: ["applyMappedLabel", "postManagedComment"],
@@ -63,6 +64,13 @@ export const intake: Capability<IntakeDeclaration> = {
          * (contract.md §2). It learns that the meaning is AVAILABLE and
          * never what the repository calls it — the label string is the
          * adapter's business.
+         *
+         * Since D84 the parser refuses a file that enables intake without
+         * mapping `awaitingTriage`, so a configuration the shell parsed can no
+         * longer reach this branch. It stays because an observation may arrive
+         * against a configuration the parser never saw — `NO_CONFIG`, a test
+         * harness, any future caller — and a capability that assumed otherwise
+         * would act on a meaning nobody mapped.
          */
         if (!config.mappedMeanings.includes("awaitingTriage")) {
             platform.explain({
@@ -111,7 +119,7 @@ export const intake: Capability<IntakeDeclaration> = {
                 make({
                     operation: "postManagedComment",
                     desired: {
-                        marker: "<!-- hiero-automation:intake -->",
+                        kind: "notice",
                         body: "Thanks for opening this. It has been placed in the triage queue.",
                     },
                     cause: "issueWithoutPosition",

@@ -26,6 +26,7 @@ describe("the check order is contract, and now assertable directly", () => {
             "observation",
             "capabilityDisabled",
             "permissionMissing",
+            "itemClosed",
             "itemBlocked",
             "humanOrderingUnknown",
             "invalidTimestamp",

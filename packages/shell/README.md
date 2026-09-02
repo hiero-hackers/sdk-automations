@@ -81,14 +81,30 @@ PRIVATE_KEY_PATH=…
 INSTALLATION_ID=…
 PORT=8790                   # optional
 HOST=127.0.0.1              # optional; omit to use Node's default bind host
-CONFIG_FILE=…               # credential-free fallback; default data/automations.yml
-STORE_PATH=…                # optional; default data/shell.sqlite
+CONFIG_FILE=…               # credential-free fallback; default <state home>/automations.yml
+STORE_PATH=…                # optional; default <state home>/shell.sqlite
+SWEEP_INTERVAL_SECONDS=60   # optional; requeue stale claims and drain on this clock
 KILL_SWITCH=1               # optional; refuse everything, loudly
+XDG_STATE_HOME=…            # optional; where the state home lives
 ```
+
+The **state home** is `$XDG_STATE_HOME/sdk-automations`, or `~/.local/state/sdk-automations` when that
+variable is unset or relative. It is deliberately outside the package: in a container
+`packages/shell/data/` is an image layer, and a redeploy would take the canonical reports with it. A
+sandbox that ran before this default moved keeps its old store — nothing is copied automatically, and
+startup writes a `legacyStoreFound` line naming both paths so the choice is the operator's.
 
 ```bash
 pnpm --filter @hiero-hackers/automation-shell start
 ```
+
+`GET /healthz` answers `200 ok` for platform liveness probes; every other GET is still 405.
+
+Everything the process does after it is alive is one JSON line per event ([`src/log.ts`](src/log.ts)):
+`at`, `event` from a closed vocabulary, and that event's own fields, with `deliveryId` on every line
+about one delivery — so `grep` on a GUID returns its whole passage. Lines an operator should notice
+go to stderr and the rest to stdout. The refusals to boot are the exception, and stay human sentences:
+they precede the process being alive, and have no delivery to name.
 
 Point the existing smee channel at it and open an issue on the sandbox. The canonical report and
 delivery completion are committed together in `shell.sqlite`. Startup still starts draining pending
@@ -97,7 +113,8 @@ operator report/query surface has not been built yet. `Store.deliveryReports()` 
 programmatic access to canonical reports.
 
 `data/` is never tracked (see the root `.gitignore`), the same rule as
-`packages/dev/lab/evidence/`.
+`packages/dev/lab/evidence/`. It is no longer the default home, but it stays covered: an operator who
+points `STORE_PATH` back at it is still writing raw payloads and real repository names.
 
 ## Deliberately out of the first slice
 

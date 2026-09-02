@@ -65,6 +65,10 @@ const COMPOSITIONS: ReadonlyMap<string, string> = new Map([
         "packages/store/test/interleaving.test.ts",
         "the store against its reference model, hundreds of seeded histories",
     ],
+    [
+        "packages/store/test/delivery-interleaving.test.ts",
+        "the delivery lifecycle against its reference model, seeded histories",
+    ],
     ["packages/store/test/properties.test.ts", "property invariants across the whole store"],
     [
         "packages/dev/testkit/test/testkit.test.ts",

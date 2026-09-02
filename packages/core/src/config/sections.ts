@@ -18,6 +18,7 @@ import {
     MAPPABLE_MEANINGS,
     REPOSITORY_MODES,
     TOP_LEVEL_KEYS,
+    type AdmittedCapability,
     type CapabilityConfig,
     type MappableMeaning,
     type RepositoryMode,
@@ -93,6 +94,26 @@ export function readMode(raw: Record<string, unknown>): Checked<RepositoryMode> 
 }
 
 /**
+ * The admission list as a lookup: every admitted name, mapped to what the
+ * caller said about it. A `Map` rather than a record, so a capability named
+ * `constructor` is a key like any other.
+ *
+ * `null` is a NAME-ONLY admission — see `ParseConfigOptions`. The two checks
+ * that need a declaration skip those entries; `capabilityUnknown` does not,
+ * because a name is all that check ever needed.
+ */
+function admissionsOf(
+    known: readonly (string | AdmittedCapability)[],
+): Map<string, AdmittedCapability | null> {
+    const admitted = new Map<string, AdmittedCapability | null>();
+    for (const entry of known) {
+        if (typeof entry === "string") admitted.set(entry, null);
+        else admitted.set(entry.name, entry);
+    }
+    return admitted;
+}
+
+/**
  * Entries rather than an object: they are materialized via `cleanRecord`
  * at the end, because on a null-prototype target a key like `__proto__`
  * is an ordinary own property (plain `obj[key] = value` on a normal
@@ -100,7 +121,7 @@ export function readMode(raw: Record<string, unknown>): Checked<RepositoryMode> 
  */
 export function readCapabilities(
     raw: Record<string, unknown>,
-    knownCapabilities: readonly string[],
+    knownCapabilities: readonly (string | AdmittedCapability)[],
 ): Checked<[string, CapabilityConfig][]> {
     const entries: [string, CapabilityConfig][] = [];
     const errors: ConfigError[] = [];
@@ -111,6 +132,7 @@ export function readCapabilities(
             errors: [err("notAMapping", "capabilities must be a mapping", "capabilities")],
         };
     }
+    const admitted = admissionsOf(knownCapabilities);
 
     for (const [name, value] of Object.entries(raw.capabilities)) {
         // A key this pattern rejects can never name a shipped
@@ -171,15 +193,41 @@ export function readCapabilities(
             continue;
         }
         const enabled = value.enabled === true;
-        if (!knownCapabilities.includes(name)) {
+        if (!admitted.has(name)) {
             errors.push(
                 err(
                     "capabilityUnknown",
                     `capability "${name}" is not available in this application` +
-                        ` (available: ${[...knownCapabilities].sort().join(", ") || "none"})`,
+                        ` (available: ${[...admitted.keys()].sort().join(", ") || "none"})`,
                     `capabilities.${name}`,
                 ),
             );
+        }
+        /**
+         * D84 — a settings key the capability never declared configures
+         * nothing. `projectCapabilityView` drops it silently, so `annouce:`
+         * used to be a working file that did the opposite of what it said.
+         * `unknownKey` rather than a code of its own: the declared keys ARE
+         * the schema for this block, and the maintainer's fix is the same
+         * one every other unknown key asks for.
+         *
+         * Disabled blocks are checked too. A typo that waits for the day
+         * somebody flips `enabled` is the surprise this rule exists to end.
+         */
+        const declared = admitted.get(name) ?? null;
+        if (declared !== null) {
+            for (const key of Object.keys(settings)) {
+                if (!declared.configKeys.includes(key)) {
+                    errors.push(
+                        err(
+                            "unknownKey",
+                            `capability "${name}": unknown setting "${key}"` +
+                                ` (it declares: ${[...declared.configKeys].sort().join(", ") || "no settings"})`,
+                            `capabilities.${name}.settings.${key}`,
+                        ),
+                    );
+                }
+            }
         }
         entries.push([name, { enabled, settings }]);
     }
@@ -285,4 +333,45 @@ export function readPrincipals(raw: Record<string, unknown>): Checked<[string, s
         entries.push([key, value]);
     }
     return checked(entries, errors);
+}
+
+// ─── The one cross-section rule ──────────────────────────────────────
+
+/**
+ * D84 — an ENABLED capability may not be missing a meaning it declares it
+ * needs. Before this, such a repository parsed clean and the capability
+ * skipped itself at runtime, saying so only in a report nobody reads until
+ * they wonder why nothing happened.
+ *
+ * Disabled capabilities demand nothing: a block kept for later is not a
+ * promise to run today, and rejecting one would make `enabled: false` harder
+ * to write than deleting it.
+ *
+ * The only check that reads two sections, which is why it is a `check*`
+ * called from `parse.ts` rather than part of either — see that file for when.
+ */
+export function checkRequiredMeanings(
+    capabilities: readonly (readonly [string, CapabilityConfig])[],
+    labels: Partial<Record<MappableMeaning, string>>,
+    knownCapabilities: readonly (string | AdmittedCapability)[],
+): readonly ConfigError[] {
+    const admitted = admissionsOf(knownCapabilities);
+    const errors: ConfigError[] = [];
+
+    for (const [name, block] of capabilities) {
+        const declared = admitted.get(name) ?? null;
+        if (!block.enabled || declared === null) continue;
+        for (const meaning of declared.requiredMeanings) {
+            if (labels[meaning] !== undefined) continue;
+            errors.push(
+                err(
+                    "meaningRequired",
+                    `capability "${name}" is enabled but requires the meaning "${meaning}", which this repository has not mapped` +
+                        ` — add mappings.labels.${meaning}, or set capabilities.${name}.enabled to false`,
+                    `mappings.labels.${meaning}`,
+                ),
+            );
+        }
+    }
+    return errors;
 }

@@ -357,11 +357,114 @@ describe("delivery claims and recovery", () => {
         store.close();
     });
 
+    it("skips a backed-off delivery, serves the next, and returns it once due", () => {
+        const store = new Store(path);
+        accept(store, FIRST_ID, "issues", Buffer.from("first"));
+        accept(store, SECOND_ID, "issues", Buffer.from("second"), "2026-08-01T10:00:01.000Z");
+
+        const first = store.claimNextDelivery(
+            "worker-a",
+            "2026-08-01T10:01:00.000Z",
+            "2026-08-01T09:00:00.000Z",
+        )!;
+        expect(first).toMatchObject({ deliveryId: FIRST_ID, attempts: 0 });
+        expect(
+            store.releaseDeliveryAfterFailure({
+                deliveryId: FIRST_ID,
+                claimToken: first.claimToken,
+                failedAt: "2026-08-01T10:01:00.000Z",
+                retryNotBefore: "2026-08-01T10:01:30.000Z",
+                maxAttempts: 5,
+            }),
+        ).toEqual({
+            outcome: "retryScheduled",
+            attempts: 1,
+            retryNotBefore: "2026-08-01T10:01:30.000Z",
+        });
+
+        // The oldest row is waiting, so the queue serves the one behind it.
+        const second = store.claimNextDelivery(
+            "worker-a",
+            "2026-08-01T10:01:01.000Z",
+            "2026-08-01T09:00:00.000Z",
+        )!;
+        expect(second.deliveryId).toBe(SECOND_ID);
+        expect(complete(store, second, "2026-08-01T10:01:02.000Z")).toEqual({
+            outcome: "completed",
+        });
+
+        expect(
+            store.claimNextDelivery(
+                "worker-a",
+                "2026-08-01T10:01:29.999Z",
+                "2026-08-01T09:00:00.000Z",
+            ),
+        ).toBeUndefined();
+        // Due to the millisecond, and claimed carrying its spent attempt.
+        expect(
+            store.claimNextDelivery(
+                "worker-a",
+                "2026-08-01T10:01:30.000Z",
+                "2026-08-01T09:00:00.000Z",
+            ),
+        ).toMatchObject({ deliveryId: FIRST_ID, attempts: 1 });
+        store.close();
+    });
+
+    it("counts a failed attempt only for the token that holds the claim", () => {
+        const store = new Store(path);
+        accept(store);
+        const claim = store.claimNextDelivery(
+            "worker-a",
+            "2026-08-01T10:01:00.000Z",
+            "2026-08-01T09:00:00.000Z",
+        )!;
+        const failure = {
+            deliveryId: FIRST_ID,
+            claimToken: claim.claimToken,
+            failedAt: "2026-08-01T10:01:10.000Z",
+            retryNotBefore: "2026-08-01T10:01:40.000Z",
+            maxAttempts: 5,
+        };
+
+        expect(
+            store.releaseDeliveryAfterFailure({ ...failure, claimToken: "wrong-token" }),
+        ).toEqual({ outcome: "notOwned" });
+        // A refused failure spends nothing: the claim is still held.
+        expect(
+            store.claimNextDelivery(
+                "worker-b",
+                "2026-08-01T10:01:20.000Z",
+                "2026-08-01T09:00:00.000Z",
+            ),
+        ).toBeUndefined();
+
+        expect(store.releaseDeliveryAfterFailure(failure)).toEqual({
+            outcome: "retryScheduled",
+            attempts: 1,
+            retryNotBefore: "2026-08-01T10:01:40.000Z",
+        });
+        // The same token cannot count its attempt twice.
+        expect(store.releaseDeliveryAfterFailure(failure)).toEqual({ outcome: "notOwned" });
+        expect(
+            store.claimNextDelivery(
+                "worker-b",
+                "2026-08-01T10:01:40.000Z",
+                "2026-08-01T09:00:00.000Z",
+            ),
+        ).toMatchObject({ attempts: 1 });
+        store.close();
+    });
+
     it("returns every requeued delivery in deterministic GUID order", () => {
         const store = new Store(path);
-        accept(store, THIRD_ID);
-        accept(store, SECOND_ID);
-        accept(store, FIRST_ID);
+        // Staggered receipt instants in REVERSE GUID order, so the claim
+        // index hands rows back unsorted and the sort has to earn the
+        // assertion — with one shared instant the index pre-sorts by GUID
+        // and any comparator at all would pass.
+        accept(store, THIRD_ID, "issues", Buffer.from("work"), "2026-08-01T10:00:00.000Z");
+        accept(store, SECOND_ID, "issues", Buffer.from("work"), "2026-08-01T10:00:01.000Z");
+        accept(store, FIRST_ID, "issues", Buffer.from("work"), "2026-08-01T10:00:02.000Z");
         for (const worker of ["worker-a", "worker-b", "worker-c"]) {
             expect(
                 store.claimNextDelivery(
@@ -536,6 +639,30 @@ describe("delivery intake boundaries", () => {
         expect(() => store.pruneCompletedDeliveries("invalid")).toThrow(/before/);
         expect(() => store.claimNextDelivery("", RECEIVED, RECEIVED)).toThrow(/worker/);
         expect(() => store.releaseDelivery(FIRST_ID, "")).toThrow(/claimToken/);
+        const validFailure = {
+            deliveryId: FIRST_ID,
+            claimToken: "token",
+            failedAt: RECEIVED,
+            retryNotBefore: RECEIVED,
+            maxAttempts: 5,
+        };
+        expect(() =>
+            store.releaseDeliveryAfterFailure({ ...validFailure, deliveryId: "" as DeliveryGuid }),
+        ).toThrow(/deliveryId/);
+        expect(() =>
+            store.releaseDeliveryAfterFailure({ ...validFailure, claimToken: "" }),
+        ).toThrow(/claimToken/);
+        expect(() =>
+            store.releaseDeliveryAfterFailure({ ...validFailure, failedAt: "invalid" }),
+        ).toThrow(/failedAt/);
+        expect(() =>
+            store.releaseDeliveryAfterFailure({ ...validFailure, retryNotBefore: "invalid" }),
+        ).toThrow(/retryNotBefore/);
+        for (const maxAttempts of [0, -1, 1.5, Number.NaN]) {
+            expect(() =>
+                store.releaseDeliveryAfterFailure({ ...validFailure, maxAttempts }),
+            ).toThrow("maxAttempts must be a positive integer");
+        }
         store.close();
     });
 

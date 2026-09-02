@@ -32,9 +32,15 @@ supply (D62).
 
 | Operation | Desired | Idempotency | Action class | Permission |
 |---|---|---|---|---|
-| `postManagedComment` | `marker`, `body` | `nonIdempotent` | `humanFacingOutput` | `issues:write` |
+| `postManagedComment` | `kind`, `body` | `nonIdempotent` | `humanFacingOutput` | `issues:write` |
 | `applyMappedLabel` | `meaning`, `cause` | `idempotent` | `reversibleStateChange` | `issues:write` |
 | `unassign` | `login` | `idempotent` | `reversibleStateChange` | `issues:write` |
+
+`postManagedComment` carries content and purpose, never identity. `kind` is one of `summary`,
+`warning` or `notice`, and the marker is derived by the platform from the schema version, the
+capability, the kind and the effect id — a capability cannot supply one, and a marker counts only
+under App authorship, so one copied into a repository user's comment can never trigger an operation
+(D125, `design/guides/managed-output.md` §2 and §4).
 
 `postManagedComment` is non-idempotent because experiment 6.5 observed a blind retry duplicating a
 created comment; its recovery must go through the marker read-back path. `applyMappedLabel` is the

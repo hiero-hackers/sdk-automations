@@ -39,11 +39,15 @@ flowchart TB
     CLM["claimNextDelivery — processing, + claim token"]
     FIN["completeDeliveryWithReport — report + done, one transaction"]
     REL["releaseDelivery / requeueStuckDeliveries — back to pending"]
+    RETRY["releaseDeliveryAfterFailure — attempt counted, retry deadline set"]
+    DEAD["failed — dead letter: claimed by nothing, payload kept"]
     PRUNE["pruneCompletedDeliveries — retention"]
     BYTES --> ACC
     SCHEMA -.->|"once, at open"| ACC
     ACC --> CLM --> FIN --> PRUNE
     CLM --> REL --> CLM
+    CLM --> RETRY --> CLM
+    RETRY -->|"attempts reached the caller's cap"| DEAD
 ```
 
 The effect journal, effect claims and schedules run the same way and are
@@ -66,7 +70,7 @@ together under a single write lock (D110).
 
 | Table | Role | Evidence status |
 |---|---|---|
-| `seen_delivery` | atomic webhook acceptance and work queue: opaque GUID, event name, exact payload bytes, SHA-256 digest, receipt/completion times, and claim state | GUID dedup was decided in 6.5; durable intake semantics are exercised by this package's restart and two-thread contention tests |
+| `seen_delivery` | atomic webhook acceptance and work queue: opaque GUID, event name, exact payload bytes, SHA-256 digest, receipt/terminal times, claim state, and the failed-attempt count with its retry deadline | GUID dedup was decided in 6.5; durable intake semantics are exercised by this package's restart and two-thread contention tests |
 | `effect_journal` | intent/done write-ahead rows with revision, durable attempt counter, and completion timestamp; reserved for a future effect-specific recovery path | unused by the runnable application; store transition tests cover the D42 mechanics |
 | `effect_claim` | one-winner LEASE per effect: atomic stale takeover, released on completion | unused by the runnable application; store contention tests cover the D41 mechanics |
 | `schedule` | clock-triggered work; `pending → running → done`, with claim age and a per-firing completion token | decided in 6.5; restart/requeue mechanics are pre-covered here; `claimed_at` and claim tokens prevent stale completion under D43 |
@@ -99,9 +103,9 @@ Three store findings, argued in full in their register rows:
 ## Version contract and migration
 
 `PRAGMA user_version` is the explicit SQLite-native schema marker; the current
-version is `4`. A declared version above `4` is refused before the store changes
+version is `5`. A declared version above `5` is refused before the store changes
 the database. Version-zero files are accepted only when every owned SQLite
-object matches one of the three schemas this repository created. The fingerprint
+object matches one of the three unversioned schemas this repository created. The fingerprint
 includes exact table and index definitions, so column types, nullability,
 primary keys, checks, partial-index predicates, and the absence of triggers or
 views are enforced together. Unknown or altered shapes fail closed.
@@ -109,8 +113,9 @@ views are enforced together. Unknown or altered shapes fail closed.
 All required migrations run in order inside one `BEGIN IMMEDIATE` transaction,
 including each `user_version` update. An interruption therefore leaves the
 entire pre-migration schema or the complete current schema; reopening repeats
-the same ordered work. Fixtures reproduce all three old definitions, and
+the same ordered work. Fixtures reproduce all four old definitions, and
 fault injection interrupts every migration step before reopening the file.
+Every upgrade path is held to the fingerprint a fresh database creates.
 
 Information an old schema never stored cannot be reconstructed. Identity-only
 delivery rows migrate as completed legacy identities with an unknown event and
@@ -118,7 +123,10 @@ digest, so a later redelivery conflicts rather than silently reprocessing.
 Original journal rows receive attempt `1` and revision `legacy:unknown`, which
 cannot pretend to match a current plan. Original `running` schedules had no
 ownership token and return to `pending`. Deliveries already completed before
-version 4 remain valid but have no invented report row.
+version 4 remain valid but have no invented report row. Deliveries migrated to
+version 5 start with zero failed attempts and no retry deadline: an attempt no
+schema counted cannot be reconstructed, and inventing one would spend a
+delivery's retry budget on history nobody recorded.
 
 ## Durable webhook intake boundary
 
@@ -137,10 +145,23 @@ There is no identity-only insertion API.
 
 `claimNextDelivery` atomically moves one deterministically selected row
 to `processing` and returns its event name and exact bytes with a fresh
-256-bit claim token. It can take over a processing row whose claim is at
-or before the caller's stale boundary. `releaseDelivery` and
-`completeDeliveryWithReport` are conditional on that token, so an earlier
-worker cannot mutate a replacement claim.
+256-bit claim token, plus the count of attempts already spent on it. It can
+take over a processing row whose claim is at or before the caller's stale
+boundary, and it skips two kinds of ineligible row inside the same statement:
+one still waiting out a retry deadline, and one dead-lettered. `releaseDelivery`,
+`releaseDeliveryAfterFailure` and `completeDeliveryWithReport` are conditional
+on that token, so an earlier worker cannot mutate a replacement claim.
+
+`releaseDeliveryAfterFailure` is the failed attempt's counterpart to
+completion. In one statement it counts the attempt, clears the claim, and
+either sets the caller's retry deadline (`retryScheduled`) or — when the
+incremented count reaches the caller's `maxAttempts` — dead-letters the
+delivery as `failed` (`deadLettered`). The store owns no policy here: the
+caller that spaces the retries owns the budget they spend. A dead-lettered
+delivery is claimed by nothing, keeps its payload bytes because no canonical
+report replaced them, and is never pruned as completed work.
+`deadLetteredDeliveries` lists them by dead-letter time then GUID, identity
+and attempt count only.
 
 `completeDeliveryWithReport` verifies the GUID, event name, payload digest,
 processing state, and current claim token under one write lock. It inserts the

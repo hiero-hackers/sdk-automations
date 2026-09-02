@@ -163,6 +163,36 @@ describe("deriveWorld authoritative preconditions", () => {
         expect(deriveWorld(paused, emptyClaims).observedMeanings).toEqual(["ready", "blocked"]);
     });
 
+    /**
+     * The fact the `itemClosed` rule reads. It is derived from the
+     * observation, never from `claims.closed` — the claim defaults to `null`,
+     * so a world that took closure from the capability would report every
+     * silent capability's target as open.
+     */
+    it("carries the observed closure, from either projection branch", () => {
+        expect(
+            deriveWorld(project({ closedBy: "merged", meanings: [] }), emptyClaims).closure,
+        ).toBe("merged");
+        const conflicted = project({
+            closedBy: "closedByHuman",
+            meanings: ["awaitingTriage", "inProgress"],
+        });
+        expect(conflicted.kind).toBe("conflict");
+        expect(deriveWorld(conflicted, emptyClaims).closure).toBe("closedByHuman");
+        expect(
+            deriveWorld(project({ closedBy: null, meanings: [] }), emptyClaims).closure,
+        ).toBeNull();
+    });
+
+    it("invents no closure without a projection, and cannot be reached with one", () => {
+        const world = deriveWorld(null, emptyClaims);
+        expect(world.closure).toBeNull();
+        // The pair is what makes `null` honest rather than a claim of
+        // openness: no projection means the preflight refuses
+        // `preconditionStale` before any rule reads `closure`.
+        expect(world.preconditionHolds).toBe(false);
+    });
+
     it("checks requested facts against a clean authoritative projection", () => {
         const clean = project({ closedBy: null, meanings: ["ready"] });
         expect(deriveWorld(clean, emptyClaims).preconditionHolds).toBe(true);

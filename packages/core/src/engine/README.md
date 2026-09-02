@@ -34,8 +34,15 @@ a `malformed` finding. A capability asking for a resolver it never declared is a
 `undeclaredResolver` finding. A refused write is a verdict. A shell that cannot get a report back
 has nothing to record, and an operator surface reading a crash learns nothing.
 
-The corollary: an undeclared resolver is a **capability defect**, so it is a `problem`, not a
-silently empty answer.
+Totality means the fallible seams are **contained**, not that they are trusted. A capability whose
+`evaluate` throws is a `capabilityFailed` finding and contributes no intents; a resolver source that
+rejects is a `resolverFailed` finding and answers `unavailable`, never an empty value; an ordering
+lookup that rejects is a `humanOrderingLookupFailed` finding and the ordering becomes `"unknown"`,
+which the rules already refuse (D51). Every one of them leaves the other capabilities in the same
+run untouched.
+
+The corollary: each of these is a **defect** in a capability or a shell, so each is a `problem`, not
+a silently empty answer.
 
 ## The caller cannot lie about the world
 

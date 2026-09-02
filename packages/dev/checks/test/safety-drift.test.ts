@@ -29,6 +29,7 @@ const REFUSAL_CODES: { readonly [K in SafetyRefusalCode]: true } = {
     capabilityDisabled: true,
     permissionMissing: true,
     itemBlocked: true,
+    itemClosed: true,
     preconditionStale: true,
     newerHumanChange: true,
     humanOrderingUnknown: true,

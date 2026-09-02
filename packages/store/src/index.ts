@@ -20,7 +20,10 @@ export type {
     ClaimedDelivery,
     CompleteDeliveryWithReportInput,
     CompleteDeliveryWithReportResult,
+    DeadLetteredDelivery,
     DeliveryState,
+    ReleaseDeliveryAfterFailureInput,
+    ReleaseDeliveryAfterFailureResult,
     ReleaseDeliveryResult,
 } from "./deliveries.js";
 export type { EffectState, OpenIntent } from "./effects.js";

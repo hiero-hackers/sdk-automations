@@ -82,7 +82,13 @@ A blind retry that skips the resolver duplicated the managed comment on the firs
   - Q15 → answered: the recovery minimum is the original four-table
     single-file store above. The current owned schema is five tables after
     D110's separate report-completion evidence.
-- **Approving review:** _(names, date — per the ratification rule)_
+- **Approving review:** Sophie Bulloch (exploreriii), 2026-09-02 — author
+  ratification, scoped to ring-zero: the sandbox soak and the effect path
+  built and enabled against the personal sandbox only. Enablement on any
+  volunteer or Hiero repository additionally requires that repository's
+  maintainers and the named operator (Q1/Q13), per P8 and the pilot gate.
+  Evidence: protocols 6.2 and 6.5, and the store running live under
+  protocol 8.1 since 2026-09-02.
 
 ## Risk-review amendment (2026-07-28)
 
@@ -91,6 +97,11 @@ A blind retry that skips the resolver duplicated the managed comment on the firs
 - **Cannot** fence a GitHub request already in flight when an effect lease is stolen.
 - **So D41 reopens.** The serialized crash grid is restart evidence, not evidence that live lease
   takeover preserves a non-idempotent exactly-once outcome.
+- **First-slice posture (2026-09-02):** one effect worker, and effect-lease takeover only after a
+  staleness margin exceeding the HTTP client's bounded worst case (the 30 s per-request wait cap
+  times the attempt budget), so a stolen lease cannot race a request still in flight. Live takeover
+  under multiple workers remains unevidenced and stays blocked on D41's reopened question; the
+  margin turns the unfenceable window into one that cannot open.
 
 ## Durable report and schema amendment (2026-08-09)
 

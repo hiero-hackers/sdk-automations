@@ -14,16 +14,24 @@
 
 import {
     INTENT_OPERATIONS,
+    managedCommentOf,
     projectCapabilityView,
     screenIntent,
     type AnyIntent,
+    type CapabilityView,
     type ItemRef,
+    type ManagedComment,
     type ObservationCatalogue,
     type RepositoryRef,
     type TypedDeclaration,
 } from "../capability/index.js";
 import type { PermissionGrant } from "../github/index.js";
-import { EngineHandle, type EngineCapability, type ResolverSource } from "./invoke.js";
+import {
+    EngineHandle,
+    thrownDetail,
+    type EngineCapability,
+    type ResolverSource,
+} from "./invoke.js";
 import { normalizeDelivery } from "./events.js";
 import type { MappableMeaning, RepositoryConfig } from "../config/index.js";
 import type { ObservationProjection } from "../workflow/index.js";
@@ -79,11 +87,25 @@ export type DecideInput =
       }
     | { readonly kind: "observation"; readonly observation: EngineObservation };
 
-/** What one decision produced: the record and any active-mode intents. */
+/**
+ * An intent that may act, carrying the identity only the platform can mint.
+ *
+ * `managedComment` is `null` for every operation that posts none. Identity
+ * attaches HERE rather than in the factory (D125): an effect's identity is the
+ * name under which a write will be found again, and an intent that will never
+ * be written has none to name. The factory would also be handing it back to the
+ * capability that must not own it, which is the arrangement D125 removed.
+ */
+export interface ApprovedEffect {
+    readonly intent: AnyIntent;
+    readonly managedComment: ManagedComment | null;
+}
+
+/** What one decision produced: the record and any active-mode effects. */
 export interface Decision {
     readonly report: Report;
-    /** Intents that passed every gate in `active` mode. */
-    readonly approved: readonly AnyIntent[];
+    /** Effects that passed every gate in `active` mode. */
+    readonly approved: readonly ApprovedEffect[];
 }
 
 // ─── The gates one intent passes ─────────────────────────────────────
@@ -96,7 +118,10 @@ export interface Decision {
 export function describeChange(intent: AnyIntent): string {
     switch (intent.operation) {
         case "postManagedComment":
-            return `managed comment ${intent.desired.marker}`;
+            // Capability and purpose, never the marker: the marker is derived
+            // identity, and a safety record naming it would read as a value
+            // someone chose rather than the change being made (D125).
+            return `managed ${intent.desired.kind} comment from ${intent.capability}`;
         case "applyMappedLabel":
             // "set", not "add": the adapter swaps the previous position
             // label as part of realising this (D4, D80).
@@ -113,8 +138,42 @@ const projectionOf = (observation: EngineObservation): EngineProjection =>
     observation.kind === "staleItemsDue" ? null : observation.position;
 
 /**
+ * The ordering evidence for one item, with the lookup CONTAINED.
+ *
+ * A seam that threw established nothing, and D51 rules an unestablished
+ * ordering a conflict — so the contained value is `"unknown"`, which the rules
+ * already refuse fail-closed. The detail rides alongside because "checked and
+ * could not tell" and "the lookup broke" need different fixes.
+ */
+async function orderingFor(
+    item: ItemRef,
+    externals: DecideExternals,
+): Promise<{ readonly value: HumanChangeOrdering; readonly defect: string | null }> {
+    try {
+        return { value: await externals.latestHumanChangeAt(item), defect: null };
+    } catch (thrown) {
+        return { value: "unknown", defect: thrownDetail(thrown) };
+    }
+}
+
+/**
+ * The managed-comment identity for an intent that has one, minted from the
+ * intent's OWN fields — the capability it is attributed to, the purpose it
+ * asked for, and the idempotency key the screen has already re-derived.
+ */
+function managedCommentFor(intent: AnyIntent): ManagedComment | null {
+    return intent.operation === "postManagedComment"
+        ? managedCommentOf({
+              capability: intent.capability,
+              kind: intent.desired.kind,
+              effectId: intent.idempotencyKey,
+          })
+        : null;
+}
+
+/**
  * One intent through every gate — screen, derived world, verdict —
- * returning its findings and, if it may act, the intent itself. Async for
+ * returning its findings and, if it may act, the effect itself. Async for
  * exactly one fact: the ordering evidence, awaited after the screen so a
  * screened-out intent costs no lookup.
  */
@@ -124,7 +183,7 @@ async function gateIntent(
     projection: EngineProjection,
     config: RepositoryConfig,
     externals: DecideExternals,
-): Promise<{ readonly findings: readonly Finding[]; readonly approved: AnyIntent | null }> {
+): Promise<{ readonly findings: readonly Finding[]; readonly approved: ApprovedEffect | null }> {
     const subject = {
         kind: "item",
         capability: declaration.name,
@@ -147,15 +206,26 @@ async function gateIntent(
             change: describeChange(intent),
         },
     };
+    const ordering = await orderingFor(intent.item, externals);
     const context = {
         killSwitchActive: externals.killSwitchActive,
         installationGrants: externals.installationGrants,
-        latestHumanChangeAt: await externals.latestHumanChangeAt(intent.item),
+        latestHumanChangeAt: ordering.value,
         world: deriveWorld(projection, intent.expected),
     };
     const verdict = evaluateWrite(request, config, context);
 
     const findings: Finding[] = [];
+    if (ordering.defect !== null) {
+        findings.push(
+            finding(
+                "problem",
+                "humanOrderingLookupFailed",
+                `the human-change ordering lookup threw: ${ordering.defect}`,
+                subject,
+            ),
+        );
+    }
     // Acting intents tell their story; refusals keep their reasons alone (D92 3d).
     if (verdict.outcome !== "refuse") {
         findings.push(explanationFinding(intent.explanation, subject));
@@ -168,7 +238,42 @@ async function gateIntent(
             operation: intent.operation,
         }),
     );
-    return { findings, approved: verdict.outcome === "apply" ? intent : null };
+    return {
+        findings,
+        approved:
+            verdict.outcome === "apply"
+                ? { intent, managedComment: managedCommentFor(intent) }
+                : null,
+    };
+}
+
+/**
+ * One capability's intents, with the CALL contained.
+ *
+ * A capability is ordinary code and may throw. The engine is total, so a
+ * throw becomes a recorded defect and that capability simply contributes
+ * nothing — the same bargain `EngineHandle` already makes for an undeclared
+ * resolver. Whatever the capability explained before it broke is kept: the
+ * handle holds it, and it is the only account of what it was doing.
+ */
+async function intentsFrom(
+    capability: EngineCapability,
+    observation: EngineObservation,
+    view: CapabilityView<TypedDeclaration>,
+    handle: EngineHandle,
+): Promise<{ readonly intents: readonly AnyIntent[]; readonly defect: string | null }> {
+    try {
+        // The `never`s are `toEngine`'s erasure showing through; its
+        // docstring owns the soundness argument, once, for all three.
+        const intents = await capability.evaluate(
+            observation as never,
+            view as never,
+            handle as never,
+        );
+        return { intents, defect: null };
+    } catch (thrown) {
+        return { intents: [], defect: thrownDetail(thrown) };
+    }
 }
 
 // ─── The verb ────────────────────────────────────────────────────────
@@ -176,9 +281,11 @@ async function gateIntent(
 /**
  * The front door: a delivery becomes a report, plus the intents that may act.
  *
- * Total by construction. An unreadable payload, a capability asking for an
- * undeclared resolver, and a refused write are all findings — a shell that
- * cannot get a report back has nothing to record.
+ * Total: every fallible seam is contained, so a report always comes back. An
+ * unreadable payload, a capability that asks for an undeclared resolver or
+ * throws, a resolver source or ordering lookup that rejects, and a refused
+ * write are all findings. A shell that cannot get a report back cannot record
+ * one, and in a reclaiming shell that loses the delivery for good.
  */
 export async function decide(
     input: DecideInput,
@@ -187,7 +294,7 @@ export async function decide(
     externals: DecideExternals,
 ): Promise<Decision> {
     const findings: Finding[] = [];
-    const approved: AnyIntent[] = [];
+    const approved: ApprovedEffect[] = [];
     let repository: RepositoryRef;
     let observation: EngineObservation | null = null;
 
@@ -228,13 +335,7 @@ export async function decide(
 
             const handle = new EngineHandle(declaration, externals.resolve);
             const view = projectCapabilityView(declaration, config);
-            // The `never`s are `toEngine`'s erasure showing through; its
-            // docstring owns the soundness argument, once, for all three.
-            const intents = await capability.evaluate(
-                observation as never,
-                view as never,
-                handle as never,
-            );
+            const evaluated = await intentsFrom(capability, observation, view, handle);
 
             for (const explanation of handle.explanations) {
                 findings.push(
@@ -254,8 +355,28 @@ export async function decide(
                     ),
                 );
             }
+            for (const failure of handle.failures) {
+                findings.push(
+                    finding(
+                        "problem",
+                        "resolverFailed",
+                        `the resolver source threw answering "${declaration.name}" — ${failure}`,
+                        { kind: "capability", capability: declaration.name },
+                    ),
+                );
+            }
+            if (evaluated.defect !== null) {
+                findings.push(
+                    finding(
+                        "problem",
+                        "capabilityFailed",
+                        `"${declaration.name}" threw during evaluation: ${evaluated.defect}`,
+                        { kind: "capability", capability: declaration.name },
+                    ),
+                );
+            }
 
-            for (const intent of intents) {
+            for (const intent of evaluated.intents) {
                 const gated = await gateIntent(intent, declaration, projection, config, externals);
                 findings.push(...gated.findings);
                 if (gated.approved !== null) approved.push(gated.approved);

@@ -316,6 +316,15 @@ describe("atomic report completion", () => {
                 reportJson: "not-json",
             }),
         ).toThrow("reportJson must be a JSON object");
+        expect(() =>
+            store.completeDeliveryWithReport({
+                ...input,
+                deliveryId: "not-a-guid" as typeof input.deliveryId,
+            }),
+        ).toThrow("deliveryId must be a valid GitHub delivery GUID");
+        expect(() =>
+            store.releaseDelivery("not-a-guid" as typeof input.deliveryId, claim.claimToken),
+        ).toThrow("deliveryId must be a valid GitHub delivery GUID");
         store.close();
     });
 
@@ -419,6 +428,108 @@ describe("atomic report completion", () => {
             count: 0,
         });
         db.close();
+    });
+});
+
+describe("dead-lettering", () => {
+    /** One failed attempt against a claim, spending a two-attempt budget. */
+    function fail(store: Store, claim: ClaimedDelivery, failedAt: string) {
+        return store.releaseDeliveryAfterFailure({
+            deliveryId: claim.deliveryId,
+            claimToken: claim.claimToken,
+            failedAt,
+            retryNotBefore: failedAt,
+            maxAttempts: 2,
+        });
+    }
+
+    it("stops claiming a delivery at its cap and keeps it inspectable", () => {
+        const store = new Store(databasePath);
+        const first = acceptAndClaim(store);
+        expect(fail(store, first, "2026-08-01T10:01:10.000Z")).toEqual({
+            outcome: "retryScheduled",
+            attempts: 1,
+            retryNotBefore: "2026-08-01T10:01:10.000Z",
+        });
+
+        const second = store.claimNextDelivery(
+            "worker-a",
+            "2026-08-01T10:01:20.000Z",
+            "2026-08-01T09:00:00.000Z",
+        )!;
+        expect(second.attempts).toBe(1);
+        expect(fail(store, second, COMPLETED_AT)).toEqual({
+            outcome: "deadLettered",
+            attempts: 2,
+        });
+
+        // Claimable by no worker, at any later instant, stale window included.
+        expect(
+            store.claimNextDelivery(
+                "worker-b",
+                "2026-09-01T00:00:00.000Z",
+                "2026-08-31T00:00:00.000Z",
+            ),
+        ).toBeUndefined();
+        expect(store.deadLetteredDeliveries()).toEqual([
+            {
+                deliveryId: DELIVERY_ID,
+                eventName: "issues",
+                payloadDigest: first.payloadDigest,
+                receivedAt: RECEIVED_AT,
+                attempts: 2,
+                failedAt: COMPLETED_AT,
+            },
+        ]);
+        // Still the same delivery to a redelivery, and never pruned as done.
+        expect(
+            store.acceptDelivery({
+                deliveryId: DELIVERY_ID,
+                eventName: "issues",
+                payload: Buffer.from("work"),
+                receivedAt: RECEIVED_AT,
+            }),
+        ).toMatchObject({ outcome: "duplicate", state: "failed" });
+        expect(store.pruneCompletedDeliveries("2026-12-01T00:00:00.000Z")).toBe(0);
+        store.close();
+
+        // The bytes a redrive would need outlive the failure, unlike a
+        // completed delivery's, which its canonical report replaces.
+        const db = new DatabaseSync(databasePath);
+        const row = db
+            .prepare("SELECT state, payload, completed_at FROM seen_delivery WHERE delivery_id = ?")
+            .get(DELIVERY_ID) as Record<string, unknown>;
+        expect(row.state).toBe("failed");
+        expect(row.completed_at).toBe(COMPLETED_AT);
+        expect(Buffer.from(row.payload as Uint8Array)).toEqual(Buffer.from("work"));
+        db.close();
+    });
+
+    it("lists dead letters in dead-letter time then delivery identity", () => {
+        const store = new Store(databasePath);
+        for (const [deliveryId, failedAt] of [
+            [THIRD_DELIVERY_ID, "2026-08-01T10:04:00.000Z"],
+            [DELIVERY_ID, "2026-08-01T10:05:00.000Z"],
+            [SECOND_DELIVERY_ID, "2026-08-01T10:04:00.000Z"],
+        ] as const) {
+            const claim = acceptAndClaim(store, deliveryId);
+            expect(
+                store.releaseDeliveryAfterFailure({
+                    deliveryId,
+                    claimToken: claim.claimToken,
+                    failedAt,
+                    retryNotBefore: failedAt,
+                    maxAttempts: 1,
+                }),
+            ).toEqual({ outcome: "deadLettered", attempts: 1 });
+        }
+
+        expect(store.deadLetteredDeliveries().map((entry) => entry.deliveryId)).toEqual([
+            SECOND_DELIVERY_ID,
+            THIRD_DELIVERY_ID,
+            DELIVERY_ID,
+        ]);
+        store.close();
     });
 });
 

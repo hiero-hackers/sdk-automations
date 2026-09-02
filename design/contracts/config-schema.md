@@ -71,8 +71,12 @@ Unknown keys are rejected at the top level, inside `mappings`, and inside each c
   `enabled: false`. Unknown and retired names are rejected with `capabilityUnknown`; there is no retirement
   tombstone in the current direct-set model (D58's earlier registry design no longer exists).
 - Only the boolean value `true` enables a capability. Omission is false; strings and numbers are rejected.
-- `settings`, when present, must be a mapping but is otherwise opaque to the shared parser. A real
-  capability must add and own its setting validation before it ships.
+- `settings`, when present, must be a mapping, and its KEY NAMES are checked against the admitted
+  capability's declared `configKeys` — an undeclared name is `unknownKey` at
+  `capabilities.<name>.settings.<key>`, whether the block is enabled or disabled (D84). The VALUES stay
+  opaque: a real capability must add and own its setting validation before it ships.
+- A capability may be admitted by name alone, which admits the name and states nothing else. The
+  settings-key and required-meaning rules then have nothing to judge against and do not run for it.
 
 ### Label mappings
 
@@ -80,8 +84,11 @@ Unknown keys are rejected at the top level, inside `mappings`, and inside each c
 - A label is a non-empty string.
 - Mappings are fully injective after trimming and case folding, matching GitHub label-name uniqueness. Two
   meanings therefore cannot map to spellings GitHub treats as the same label (D34, D55).
-- The parser does **not** currently call GitHub to confirm that a mapped label exists, and it does not know
-  which meanings a capability requires. Those are activation checks still to build.
+- A capability enabled without a meaning its declaration requires is `meaningRequired`, pathed at
+  `mappings.labels.<meaning>`. Disabled capabilities require nothing, and every missing meaning is
+  reported at once (D84).
+- The parser does **not** currently call GitHub to confirm that a mapped label exists. That is an
+  activation check still to build.
 
 ## 4. Repository modes
 
@@ -125,13 +132,15 @@ Until those exist, `active` remains unsupported by the shell.
 | `capabilityEnabledNotBoolean` | `enabled` is present but is not a boolean. |
 | `capabilityUnknown` | The application did not directly admit the configured capability name. |
 | `meaningNotMappable` | A label mapping names a meaning outside the closed catalogue. |
+| `meaningRequired` | An enabled capability declares a meaning the document has not mapped. |
 | `labelInvalid` | A mapped label is not a non-empty string. |
 | `labelNotInjective` | Two meanings map to one GitHub-equivalent label name. |
 | `principalNotAString` | A principal value is not a string. |
 
 ## 7. Deliberately deferred
 
-- Define and enforce each shipped capability's settings schema and required meanings.
+- Define and enforce each shipped capability's settings VALUE schema. Setting key names and required
+  meanings are enforced as of D84; what a declared setting may hold is still the capability's to state.
 - Check mapped-label existence and live installation grants before activation.
 - Build the pull-request validation check and effective-configuration report required by D38.
 - Decide schema-version migration, deprecation, retention, and rollback policy (Q14).

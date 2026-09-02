@@ -31,6 +31,7 @@ const REFUSAL_SEVERITY: { readonly [K in SafetyRefusalCode]: Severity } = {
     capabilityDisabled: "notice",
     modeDisabled: "notice",
     itemBlocked: "notice",
+    itemClosed: "notice",
     graceRunning: "notice",
     activityCancelled: "notice",
     newerHumanChange: "notice",

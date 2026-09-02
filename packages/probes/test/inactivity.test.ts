@@ -81,7 +81,7 @@ describe("inactivity", () => {
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
-                    marker: "<!-- hiero-automation:inactivity -->",
+                    kind: "warning",
                     body: "This has been assigned to @contributor without activity for a while. It will be unassigned in 7 days unless there is a comment or a commit.",
                 },
                 expected: { meaningsPresent: [], meaningsAbsent: [], closed: false },
@@ -100,7 +100,7 @@ describe("inactivity", () => {
         const intents = await inactivity.evaluate(sweep(assigned(null)), patient, human);
 
         expect(intents[0]?.desired).toEqual({
-            marker: "<!-- hiero-automation:inactivity -->",
+            kind: "warning",
             body: "This has been assigned to @contributor without activity for a while. It will be unassigned in 21 days unless there is a comment or a commit.",
         });
         expect(intents[0]?.explanation.detail).toEqual(["grace period 21 days"]);

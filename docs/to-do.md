@@ -6,13 +6,14 @@
 
 ## Wrong today, and known
 
-- **Mappings are not tied to capabilities.** A user can enable `intake` and drop `awaitingTriage`
-  from their mappings, and nothing in the file is wrong — the capability silently skips at runtime
-  and says so only in a report. `configuration.md` documents this honestly under "Do I have to map
-  all of them?", but honesty is not the fix: capabilities must declare the meanings they need, so an
-  enabled capability with an unmapped meaning becomes a **configuration error with a path**, caught
-  at PR time. Then `configuration.md` gains a per-capability requirements table, locked like every
-  other list. (D84.)
+- ~~**Mappings are not tied to capabilities.**~~ **Mechanism landed (D84):** capabilities declare
+  `configKeys` and `requiredMeanings`, and the parser reads both. Enabling a capability without a
+  meaning it requires is now `meaningRequired`, with the path to the line to add; a `settings` name the
+  capability never declared is now `unknownKey`, with the path to the key. `configuration.md` says so
+  under "Do I have to map all of them?" and in the `settings` section. **Still blocked:** the
+  per-capability requirements table that item promised. It needs a capability whose settings and
+  meanings are user-facing facts, and the probes must not be documented (see below), so the table waits
+  on the first shipped capability along with the rest of the per-capability pages.
 - ~~**The config path is an assumption, not a decision.**~~ **Resolved by D93 (2026-08-07):** the
   path is `automations.yml` in the repository root — the file configures the platform, not GitHub, so
   it does not live in `.github/`. The `docs/` pages were renamed to match on 2026-08-17. Only the
@@ -33,7 +34,7 @@
 
 ## Missing, blocked on capabilities shipping
 
-- **Per-capability pages.** `settings.announce`, `settings.marker`, `settings.maxOpenAssignments`
+- **Per-capability pages.** `settings.announce`, `settings.marker`, `settings.gracePeriodDays`
   appear in examples but are defined nowhere — `settings` is each capability's own contract, and the
   platform docs cannot define keys the platform does not own. Each shipped capability gets a page:
   what it does, its settings, required meanings, and platform-derived permissions.

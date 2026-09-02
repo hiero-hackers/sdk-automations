@@ -8,6 +8,12 @@
  * 404s while the repository itself answers, so the file is genuinely not
  * there. `permanent` marks defects of the committed file — the outcomes a
  * new commit fixes and a retry never will.
+ *
+ * Absence is re-corroborated on EVERY load — deliberately unmemoized. A
+ * repository's first commit of `automations.yml` (including one whose whole
+ * point is `mode: disabled`) must bind on the next delivery, not after a
+ * belief window expires; the two GETs absence costs are that promptness's
+ * price, and the documented config-less default pays it rarely enough.
  */
 
 import { Buffer } from "node:buffer";
@@ -22,22 +28,13 @@ import {
 import { repoPath, type GitHubHttpClient } from "./http.js";
 import { field, jsonRecordOf } from "./untrusted.js";
 
-/** Seams the composition root supplies; the clock is for tests. */
+/** Seams the composition root supplies. */
 export interface GitHubConfigSourceOptions {
     readonly client: GitHubHttpClient;
     readonly repository: RepositoryRef;
-    readonly clock?: () => Date;
 }
 
 const BLOB_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-
-/**
- * How long a corroborated absence is believed without re-asking. A 404
- * carries no validator, so absence is the one config answer the ETag cache
- * cannot make free — without this memo, every delivery to a config-less
- * repository (the documented default) would cost full quota, twice.
- */
-const ABSENT_CONFIG_TTL_MS = 60_000;
 
 /** A document, a defect of the committed file, or a shape we do not know. */
 type DecodedContents =
@@ -97,9 +94,7 @@ function decodeContents(body: string): DecodedContents {
 export function githubConfigSource({
     client,
     repository,
-    clock = () => new Date(),
 }: GitHubConfigSourceOptions): ConfigSource {
-    let absentBelievedUntil = 0;
     const repoUrl = repoPath(repository);
     const configUrl = `${repoUrl}/contents/${CONFIG_PATH}`;
 
@@ -107,7 +102,6 @@ export function githubConfigSource({
     const corroboratedAbsence = async (): Promise<ConfigLoadOutcome> => {
         const repo = await client.request({ method: "GET", url: repoUrl });
         if (repo.ok) {
-            absentBelievedUntil = clock().getTime() + ABSENT_CONFIG_TTL_MS;
             return { ok: true, document: { revision: ABSENT_CONFIG_REVISION, text: "" } };
         }
         return {
@@ -119,9 +113,6 @@ export function githubConfigSource({
 
     return {
         async load(): Promise<ConfigLoadOutcome> {
-            if (clock().getTime() < absentBelievedUntil) {
-                return { ok: true, document: { revision: ABSENT_CONFIG_REVISION, text: "" } };
-            }
             const outcome = await client.request({ method: "GET", url: configUrl });
             if (!outcome.ok) {
                 return outcome.failure.kind === "notFoundOrNotInstalled"

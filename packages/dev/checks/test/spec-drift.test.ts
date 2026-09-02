@@ -30,6 +30,7 @@ const ERROR_CODES: { readonly [K in ConfigErrorCode]: true } = {
     capabilityEnabledNotBoolean: true,
     capabilityUnknown: true,
     meaningNotMappable: true,
+    meaningRequired: true,
     labelInvalid: true,
     labelNotInjective: true,
     principalNotAString: true,

@@ -99,6 +99,7 @@ export const INTENT_SCREEN_REFUSAL_CODES = [
     "foreignCapability",
     "undeclaredIntent",
     "invalidCause",
+    "idempotencyKeyMismatch",
     "authoritativePositionUnavailable",
     "pauseNotCapabilityWritable",
     "meaningWrongEntity",
@@ -215,6 +216,20 @@ export function screenIntent(
             ok: false,
             code: "invalidCause",
             reason: "the intent's cause carries an invalid timestamp",
+        };
+    }
+    // The key is the store's `effect_id` (D65), so a capability free to name
+    // it could merge two effects into one or split a redelivery into two. It
+    // is checked by RE-DERIVING it: the platform owns the identity, and the
+    // factory's copy is an ergonomic, not an authority.
+    //
+    // AFTER the cause check, and only there: the derivation calls
+    // `observedAt.toISOString()`, which throws on an invalid date.
+    if (intent.idempotencyKey !== deriveIdempotencyKey(intent)) {
+        return {
+            ok: false,
+            code: "idempotencyKeyMismatch",
+            reason: "the intent's idempotency key is not the one this occasion derives",
         };
     }
     if (intent.operation === "applyMappedLabel") {

@@ -11,13 +11,15 @@ export default defineConfig({
             // main.ts is exercised as a real process in test/main.test.ts, and
             // v8 attributes nothing across a spawn — index.ts's reason exactly.
             exclude: ["src/index.ts", "src/main.ts"],
-            // Set just below the measured 98.34/93.75/94.28/96.15 — close
-            // enough to fire on a real regression, loose enough not to flap.
+            // Set below the measured 100/98.46/100/100 — close enough to
+            // fire on a real regression, loose enough not to flap. The two
+            // uncovered branches are the ones argued in the source as
+            // unreachable, where Stryker's disables say the same thing.
             thresholds: {
-                lines: 96,
-                branches: 92,
-                functions: 92,
-                statements: 94,
+                lines: 98,
+                branches: 96,
+                functions: 98,
+                statements: 98,
             },
         },
     },

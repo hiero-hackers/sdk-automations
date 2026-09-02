@@ -1,11 +1,12 @@
 # A reserved active configuration.
 #
 # Core retains active in its configuration vocabulary, but the runnable shell
-# rejects this mode before deciding. It performs no GitHub effect.
+# records `modeUnsupported` and rejects this mode before deciding. It performs
+# no GitHub effect.
 #
-# `assignment` demonstrates the opaque settings shape while disabled. The
+# `inactivity` demonstrates the opaque settings shape while disabled. The
 # shared parser confirms only that `settings` is a mapping; safe activation
-# still requires a shipped capability and its capability-owned validator.
+# still requires that capability's own settings validator, and none ships.
 
 schemaVersion: 1
 mode: active
@@ -18,13 +19,11 @@ capabilities:
 
   prQuality:
     enabled: true
-    settings:
-      marker: "<!-- hiero-automation:prQuality -->"
 
-  assignment:
+  inactivity:
     enabled: false
     settings:
-      maxOpenAssignments: 2
+      gracePeriodDays: 21
 
 mappings:
   labels:

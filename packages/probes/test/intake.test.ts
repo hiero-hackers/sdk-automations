@@ -192,7 +192,7 @@ describe("intake", () => {
                 item: ITEM,
                 operation: "postManagedComment",
                 desired: {
-                    marker: "<!-- hiero-automation:intake -->",
+                    kind: "notice",
                     body: "Thanks for opening this. It has been placed in the triage queue.",
                 },
                 expected: claim,

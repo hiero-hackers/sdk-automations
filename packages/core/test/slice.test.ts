@@ -15,24 +15,36 @@
  * — `screenIntent`, `evaluateWrite`, `explanationFinding`, `verdictFinding`
  * — on the identical intent, so that block is the specification `decide()`
  * is held to, not duplicated plumbing (D92 phase 2's parity gate).
+ *
+ * That block follows `decide()`'s OWN recipe for the request and the world:
+ * `INTENT_OPERATIONS` for the class and permission, `describeChange` for the
+ * change, the `owner/repo#number` item spelling, and `deriveWorld` over a
+ * projection rebuilt from the capture's labels. It then pins each of those
+ * to today's spelling, because `verdictFinding` surfaces only a code and a
+ * reason — a report comparison alone would let the target format, the change
+ * description or the world derivation drift unnoticed.
  */
 
 import { describe, expect, it } from "vitest";
 import { capture } from "@hiero-hackers/automation-testkit";
 import {
+    INTENT_OPERATIONS,
     declareCapability,
     decide,
+    deriveWorld,
+    describeChange,
     evaluateWrite,
     explanationFinding,
     intentFactoryFor,
+    meaningsOfLabels,
     normalizeDelivery,
     problems,
+    projectIssueObservation,
     screenIntent,
     verdictFinding,
     type DecideExternals,
     type EngineCapability,
 } from "../src/index.js";
-import { assertedWorld } from "../src/safety/world.js";
 import { triageConfig } from "./config/builders.js";
 
 const payload = capture("issues.opened.json").json();
@@ -41,6 +53,7 @@ const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
     configKeys: [],
+    requiredMeanings: [],
     observations: ["issueUpdated"],
     resolvers: [],
     intents: ["applyMappedLabel"],
@@ -100,7 +113,7 @@ describe("one real delivery, end to end", () => {
 
     it("triages the unpositioned issue and closes clean: nothing needs a human", async () => {
         const decision = await send("active");
-        expect(decision.approved).toEqual([keyed]);
+        expect(decision.approved).toEqual([{ intent: keyed, managedComment: null }]);
         expect(decision.report.findings.map((f) => f.code)).toEqual([
             "capabilityExplained",
             "applied",
@@ -117,25 +130,61 @@ describe("one real delivery, end to end", () => {
         ]);
     });
 
+    /**
+     * The capture's issue arrives bare, so `meaningsOfLabels` maps nothing.
+     * Stated here rather than dug out of the `unknown` payload; the projection
+     * below is compared against the normalizer's, which is what would notice a
+     * capture that grew a label.
+     */
+    const capturedLabels: readonly string[] = [];
+
     it("parity: decide() equals the hand-wired report, finding for finding", async () => {
         const screen = screenIntent(keyed, declaration, observation.position);
         expect(screen).toEqual({ ok: true });
 
+        // The world by decide()'s recipe: a projection of the capture's own
+        // labels, derived against the intent's claim. Equal to the one the
+        // normalizer built, or this fixture no longer says what it says.
+        const projection = projectIssueObservation({
+            closedBy: null,
+            meanings: meaningsOfLabels(config, capturedLabels),
+        });
+        expect(projection).toEqual(observation.position);
+        const world = deriveWorld(projection, keyed.expected);
+        expect(world).toMatchObject({
+            observedMeanings: [],
+            preconditionHolds: true,
+            closure: null,
+        });
+
+        // The target by decide()'s recipe, and its spelling pinned: the
+        // verdict finding carries neither, so nothing else would catch a
+        // change to either half.
+        const operationFacts = INTENT_OPERATIONS[keyed.operation];
+        const target = {
+            item: `${keyed.repository.owner}/${keyed.repository.repo}#${String(keyed.item.number)}`,
+            change: describeChange(keyed),
+        };
+        expect(target).toEqual({
+            item: "scrubbed-1/scrubbed-2#164",
+            change: "set mapped position awaitingTriage",
+        });
+
         const verdict = evaluateWrite(
             {
-                capability: "triage",
-                actionClass: "reversibleStateChange",
-                requiredPermissions: ["issues:write"],
+                capability: declaration.name,
+                actionClass: operationFacts.actionClassFloor,
+                requiredPermissions: [operationFacts.permission],
                 causeObservedAt: keyed.cause.observedAt,
                 cause: keyed.cause.cause,
-                target: { item: "issue #164", change: "label → status: triage" },
+                target,
             },
             config,
             {
-                installationGrants: ["issues:write"],
-                killSwitchActive: false,
-                world: assertedWorld([], true),
-                latestHumanChangeAt: null,
+                installationGrants: externals.installationGrants,
+                killSwitchActive: externals.killSwitchActive,
+                world,
+                latestHumanChangeAt: await externals.latestHumanChangeAt(observation.item),
             },
         );
         const expectedFindings = [

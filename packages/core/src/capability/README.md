@@ -1,6 +1,6 @@
 # capability/ — the boundary a capability lives behind
 
-Five files, five questions, one rule: a capability is ordinary code the platform must not trust.
+Six files, six questions, one rule: a capability is ordinary code the platform must not trust.
 Everything here exists to make that lack of trust structural rather than hopeful.
 
 Read them in this order — it is also the import direction. `catalogue.ts` imports nothing from this
@@ -10,6 +10,7 @@ signal that something has been put in the wrong file.
 | File | The question it answers | The one thing to know |
 |---|---|---|
 | [`catalogue.ts`](catalogue.ts) | **What may be said.** The closed vocabularies — observations a capability can receive, resolvers it can ask, intents it can express — plus the facts the *platform* owns about each operation (idempotency, action-class floor, permission). | Closed on purpose (D61): a capability chooses from these and cannot extend them, which is where P3 isolation comes from — capabilities that share no vocabulary have nothing to call each other through. |
+| [`managed.ts`](managed.ts) | **Which comment is ours?** The marker one effect publishes, the parser that reads an arbitrary comment body back, and the judgement that answers whether a comment is a given effect's. | Identity is platform-owned (D125). A capability supplies a `kind` and body content and can write no marker; the judgement takes authorship as a parameter, so a marker copied into a repository user's comment is refused before its bytes are read. |
 | [`declaration.ts`](declaration.ts) | **Who is speaking, and may the application boot?** A capability's self-description — triggers, config keys, observations, resolvers, and intent names — plus `validateCapabilityDeclarations`, the sole set-level admission path. | The shell validates the complete direct list before constructing the processor or server. Write typed declarations through `declareCapability`; boot admission still accepts runtime `string[]` names so malformed external declarations can be rejected. |
 | [`intent.ts`](intent.ts) | **What may be done.** The intent shape, idempotency-key derivation, and `screenIntent` runtime checks for attribution, declaration, authoritative position availability, and the workflow map. | A mapped-label transition gets its current position only from the observation projection. Missing or conflicted authority refuses closed; `expected` is only a requested precondition. |
 | [`factory.ts`](factory.ts) | **How is one built?** `intentFactoryFor` binds the occasion once, so an intent states only what it wants. | The ergonomics are also two contracts: an intent cannot omit its explanation, and an omitted `expected` claims nothing rather than claiming something wrong. |

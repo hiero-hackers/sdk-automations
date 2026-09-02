@@ -20,6 +20,7 @@ const DECLARATION_FIELDS: Record<keyof CapabilityDeclaration, true> = {
     name: true,
     triggers: true,
     configKeys: true,
+    requiredMeanings: true,
     observations: true,
     resolvers: true,
     intents: true,

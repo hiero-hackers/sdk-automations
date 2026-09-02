@@ -58,6 +58,75 @@ describe("hostile keys survive as data, never as prototype", () => {
         }
     });
 
+    /**
+     * D84 built one new record: the admission lookup. A plain object there
+     * would answer `constructor` and `toString` for capabilities nobody
+     * admitted — turning `capabilityUnknown` off for exactly the names an
+     * attacker would pick — so it is a `Map`, and this is what says so.
+     */
+    it("an inherited name is not an admitted capability", () => {
+        for (const name of ["constructor", "toString", "hasOwnProperty"]) {
+            const result = parseConfig(
+                { schemaVersion: 1, capabilities: { [name]: { enabled: false } } },
+                { revision: "rev-test", knownCapabilities: ["intake"] },
+            );
+            expect(result.ok).toBe(false);
+            if (!result.ok) {
+                expect(result.errors.map((e) => e.code)).toEqual(["capabilityUnknown"]);
+            }
+        }
+    });
+
+    /**
+     * The same question one level down, for the declared-settings lookup: an
+     * inherited member name must not read as a declared key, or `toString:`
+     * would be the one settings typo that passes.
+     */
+    it("an inherited name is not a declared settings key", () => {
+        const result = parseConfig(
+            {
+                schemaVersion: 1,
+                capabilities: { intake: { enabled: false, settings: { toString: 1 } } },
+            },
+            {
+                revision: "rev-test",
+                knownCapabilities: [
+                    { name: "intake", configKeys: ["announce"], requiredMeanings: [] },
+                ],
+            },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.map((e) => e.path)).toEqual([
+                "capabilities.intake.settings.toString",
+            ]);
+        }
+    });
+
+    /**
+     * And once more for the label table the required-meaning check reads: an
+     * unmapped meaning must look unmapped, not inherited-and-therefore-present.
+     */
+    it("an inherited member does not satisfy a required meaning", () => {
+        const result = parseConfig(
+            JSON.parse(
+                '{"schemaVersion":1,"capabilities":{"intake":{"enabled":true}},"mappings":{"labels":{}}}',
+            ),
+            {
+                revision: "rev-test",
+                knownCapabilities: [
+                    {
+                        name: "intake",
+                        configKeys: [],
+                        requiredMeanings: ["awaitingTriage"],
+                    },
+                ],
+            },
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.errors.map((e) => e.code)).toEqual(["meaningRequired"]);
+    });
+
     it("returned records are null-prototype — nothing inherited, ever", () => {
         const result = parseConfig(
             {

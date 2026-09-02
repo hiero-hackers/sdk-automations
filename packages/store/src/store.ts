@@ -40,7 +40,10 @@ import type {
     ClaimedDelivery,
     CompleteDeliveryWithReportInput,
     CompleteDeliveryWithReportResult,
+    DeadLetteredDelivery,
     DeliveryState,
+    ReleaseDeliveryAfterFailureInput,
+    ReleaseDeliveryAfterFailureResult,
     ReleaseDeliveryResult,
 } from "./deliveries.js";
 import type { EffectState, OpenIntent } from "./effects.js";
@@ -82,6 +85,12 @@ function assertPayloadDigest(value: string): void {
     }
 }
 
+function assertAttemptCap(value: number): void {
+    if (!Number.isInteger(value) || value < 1) {
+        throw new TypeError("maxAttempts must be a positive integer");
+    }
+}
+
 function assertReportJson(value: string): void {
     let parsed: unknown = null;
     try {
@@ -109,6 +118,22 @@ interface ClaimedDeliveryRow {
     readonly payload_digest: string;
     readonly received_at: string;
     readonly claim_token: string;
+    readonly attempts: number;
+}
+
+interface FailedAttemptRow {
+    readonly state: DeliveryState;
+    readonly attempts: number;
+    readonly retry_not_before: string | null;
+}
+
+interface DeadLetteredDeliveryRow {
+    readonly delivery_id: string;
+    readonly event_name: string;
+    readonly payload_digest: string;
+    readonly received_at: string;
+    readonly attempts: number;
+    readonly completed_at: string;
 }
 
 interface DeliveryFinalizationRow {
@@ -152,6 +177,10 @@ export class Store {
             `);
             migrateStorageSchema(this.db, this.injectFault);
         } catch (error) {
+            // Stryker disable next-line BlockStatement,CallExpression: an
+            // unclosed handle on the failure path leaks a file descriptor,
+            // which no black-box assertion can observe from outside the
+            // class — the close is resource hygiene, not visible behavior.
             try {
                 this.db.close();
             } catch {
@@ -186,8 +215,8 @@ export class Store {
                     INSERT INTO seen_delivery (
                         delivery_id, event_name, payload, payload_digest,
                         received_at, state, claim_worker, claim_token,
-                        claimed_at, completed_at
-                    ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
+                        claimed_at, completed_at, attempts, retry_not_before
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL, 0, NULL)
                     ON CONFLICT(delivery_id) DO NOTHING
                 `,
                 )
@@ -241,10 +270,16 @@ export class Store {
     }
 
     /**
-     * Claim one pending delivery, or atomically take over one stale
-     * processing claim. Selection is stable by receipt time then GUID.
-     * The generated 256-bit token, not the worker name, proves
+     * Claim the oldest ELIGIBLE delivery, or atomically take over one
+     * stale processing claim. Selection is stable by receipt time then
+     * GUID. The generated 256-bit token, not the worker name, proves
      * ownership to completion and release calls.
+     *
+     * Eligibility skips two kinds of row: one waiting out a backoff
+     * (`retry_not_before` after `now`) and one dead-lettered. A poison
+     * delivery therefore stops holding up everything received after it,
+     * and the skip happens inside the claiming statement — there is no
+     * select-then-update window for a second worker to slip through.
      */
     claimNextDelivery(
         worker: string,
@@ -261,20 +296,22 @@ export class Store {
                 SET state = 'processing',
                     claim_worker = ?,
                     claim_token = lower(hex(randomblob(32))),
-                    claimed_at = ?
+                    claimed_at = ?,
+                    retry_not_before = NULL
                 WHERE delivery_id = (
                     SELECT delivery_id
                     FROM seen_delivery
-                    WHERE state = 'pending'
+                    WHERE (state = 'pending'
+                            AND (retry_not_before IS NULL OR retry_not_before <= ?))
                        OR (state = 'processing' AND claimed_at <= ?)
                     ORDER BY received_at, delivery_id
                     LIMIT 1
                 )
                 RETURNING delivery_id, event_name, payload, payload_digest,
-                          received_at, claim_token
+                          received_at, claim_token, attempts
             `,
             )
-            .get(worker, now, staleBefore) as ClaimedDeliveryRow | undefined;
+            .get(worker, now, now, staleBefore) as ClaimedDeliveryRow | undefined;
         if (row === undefined) return undefined;
         return {
             deliveryId: row.delivery_id as DeliveryGuid,
@@ -285,6 +322,7 @@ export class Store {
             worker,
             claimedAt: now,
             claimToken: row.claim_token,
+            attempts: row.attempts,
         };
     }
 
@@ -412,6 +450,93 @@ export class Store {
         return result.changes === 1 ? { outcome: "released" } : { outcome: "notOwned" };
     }
 
+    /**
+     * Count one failed attempt against this token's delivery, then either
+     * schedule its retry or dead-letter it — one statement, so the count
+     * and the state it decides can never disagree.
+     *
+     * The cap is compared against the INCREMENTED count, so `maxAttempts`
+     * reads as "attempts this delivery gets in total". It is a parameter
+     * rather than a constant because the store owns no policy; the caller
+     * that owns the backoff owns the budget it spends.
+     *
+     * `notOwned` is the same refusal `completeDeliveryWithReport` gives:
+     * a worker whose claim was taken over cannot spend the replacement
+     * claim's retry budget, and learns that it lost the delivery.
+     */
+    releaseDeliveryAfterFailure(
+        input: ReleaseDeliveryAfterFailureInput,
+    ): ReleaseDeliveryAfterFailureResult {
+        assertDeliveryGuid(input.deliveryId);
+        assertNonEmpty(input.claimToken, "claimToken");
+        assertUtcInstant(input.failedAt, "failedAt");
+        assertUtcInstant(input.retryNotBefore, "retryNotBefore");
+        assertAttemptCap(input.maxAttempts);
+
+        const row = this.db
+            .prepare(
+                `
+                UPDATE seen_delivery
+                SET attempts = attempts + 1,
+                    claim_worker = NULL,
+                    claim_token = NULL,
+                    claimed_at = NULL,
+                    state = CASE WHEN attempts + 1 >= $cap THEN 'failed' ELSE 'pending' END,
+                    completed_at = CASE WHEN attempts + 1 >= $cap THEN $failedAt ELSE NULL END,
+                    retry_not_before =
+                        CASE WHEN attempts + 1 >= $cap THEN NULL ELSE $retryNotBefore END
+                WHERE delivery_id = $deliveryId
+                  AND state = 'processing'
+                  AND claim_token = $claimToken
+                RETURNING state, attempts, retry_not_before
+            `,
+            )
+            .get({
+                $cap: input.maxAttempts,
+                $failedAt: input.failedAt,
+                $retryNotBefore: input.retryNotBefore,
+                $deliveryId: input.deliveryId,
+                $claimToken: input.claimToken,
+            }) as FailedAttemptRow | undefined;
+
+        if (row === undefined) return { outcome: "notOwned" };
+        if (row.state === "failed") {
+            return { outcome: "deadLettered", attempts: row.attempts };
+        }
+        return {
+            outcome: "retryScheduled",
+            attempts: row.attempts,
+            retryNotBefore: input.retryNotBefore,
+        };
+    }
+
+    /**
+     * Read every dead-lettered delivery in stable dead-letter then GUID
+     * order. Identity and attempt count only: the retained payload leaves
+     * the store through a claim, exactly as it does for live work.
+     */
+    deadLetteredDeliveries(): DeadLetteredDelivery[] {
+        const rows = this.db
+            .prepare(
+                `
+                SELECT delivery_id, event_name, payload_digest, received_at,
+                       attempts, completed_at
+                FROM seen_delivery
+                WHERE state = 'failed'
+                ORDER BY completed_at, delivery_id
+            `,
+            )
+            .all() as unknown as DeadLetteredDeliveryRow[];
+        return rows.map((row) => ({
+            deliveryId: row.delivery_id as DeliveryGuid,
+            eventName: row.event_name,
+            payloadDigest: row.payload_digest,
+            receivedAt: row.received_at,
+            attempts: row.attempts,
+            failedAt: row.completed_at,
+        }));
+    }
+
     /** Requeue stale processing rows without exposing their payloads. */
     requeueStuckDeliveries(claimedBefore: string): DeliveryGuid[] {
         assertUtcInstant(claimedBefore, "claimedBefore");
@@ -426,9 +551,15 @@ export class Store {
             `,
             )
             .all(claimedBefore) as { delivery_id: string }[];
-        return rows
-            .map((row) => row.delivery_id as DeliveryGuid)
-            .sort((left, right) => left.localeCompare(right));
+        return (
+            rows
+                .map((row) => row.delivery_id as DeliveryGuid)
+                // Default sort: UTF-16 code-unit order, which for these
+                // lowercase-hex GUIDs IS SQLite's BINARY collation. A locale
+                // comparator can disagree with it; a hand-written one breeds
+                // equivalent mutants on an equal branch no unique key reaches.
+                .sort()
+        );
     }
 
     /** Read canonical reports in deterministic completion and delivery order. */
