@@ -29,9 +29,9 @@
         "@hiero-hackers/automation-testkit": "workspace:*",
         "@stryker-mutator/core": "^10.0.0",
         "@stryker-mutator/vitest-runner": "^10.0.0",
-        "@types/node": "^24.0.0",
-        "fast-check": "^4.9.0",
-        "tsx": "^4.23.12",
+        "@types/node": "^24.13.4",
+        "fast-check": "^4.10.0",
+        "tsx": "^4.23.13",
         "typescript": "^5.6.0",
         "vitest": "^4.1.11"
     }
