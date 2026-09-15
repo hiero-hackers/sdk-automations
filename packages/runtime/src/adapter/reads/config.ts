@@ -12,6 +12,7 @@ import {
     type RepositoryRef,
     revisionOf,
 } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import { repoPath, type GitHubHttpClient } from "../client/contract.js";
 import { field, jsonRecordOf } from "../client/untrusted.js";
 
@@ -19,6 +20,8 @@ import { field, jsonRecordOf } from "../client/untrusted.js";
 export interface GitHubConfigSourceOptions {
     readonly client: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** The lane this read is charged to; a lane with none is charged nowhere (D192). */
+    readonly allowance?: Allowance;
 }
 
 const BLOB_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -84,13 +87,14 @@ export function decodeContents(body: string): DecodedContents {
 export function githubConfigSource({
     client,
     repository,
+    allowance,
 }: GitHubConfigSourceOptions): ConfigSource {
     const repoUrl = repoPath(repository);
     const configUrl = `${repoUrl}/contents/${CONFIG_PATH}`;
 
     /** A bare 404 proves nothing; only a visible repository makes it absence. */
     const corroboratedAbsence = async (): Promise<ConfigLoadOutcome> => {
-        const repo = await client.request({ method: "GET", url: repoUrl });
+        const repo = await client.request({ method: "GET", url: repoUrl }, allowance);
         if (repo.ok) {
             return { ok: true, document: { revision: ABSENT_CONFIG_REVISION, text: "" } };
         }
@@ -103,7 +107,7 @@ export function githubConfigSource({
 
     return {
         async load(): Promise<ConfigLoadOutcome> {
-            const outcome = await client.request({ method: "GET", url: configUrl });
+            const outcome = await client.request({ method: "GET", url: configUrl }, allowance);
             if (!outcome.ok) {
                 return outcome.failure.kind === "notFoundOrNotInstalled"
                     ? corroboratedAbsence()

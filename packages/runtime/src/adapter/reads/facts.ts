@@ -1,8 +1,9 @@
 /**
- * The sweep's reads: every open item of a repository, and the fact groups
- * `design/guides/sweep.md` §1 names. Nothing is invented — a read that failed and a
- * read the endpoint matrix has not confirmed both leave their group `UNREAD`. And
- * nothing throws: every reader is total over whatever GitHub sent.
+ * The sweep's reads: every open item of a repository, and of the fact groups
+ * `design/guides/sweep.md` §1 names, those an enabled capability needs. Nothing is
+ * invented — a group nobody needs, one the endpoint matrix has not confirmed, and a
+ * read that failed all answer `UNREAD`. And nothing throws: every reader is total
+ * over whatever GitHub sent.
  */
 
 import {
@@ -13,7 +14,6 @@ import {
     projectIssue,
     projectPullRequest,
     UNREAD,
-    type AdmittedCapability,
     type AssigneeClock,
     type ClosureReason,
     type FactGroup,
@@ -21,11 +21,13 @@ import {
     type IssueFacts,
     type ItemRef,
     type LinkedIssue,
+    type NeededGroups,
     type PullRequestFacts,
     type RepositoryConfig,
     type RepositoryRef,
     type Unread,
 } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import {
     advertisesNextPage,
     describeFailure,
@@ -34,7 +36,7 @@ import {
     type GitHubHttpClient,
     type GitHubOutcome,
 } from "../client/contract.js";
-import { createResolverSource } from "./resolvers.js";
+import { readLinkedIssuesBatch } from "./links.js";
 import { field, jsonArrayOf, jsonRecordOf } from "../client/untrusted.js";
 
 // ─── The read set ────────────────────────────────────────────────────
@@ -49,6 +51,7 @@ export const SWEEP_READS = [
     "reapableSince",
     "lastCommitAt",
     "linkedIssues",
+    "linkedIssuesBatch",
 ] as const;
 
 export type SweepRead = (typeof SWEEP_READS)[number];
@@ -74,6 +77,8 @@ export const CONFIRMED_SWEEP_READS: readonly SweepRead[] = [
     "reapableSince",
     // `GET /repos/{o}/{r}/pulls/{n}/commits` — Pull requests R — `2026-09-12T06-31-36-229Z#19`
     "lastCommitAt",
+    // the same query, aliased a hundred times — Issues R + Pull requests R — `2026-09-15T16-34-56-751Z#17`
+    "linkedIssuesBatch",
 ];
 
 /**
@@ -82,7 +87,7 @@ export const CONFIRMED_SWEEP_READS: readonly SweepRead[] = [
  */
 export const GROUP_READS: { readonly [G in FactGroup]: readonly SweepRead[] } = {
     assignees: ["assignedAt", "lastWorkingAt"],
-    links: ["linkedIssues", "assignedAt", "lastWorkingAt"],
+    links: ["linkedIssuesBatch", "linkedIssues", "assignedAt", "lastWorkingAt"],
     review: ["changesRequested", "reapableSince", "lastCommitAt"],
     /** A WEBHOOK can read `draft` and cannot read the other three (`design/contracts/facts.md` §2). */
     readiness: ["draft"],
@@ -121,7 +126,7 @@ const unreadable = (detail: string): Read<never> => ({ ok: false, detail });
  * Walking past `MAX_PAGES` with a successor still advertised is unread, not shorter.
  */
 async function allPages(
-    http: GitHubHttpClient,
+    reads: RepositoryReads,
     pageUrl: (page: number) => string,
     what: string,
 ): Promise<Read<readonly unknown[]>> {
@@ -129,7 +134,10 @@ async function allPages(
     let lastPage = 1;
     for (let page = 1; page <= MAX_PAGES; page += 1) {
         const at = `${what} page ${String(page)}`;
-        const outcome: GitHubOutcome = await http.request({ url: pageUrl(page), method: "GET" });
+        const outcome: GitHubOutcome = await reads.http.request(
+            { url: pageUrl(page), method: "GET" },
+            reads.allowance,
+        );
         if (!outcome.ok) return unreadable(`${at}: ${describeFailure(outcome.failure)}`);
         const read = jsonArrayOf(outcome.body);
         if (read === null) return unreadable(`${at}: the body was not a JSON array`);
@@ -143,11 +151,11 @@ async function allPages(
 
 /** One JSON object from a single unpaged GET, or the reason there is none. */
 async function readRecord(
-    http: GitHubHttpClient,
+    reads: RepositoryReads,
     url: string,
     what: string,
 ): Promise<Read<Record<string, unknown>>> {
-    const outcome = await http.request({ url, method: "GET" });
+    const outcome = await reads.http.request({ url, method: "GET" }, reads.allowance);
     if (!outcome.ok) return unreadable(`${what}: ${describeFailure(outcome.failure)}`);
     const record = jsonRecordOf(outcome.body);
     return record === null
@@ -191,22 +199,48 @@ export type OpenItemsOutcome =
 export interface FactsReaderOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** The lane this firing's reads are charged to (D192). */
+    readonly allowance?: Allowance;
     /** The two mapping families this reader speaks: `mappings.labels` and `mappings.commands.working`. */
     readonly config: RepositoryConfig;
     /** When this sweep is happening — every record's `observedAt`, NOT the item's `updated_at`. */
     readonly clock: () => Date;
-    /** Passed straight through to the resolver source this reader builds. */
-    readonly knownCapabilities: readonly AdmittedCapability[];
+    /** What an enabled capability needs, per kind; every other group is `UNREAD` (D195). */
+    readonly groups: NeededGroups;
 }
 
 /**
  * The seam the sweep driver reads through — sweep.md §2.2.
  * Both record builders take what only the DRIVER holds.
  */
+/** What one pull request closes, as `linksFor` answered it. */
+export type ClosedIssues = readonly ItemRef[] | Unread;
+
+/** An issue's groups as a stored read hands them back; its links are the driver's (D193). */
+export type StoredIssueFacts = Pick<IssueFacts, "assignees">;
+
+/** A pull request's groups as a stored read hands them back (D193). */
+export type StoredPullRequestFacts = Pick<
+    PullRequestFacts,
+    "assignees" | "links" | "review" | "readiness"
+>;
+
 export interface FactsReader {
     openItems(): Promise<OpenItemsOutcome>;
-    issueFacts(listed: OpenItem, links: readonly ItemRef[] | Unread): Promise<IssueFacts>;
-    pullRequestFacts(listed: OpenItem, openIssues: readonly OpenItem[]): Promise<PullRequestFacts>;
+    /** The issues each pull request closes, one entry per number asked, read together. */
+    linksFor(numbers: readonly number[]): Promise<ReadonlyMap<number, ClosedIssues>>;
+    /** `stored` fills the groups in place of the reads that made them, and sends nothing (D193). */
+    issueFacts(
+        listed: OpenItem,
+        links: readonly ItemRef[] | Unread,
+        stored?: StoredIssueFacts,
+    ): Promise<IssueFacts>;
+    pullRequestFacts(
+        listed: OpenItem,
+        openIssues: readonly OpenItem[],
+        closes: ClosedIssues,
+        stored?: StoredPullRequestFacts,
+    ): Promise<PullRequestFacts>;
 }
 
 // ─── The per-read readers ────────────────────────────────────────────
@@ -218,13 +252,14 @@ export interface FactsReader {
 export interface RepositoryReads {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** What these reads are charged to; unset spends from no lane (D192). */
+    readonly allowance?: Allowance;
 }
 
 /** The reads below share these three; the reader binds them once per sweep. */
 interface ReadContext extends RepositoryReads {
-    /** The reviewed mapping, so this context IS a `ResolverSourceOptions`. */
+    /** The reviewed mapping: the label a mode event is dated by, and the `working` spelling. */
     readonly config: RepositoryConfig;
-    readonly knownCapabilities: readonly AdmittedCapability[];
 }
 
 const issuePath = ({ repository }: RepositoryReads, number: number): string =>
@@ -236,6 +271,37 @@ const pullPath = ({ repository }: RepositoryReads, number: number): string =>
 const paged = (url: string, page: number): string =>
     `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`;
 
+const readTimeline = (
+    context: RepositoryReads,
+    number: number,
+): Promise<Read<readonly unknown[]>> =>
+    allPages(
+        context,
+        (page) => paged(`${issuePath(context, number)}/timeline`, page),
+        `#${String(number)} timeline`,
+    );
+
+const readPull = (
+    context: RepositoryReads,
+    number: number,
+): Promise<Read<Record<string, unknown>>> =>
+    readRecord(context, pullPath(context, number), `#${String(number)} pull request`);
+
+/**
+ * The two reads more than one fact folds over, keyed by item number.
+ * A reader called on its own gets `everyTime`; the sweep's reader memoises both.
+ */
+export interface ItemWalk {
+    timelineFor(number: number): Promise<Read<readonly unknown[]>>;
+    pullFor(number: number): Promise<Read<Record<string, unknown>>>;
+}
+
+/** A walk that remembers nothing: one reader alone pays for its own pages. */
+const everyTime = (context: RepositoryReads): ItemWalk => ({
+    timelineFor: (number) => readTimeline(context, number),
+    pullFor: (number) => readPull(context, number),
+});
+
 /**
  * Every open item, with the fields the list carries.
  * A row this cannot read makes the WHOLE list unusable.
@@ -243,7 +309,7 @@ const paged = (url: string, page: number): string =>
 async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
     const url = `${repoPath(context.repository)}/issues`;
     const read = await allPages(
-        context.http,
+        context,
         (page) => `${paged(url, page)}&state=open`,
         "the open-item list",
     );
@@ -316,12 +382,9 @@ function loginsOf(assignees: unknown): readonly string[] | null {
 export async function readAssignedAt(
     context: ReadContext,
     number: number,
+    walk: ItemWalk = everyTime(context),
 ): Promise<Read<ReadonlyMap<string, Date>>> {
-    const read = await allPages(
-        context.http,
-        (page) => paged(`${issuePath(context, number)}/timeline`, page),
-        `#${String(number)} timeline`,
-    );
+    const read = await walk.timelineFor(number);
     if (!read.ok) return read;
 
     const assigned = new Map<string, Date>();
@@ -355,7 +418,7 @@ export async function readLastWorkingAt(
     spelling: string,
 ): Promise<Read<ReadonlyMap<string, Date>>> {
     const read = await allPages(
-        context.http,
+        context,
         (page) => paged(`${issuePath(context, number)}/comments`, page),
         `#${String(number)} comments`,
     );
@@ -377,12 +440,12 @@ export async function readLastWorkingAt(
 }
 
 /** Whether the pull request is a draft — `GET /repos/{o}/{r}/pulls/{n}`. */
-export async function readDraft(context: ReadContext, number: number): Promise<Read<boolean>> {
-    const read = await readRecord(
-        context.http,
-        pullPath(context, number),
-        `#${String(number)} pull request`,
-    );
+export async function readDraft(
+    context: ReadContext,
+    number: number,
+    walk: ItemWalk = everyTime(context),
+): Promise<Read<boolean>> {
+    const read = await walk.pullFor(number);
     if (!read.ok) return read;
     const draft = read.value["draft"];
     return typeof draft === "boolean"
@@ -406,7 +469,7 @@ export async function readChangesRequested(
     number: number,
 ): Promise<Read<boolean>> {
     const read = await allPages(
-        context.http,
+        context,
         (page) => paged(`${pullPath(context, number)}/reviews`, page),
         `#${String(number)} reviews`,
     );
@@ -431,22 +494,15 @@ export async function readChangesRequested(
 export async function readReapableSince(
     context: ReadContext,
     number: number,
+    walk: ItemWalk = everyTime(context),
 ): Promise<Read<Exclude<PullRequestFacts["review"], Unread>["reapableSince"]>> {
-    const opened = await readRecord(
-        context.http,
-        pullPath(context, number),
-        `#${String(number)} pull request`,
-    );
+    const opened = await walk.pullFor(number);
     if (!opened.ok) return opened;
     const createdAt = instant(opened.value["created_at"]);
     if (createdAt === null) {
         return unreadable(`#${String(number)} pull request: created_at was unreadable`);
     }
-    const read = await allPages(
-        context.http,
-        (page) => paged(`${issuePath(context, number)}/timeline`, page),
-        `#${String(number)} timeline`,
-    );
+    const read = await walk.timelineFor(number);
     if (!read.ok) return read;
 
     const entered = {
@@ -488,7 +544,7 @@ export async function readLastCommitAt(
     number: number,
 ): Promise<Read<Date | null>> {
     const read = await allPages(
-        context.http,
+        context,
         (page) => paged(`${pullPath(context, number)}/commits`, page),
         `#${String(number)} commits`,
     );
@@ -528,10 +584,14 @@ type ReviewFacts = Exclude<PullRequestFacts["review"], Unread>;
  * The whole `review` group, read as one: a group is read or it is not.
  * `draft` is the `readiness` group's own, so wanting only it costs one read.
  */
-export async function readReview(context: ReadContext, number: number): Promise<Read<ReviewFacts>> {
+export async function readReview(
+    context: ReadContext,
+    number: number,
+    walk: ItemWalk = everyTime(context),
+): Promise<Read<ReviewFacts>> {
     const changesRequested = await readChangesRequested(context, number);
     if (!changesRequested.ok) return changesRequested;
-    const reapableSince = await readReapableSince(context, number);
+    const reapableSince = await readReapableSince(context, number, walk);
     if (!reapableSince.ok) return reapableSince;
     const lastCommitAt = await readLastCommitAt(context, number);
     if (!lastCommitAt.ok) return lastCommitAt;
@@ -547,9 +607,19 @@ export async function readReview(context: ReadContext, number: number): Promise<
 
 // ─── The reader ──────────────────────────────────────────────────────
 
+/** The read behind `key`, started once and awaited by every later caller. */
+function once<T>(memo: Map<number, Promise<T>>, key: number, start: () => Promise<T>): Promise<T> {
+    let pending = memo.get(key);
+    if (pending === undefined) {
+        pending = start();
+        memo.set(key, pending);
+    }
+    return pending;
+}
+
 /**
  * The sweep's reader over one repository, for one firing.
- * The clock memo must not outlive the firing, which is why this is a factory.
+ * The memos must not outlive the firing, which is why this is a factory.
  */
 export function createFactsReader(options: FactsReaderOptions): FactsReader {
     const { config, clock } = options;
@@ -557,21 +627,33 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         http: options.http,
         repository: options.repository,
         config: options.config,
-        knownCapabilities: options.knownCapabilities,
+        ...(options.allowance === undefined ? {} : { allowance: options.allowance }),
     };
     const working = config.mappings.commands.working;
     const clocks = new Map<number, Promise<Read<readonly AssigneeClock[]>>>();
+    const timelines = new Map<number, Promise<Read<readonly unknown[]>>>();
+    const pulls = new Map<number, Promise<Read<Record<string, unknown>>>>();
+
+    /** Each page this firing folds more than one fact from, read once per item. */
+    const walk: ItemWalk = {
+        timelineFor: (number) => once(timelines, number, () => readTimeline(context, number)),
+        pullFor: (number) => once(pulls, number, () => readPull(context, number)),
+    };
+
+    /** Is this group one an enabled capability needs, and the sweep's row promises (D195)? */
+    const needed = (kind: FactKind, group: FactGroup): boolean =>
+        options.groups[kind].includes(group) && promised(kind, group);
 
     /**
      * A group's value, or `UNREAD`.
-     * Unpromised, unconfirmed and failed meet here: from a capability's side all three are one fact.
+     * Unneeded, unconfirmed and failed meet here: from a capability's side all three are one fact.
      */
     const groupOf = async <T>(
         kind: FactKind,
         group: FactGroup,
         read: () => Promise<Read<T>>,
     ): Promise<T | Unread> => {
-        if (!promised(kind, group)) return UNREAD;
+        if (!needed(kind, group)) return UNREAD;
         if (!GROUP_READS[group].every(isConfirmed)) return UNREAD;
         const answer = await read();
         return answer.ok ? answer.value : UNREAD;
@@ -585,7 +667,7 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         number: number,
         logins: readonly string[],
     ): Promise<Read<readonly AssigneeClock[]>> => {
-        const assigned = await readAssignedAt(context, number);
+        const assigned = await readAssignedAt(context, number, walk);
         if (!assigned.ok) return assigned;
         // No spelling, no command: no comment page is worth a call.
 
@@ -610,14 +692,8 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
     const clocksFor = (
         item: ItemRef,
         logins: readonly string[],
-    ): Promise<Read<readonly AssigneeClock[]>> => {
-        let pending = clocks.get(item.number);
-        if (pending === undefined) {
-            pending = readClocks(item.number, logins);
-            clocks.set(item.number, pending);
-        }
-        return pending;
-    };
+    ): Promise<Read<readonly AssigneeClock[]>> =>
+        once(clocks, item.number, () => readClocks(item.number, logins));
 
     const meanings = (listed: OpenItem) => meaningsOfLabels(config, listed.labels);
 
@@ -628,18 +704,36 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         arrived: [],
     });
 
-    /** The linked issues of one pull request, joined to the issues already listed. */
+    /**
+     * Whether either kind wants links at all; the batch is not sent when neither does.
+     * An issue's `links` are the inverse of a pull request's, so one need is enough.
+     */
+    const wantsLinks = (): boolean =>
+        (needed("issue", "links") || needed("pullRequest", "links")) &&
+        GROUP_READS.links.every(isConfirmed);
+
+    /** The issues each listed pull request closes, read for the whole list at once (D194). */
     const linksFor = async (
-        number: number,
+        numbers: readonly number[],
+    ): Promise<ReadonlyMap<number, ClosedIssues>> => {
+        const nobodyAnswered = (): ReadonlyMap<number, ClosedIssues> =>
+            new Map(numbers.map((number) => [number, UNREAD]));
+        if (numbers.length === 0 || !wantsLinks()) return nobodyAnswered();
+        // One malformed alias refuses the batch, so no pull request keeps a half answer.
+
+        const read = await readLinkedIssuesBatch(context, numbers);
+        return read.ok ? read.value : nobodyAnswered();
+    };
+
+    /** A pull request's closing references, joined to the issues this sweep listed. */
+    const linkedTo = async (
+        closes: ClosedIssues,
         openIssues: readonly OpenItem[],
     ): Promise<Read<readonly LinkedIssue[]>> => {
-        const answer = await createResolverSource(context)("linkedIssues", {
-            item: { kind: "pullRequest", number },
-        });
-        if (!answer.ok) return unreadable(`#${String(number)} linked issues: ${answer.detail}`);
+        if (closes === UNREAD) return unreadable("the linked-issue read answered nothing");
 
         const linked: LinkedIssue[] = [];
-        for (const reference of answer.value) {
+        for (const reference of closes) {
             const listed = openIssues.find((open) => open.item.number === reference.number);
             // A link outside this sweep's open set is not read separately.
 
@@ -651,30 +745,49 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
         return { ok: true, value: linked };
     };
 
+    /** What a record carries without a read: the list's own fields, and when this sweep is. */
+    const observed = (listed: OpenItem) => ({
+        repository: options.repository,
+        item: listed.item,
+        observedAt: clock(),
+        trigger: { kind: "sweep" } as const,
+        author: listed.author,
+        actor: null,
+        alerts: alerts(listed),
+    });
+
+    /** The `links` group as the record holds it, from the batch the driver read. */
+    const linksOf = async (
+        closes: ClosedIssues,
+        openIssues: readonly OpenItem[],
+    ): Promise<PullRequestFacts["links"]> => {
+        const linked = await groupOf("pullRequest", "links", () => linkedTo(closes, openIssues));
+        return linked === UNREAD ? UNREAD : { issues: linked };
+    };
+
     return {
         openItems: () => readOpenItems(context),
 
-        async issueFacts(listed, links) {
+        linksFor,
+
+        async issueFacts(listed, links, stored) {
             return {
                 kind: "issue",
-                repository: options.repository,
-                item: listed.item,
-                observedAt: clock(),
-                trigger: { kind: "sweep" },
-                author: listed.author,
-                actor: null,
-                alerts: alerts(listed),
+                ...observed(listed),
                 position: projectIssue({
                     closedBy: listed.closedBy,
                     meanings: meanings(listed),
                 }),
-                assignees: await groupOf("issue", "assignees", () =>
-                    clocksFor(listed.item, listed.assignees),
-                ),
+                assignees:
+                    stored === undefined
+                        ? await groupOf("issue", "assignees", () =>
+                              clocksFor(listed.item, listed.assignees),
+                          )
+                        : stored.assignees,
                 // The driver reads this one, so the row is consulted here, not around a call.
 
                 links:
-                    links === UNREAD || !promised("issue", "links")
+                    links === UNREAD || !needed("issue", "links")
                         ? UNREAD
                         : { openPullRequests: links },
                 // The sweep makes no comment record, so its row leaves this group unread.
@@ -683,34 +796,30 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
             };
         },
 
-        async pullRequestFacts(listed, openIssues) {
-            const links = await groupOf("pullRequest", "links", () =>
-                linksFor(listed.item.number, openIssues),
-            );
+        async pullRequestFacts(listed, openIssues, closes, stored) {
+            // A stored read answers all four; the reads below are not started at all.
+
+            const groups = stored ?? {
+                assignees: await groupOf("pullRequest", "assignees", () =>
+                    clocksFor(listed.item, listed.assignees),
+                ),
+                links: await linksOf(closes, openIssues),
+                review: await groupOf("pullRequest", "review", () =>
+                    readReview(context, listed.item.number, walk),
+                ),
+                readiness: await groupOf("pullRequest", "readiness", async () => {
+                    const draft = await readDraft(context, listed.item.number, walk);
+                    return draft.ok ? { ok: true, value: { draft: draft.value } } : draft;
+                }),
+            };
             return {
                 kind: "pullRequest",
-                repository: options.repository,
-                item: listed.item,
-                observedAt: clock(),
-                trigger: { kind: "sweep" },
-                author: listed.author,
-                actor: null,
-                alerts: alerts(listed),
+                ...observed(listed),
                 position: projectPullRequest({
                     closedBy: listed.closedBy,
                     meanings: meanings(listed),
                 }),
-                assignees: await groupOf("pullRequest", "assignees", () =>
-                    clocksFor(listed.item, listed.assignees),
-                ),
-                links: links === UNREAD ? UNREAD : { issues: links },
-                review: await groupOf("pullRequest", "review", () =>
-                    readReview(context, listed.item.number),
-                ),
-                readiness: await groupOf("pullRequest", "readiness", async () => {
-                    const draft = await readDraft(context, listed.item.number);
-                    return draft.ok ? { ok: true, value: { draft: draft.value } } : draft;
-                }),
+                ...groups,
             };
         },
     };

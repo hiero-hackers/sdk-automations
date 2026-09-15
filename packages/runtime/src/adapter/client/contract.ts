@@ -4,6 +4,7 @@
  */
 
 import type { FailureClass } from "@hiero-hackers/automation-core";
+import type { Allowance, Lane } from "./allowance.js";
 import type { TokenSource } from "./token.js";
 
 // ─── The shared constants ────────────────────────────────────────────
@@ -78,7 +79,8 @@ export type NotSentReason =
     | "malformedUrl"
     | "invalidHeaders"
     | "invalidBody"
-    | "requestBudgetExhausted"
+    | "allowanceExhausted"
+    | "contentCreationCeiling"
     | "brokenSeam";
 
 /** The injected seam a `brokenSeam` refusal names as the one that failed. */
@@ -89,7 +91,11 @@ export type BrokenSeam =
 export type GitHubHttpFailureClass =
     | FailureClass
     | { readonly kind: "responseTooLarge"; readonly limitBytes: number }
-    | { readonly kind: "notSent"; readonly reason: Exclude<NotSentReason, "brokenSeam"> }
+    | {
+          readonly kind: "notSent";
+          readonly reason: Exclude<NotSentReason, "brokenSeam" | "allowanceExhausted">;
+      }
+    | { readonly kind: "notSent"; readonly reason: "allowanceExhausted"; readonly lane: Lane }
     | { readonly kind: "notSent"; readonly reason: "brokenSeam"; readonly seam: BrokenSeam };
 
 /** What one call to `request()` resolves to — it never throws. */
@@ -114,20 +120,16 @@ export interface GitHubHttpClientOptions {
     readonly timeoutMs?: number;
     /** Injection keeps timeout tests deterministic; production uses `AbortSignal.timeout`. */
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
-}
-
-export interface GitHubRequestBudget {
-    remaining: number;
-    exhausted?: boolean;
+    /** Comments both lanes may create per hour; the default is `CONTENT_CREATION_HOURLY`. */
+    readonly contentCreationHourly?: number;
 }
 
 /** What every operation calls. */
 export interface GitHubHttpClient {
-    request(request: GitHubRequest, budget?: GitHubRequestBudget): Promise<GitHubOutcome>;
+    /** Charged to `allowance`, in GitHub's units, after the response (D192). */
+    request(request: GitHubRequest, allowance?: Allowance): Promise<GitHubOutcome>;
     /** The last actual response, including a response that was retried. */
     latestRateLimit(): RateLimitSnapshot | null;
-    /** Requests actually sent, retries and conditional 304s included (D170). */
-    requestsMade(): number;
 }
 
 // ─── The spellings ───────────────────────────────────────────────────
@@ -181,8 +183,15 @@ export function transportFailure(): GitHubFailure {
 }
 
 /** The request never left the process; retrying cannot help. */
-export function notSentFailure(reason: Exclude<NotSentReason, "brokenSeam">): GitHubFailure {
+export function notSentFailure(
+    reason: Exclude<NotSentReason, "brokenSeam" | "allowanceExhausted">,
+): GitHubFailure {
     return { ok: false, failure: { kind: "notSent", reason } };
+}
+
+/** This lane's share of GitHub's limit is spent; the request was not sent. */
+export function allowanceFailure(lane: Lane): GitHubFailure {
+    return { ok: false, failure: { kind: "notSent", reason: "allowanceExhausted", lane } };
 }
 
 /** A wiring defect in the named injected seam — never weather, never retried. */
@@ -196,7 +205,8 @@ export function describeFailure(failure: GitHubHttpFailureClass): string {
         return `responseTooLarge (over ${String(failure.limitBytes)} bytes)`;
     }
     if (failure.kind !== "notSent") return failure.kind;
-    return failure.reason === "brokenSeam"
-        ? `notSent (broken seam: ${failure.seam})`
+    if (failure.reason === "brokenSeam") return `notSent (broken seam: ${failure.seam})`;
+    return failure.reason === "allowanceExhausted"
+        ? `notSent (allowanceExhausted: ${failure.lane})`
         : `notSent (${failure.reason})`;
 }

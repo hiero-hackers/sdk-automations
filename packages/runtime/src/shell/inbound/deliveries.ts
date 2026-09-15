@@ -3,7 +3,8 @@
  * then complete it. The reading key: a claimed delivery always
  * ends as exactly ONE of five records — `repositoryMismatch`, `installationSuspended`,
  * `configRejected`, `modeUnsupported`, or a decision, with no sixth exit.
- * The try/catch in `attemptNext` is routing.
+ * A pass whose read this lane's allowance refused completes none of them: it is
+ * counted and retried, as a crash is. The try/catch in `attemptNext` is routing.
  */
 
 import {
@@ -22,6 +23,7 @@ import type {
     ReleaseDeliveryAfterFailureResult,
     Store,
 } from "../../store/index.js";
+import type { Allowance, Refusal } from "../allowance.js";
 import type { ConfigSource } from "../decide/config.js";
 import type { DecideItem } from "../decide/item.js";
 import { declareSweep } from "../decide/schedule.js";
@@ -47,6 +49,11 @@ function retryDelayMs(attempts: number): number {
     return Math.min(RETRY_BASE_MS * 2 ** attempts, RETRY_CEILING_MS);
 }
 
+/** The earlier of the ladder's step and a spent pool's window; both are `toISOString()`. */
+function soonerOf(ladder: string, resetAt: string | null): string {
+    return resetAt !== null && resetAt < ladder ? resetAt : ladder;
+}
+
 /** What one repository's deliveries are read and decided through. */
 export interface DeliveryLane {
     readonly configSource: ConfigSource;
@@ -62,6 +69,8 @@ export interface DeliveriesOptions {
     readonly lane: (repository: RepositoryRef) => DeliveryLane;
     /** The one repository a credential-free process serves; absent, every named one is. */
     readonly repository?: RepositoryRef;
+    /** This lane's share of GitHub's limits: a read it refuses retries the delivery (D192). */
+    readonly allowance?: Allowance;
     readonly worker: string;
     readonly clock: () => Date;
     /** Every line here names its delivery: this is the lane that retries. */
@@ -216,6 +225,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
         capabilities,
         lane,
         repository,
+        allowance,
         worker,
         clock,
         log,
@@ -346,6 +356,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
             },
             parsed,
             identity.decidedAt,
+            allowance,
         );
         return decided.kind === "modeUnsupported"
             ? { kind: "modeUnsupported", ...identity, reason: decided.reason }
@@ -354,19 +365,51 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
 
     /**
      * Count one failed attempt, which either spaces the next or ends the delivery.
-     * The wait is derived from the attempts the claim arrived with.
+     * The wait is the ladder's, shortened to a refused pool's window where that is sooner.
      */
-    const recordFailure = (claimed: ClaimedDelivery): ReleaseDeliveryAfterFailureResult => {
+    const recordFailure = (
+        claimed: ClaimedDelivery,
+        refusal: Refusal | null,
+    ): ReleaseDeliveryAfterFailureResult => {
         const failedAt = clock();
+        const ladder = new Date(failedAt.getTime() + retryDelayMs(claimed.attempts)).toISOString();
         return store.inbox.releaseDeliveryAfterFailure({
             deliveryId: claimed.deliveryId,
             claimToken: claimed.claimToken,
             failedAt: failedAt.toISOString(),
-            retryNotBefore: new Date(
-                failedAt.getTime() + retryDelayMs(claimed.attempts),
-            ).toISOString(),
+            retryNotBefore: soonerOf(ladder, refusal?.resetAt ?? null),
             maxAttempts: MAX_DELIVERY_ATTEMPTS,
         });
+    };
+
+    /** What this lane's allowance turned away while the pass ran, or `null` (D192). */
+    const refusedSince = (turnedAway: number): Refusal | null => {
+        if (allowance === undefined || allowance.refusals() === turnedAway) return null;
+        return allowance.lastRefusal();
+    };
+
+    /**
+     * The one exit a claimed delivery takes when it was not completed: the attempt is
+     * counted, the next is spaced, and the delivery that STOPPED says so in a line of its own.
+     */
+    const notCompleted = (
+        claimed: ClaimedDelivery,
+        error: unknown,
+        refusal: Refusal | null,
+    ): PassOutcome => {
+        const deliveryId = String(claimed.deliveryId);
+        const release = recordFailure(claimed, refusal);
+        log({
+            event: "deliveryAttemptFailed",
+            deliveryId,
+            ...dispositionOf(release),
+            ...(refusal === null ? {} : { pool: refusal.lane }),
+            detail: detailOf(error),
+        });
+        if (release.outcome === "deadLettered") {
+            log({ event: "deliveryDeadLettered", deliveryId, attempts: release.attempts });
+        }
+        return { kind: "failed", deliveryId, error, release };
     };
 
     /**
@@ -383,8 +426,18 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
             eventName: claimed.eventName,
             attempts: claimed.attempts,
         });
+        const turnedAway = allowance?.refusals() ?? 0;
         try {
             const record = await recordFor(claimed);
+            // A record decided around a refused read is not this delivery's answer (D192).
+
+            const refusal = refusedSince(turnedAway);
+            if (refusal !== null) {
+                const spent = new Error(
+                    `the webhook lane's ${refusal.lane} allowance refused a read`,
+                );
+                return notCompleted(claimed, spent, refusal);
+            }
             const completion = store.inbox.completeDelivery({
                 deliveryId: claimed.deliveryId,
                 eventName: claimed.eventName,
@@ -404,19 +457,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
             });
             return { kind: "completed" };
         } catch (error) {
-            const release = recordFailure(claimed);
-            log({
-                event: "deliveryAttemptFailed",
-                deliveryId,
-                ...dispositionOf(release),
-                detail: detailOf(error),
-            });
-            // A second line, because this is where a delivery STOPS.
-
-            if (release.outcome === "deadLettered") {
-                log({ event: "deliveryDeadLettered", deliveryId, attempts: release.attempts });
-            }
-            return { kind: "failed", deliveryId, error, release };
+            return notCompleted(claimed, error, refusedSince(turnedAway));
         }
     };
 

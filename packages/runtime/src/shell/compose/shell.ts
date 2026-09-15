@@ -27,8 +27,13 @@ import { createDeliveries } from "../inbound/deliveries.js";
 import { createReceiver } from "../inbound/receiver.js";
 import { createJobs } from "../jobs/jobs.js";
 import { contained, createLogger, detailOf, type Log } from "../log.js";
-import { DEFAULT_SWEEP_CADENCE_MS, SWEEP_REQUESTS, SWEEP_WRITE_CALLS } from "../sweep/budgets.js";
-import { createSweep, type RequestBudget, type SweepFactsSource } from "../sweep/sweep.js";
+import type { Allowance } from "../allowance.js";
+import {
+    DEFAULT_SWEEP_CADENCE_MS,
+    SNAPSHOT_MAX_AGE_MS,
+    SWEEP_WRITE_CALLS,
+} from "../sweep/budgets.js";
+import { createSweep, type SweepFactsSource } from "../sweep/sweep.js";
 
 /** How often the shell requeues stale claims and drains, absent an override. */
 export const DEFAULT_TICK_MS = 60_000;
@@ -69,9 +74,11 @@ export interface ShellOptions {
     readonly store: Store;
     readonly capabilities: readonly EngineCapability[];
     /** One set per repository; the process serves whichever the installation delivers for. */
-    readonly seams: (repository: RepositoryRef, budget?: RequestBudget) => RepositorySeams;
+    seams(repository: RepositoryRef, allowance?: Allowance): RepositorySeams;
     /** The one repository a credential-free process serves; absent, the payload names it. */
     readonly repository?: RepositoryRef;
+    /** What the webhook lane's reads and writes are charged to; the sweep's is its own (D192). */
+    readonly deliveryAllowance?: Allowance;
     readonly worker?: string;
     readonly clock?: () => Date;
     readonly tickMs?: number;
@@ -79,10 +86,12 @@ export interface ShellOptions {
     readonly sweep?: {
         /** How long until the next firing; the default is hourly. */
         readonly cadenceMs?: number;
-        /** How many writes one firing may send; the default is `SWEEP_WRITE_CALLS`. */
+        /** How many writes one tick may send; the default is `SWEEP_WRITE_CALLS`. */
         readonly writeCap?: number;
-        /** How many GitHub requests one tick may send; the default is `SWEEP_REQUESTS`. */
-        readonly requestCap?: number;
+        /** The one handle every firing spends from, built where the client is (D192). */
+        readonly allowance: Allowance;
+        /** How long a stored read may be decided from; the default is `SNAPSHOT_MAX_AGE_MS` (D193). */
+        readonly snapshotMaxAgeMs?: number;
     };
     /** The installation switch (D171): deliveries are accepted and recorded, and nothing is read, decided or sent. */
     readonly suspended?: boolean;
@@ -148,6 +157,9 @@ export function createShell(options: ShellOptions): Shell {
         capabilities: options.capabilities,
         lane: servingFor,
         ...(options.repository === undefined ? {} : { repository: options.repository }),
+        ...(options.deliveryAllowance === undefined
+            ? {}
+            : { allowance: options.deliveryAllowance }),
         worker,
         clock,
         log,
@@ -163,10 +175,10 @@ export function createShell(options: ShellOptions): Shell {
             : createSweep({
                   store: options.store,
                   capabilities: options.capabilities,
-                  processorFor: (repository, budget) => {
+                  processorFor: (repository, allowance) => {
                       const { configSource, decideItem, facts } = buildServing(
                           repository,
-                          options.seams(repository, budget),
+                          options.seams(repository, allowance),
                       );
                       return {
                           decideItem,
@@ -177,7 +189,8 @@ export function createShell(options: ShellOptions): Shell {
                   clock,
                   cadenceMs: options.sweep.cadenceMs ?? DEFAULT_SWEEP_CADENCE_MS,
                   writeCap: options.sweep.writeCap ?? SWEEP_WRITE_CALLS,
-                  requestCap: options.sweep.requestCap ?? SWEEP_REQUESTS,
+                  allowance: options.sweep.allowance,
+                  snapshotMaxAgeMs: options.sweep.snapshotMaxAgeMs ?? SNAPSHOT_MAX_AGE_MS,
                   suspended,
                   log,
               });

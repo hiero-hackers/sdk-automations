@@ -16,7 +16,8 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import type { Store } from "../../store/index.js";
-import { recordedWarningsIn, type Applier, type WriteBudget } from "../apply/apply.js";
+import type { Allowance } from "../allowance.js";
+import { recordedWarningsIn, type Applier } from "../apply/apply.js";
 import type { EffectOutcome } from "../effects.js";
 import { decisionsOf, type DecidedPass } from "./decisions.js";
 import type { ExternalsForDelivery } from "./externals.js";
@@ -57,13 +58,13 @@ export interface ItemDeciderOptions {
 
 /**
  * Decide one item and apply what it approved; `at` is the instant its rows carry.
- * `budget` is the writes the caller has left to spend, and a webhook passes none (D167).
+ * `allowance` is what the caller's calls are charged to, and a webhook passes none (D192).
  */
 export type DecideItem = (
     input: ItemInput,
     config: RepositoryConfig,
     at: string,
-    budget?: WriteBudget,
+    allowance?: Allowance,
 ) => Promise<Decided>;
 
 /** What core is asked about: a raw delivery held to this repository, or the record itself. */
@@ -112,7 +113,7 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
             }),
         );
 
-    return async (input, config, at, budget) => {
+    return async (input, config, at, allowance) => {
         const active = config.mode === "active";
         if (active && applier === undefined) {
             return { kind: "modeUnsupported", reason: MODE_UNSUPPORTED };
@@ -123,7 +124,7 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
 
         const outcomes =
             active && applier !== undefined
-                ? await applier.applyAll(decision.approved, config, budget)
+                ? await applier.applyAll(decision.approved, config, allowance)
                 : [];
         const rows = decisionsOf({
             ...pass,

@@ -8,6 +8,7 @@
 
 import type { ItemRef } from "@hiero-hackers/automation-core";
 import { describe, expect, it } from "vitest";
+import { ASSUMED_POOL_LIMIT, createAllowance } from "../../../src/adapter/client/allowance.js";
 import { MAX_RESPONSE_BODY_BYTES } from "../../../src/adapter/client/http.js";
 import type { WriteResult } from "../../../src/adapter/writes/operations/transport.js";
 import { LABEL_ABSENT } from "../../../src/adapter/writes/writes.js";
@@ -142,6 +143,35 @@ describe("the verbs name their endpoints", () => {
         expect(result.outcome).toBe("unsupported");
         expect("detail" in result ? result.detail : "").toContain("nothing was sent");
         expect(scripted.calls).toHaveLength(0);
+    });
+});
+
+/** A write on a spent pool is refused before the send, and the pool is named (D192). */
+describe("a write the allowance turned away", () => {
+    it("is unsupported, unsent, and says which pool is spent", async () => {
+        const { verbs, scripted } = harness([success("{}")]);
+        const allowance = createAllowance({ share: 1 / ASSUMED_POOL_LIMIT });
+        allowance.charge({ pool: "core", mutation: false, status: 200, points: null });
+
+        const result = await verbs.addLabel(ITEM, "status: stale", allowance);
+
+        expect(result.outcome).toBe("unsupported");
+        expect("detail" in result ? result.detail : "").toContain("allowanceExhausted: core");
+        expect(scripted.calls).toHaveLength(0);
+    });
+});
+
+/** A comment the hourly ceiling refused is owed, never dropped (F11, D192). */
+describe("a creation the client's own ceiling refused", () => {
+    it("is retryLater, unsent", async () => {
+        const { verbs, scripted } = harness([success("{}")], { contentCreationHourly: 1 });
+        expect((await verbs.createComment(ITEM, "first")).outcome).toBe("applied");
+
+        const result = await verbs.createComment(ITEM, "second");
+
+        expect(result.outcome).toBe("retryLater");
+        expect("detail" in result ? result.detail : "").toContain("content-creation ceiling");
+        expect(scripted.calls).toHaveLength(1);
     });
 });
 

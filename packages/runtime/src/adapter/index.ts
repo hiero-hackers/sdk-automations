@@ -13,6 +13,7 @@ export {
     createFactsReader,
     GROUP_READS,
     SWEEP_READS,
+    type ClosedIssues,
     type FactsReader,
     type FactsReaderOptions,
     type OpenItem,
@@ -70,4 +71,15 @@ export {
 } from "./client/contract.js";
 export { type WriteEndpoint } from "./client/endpoints.js";
 export { type WriteResult, type WriteVerbs } from "./writes/operations/transport.js";
-export { createGitHubHttpClient, wait, withRequestBudget } from "./client/http.js";
+export { CONTENT_CREATION_HOURLY, createGitHubHttpClient, wait } from "./client/http.js";
+export {
+    costOf,
+    createAllowance,
+    type Allowance,
+    type AllowanceOptions,
+    type Exchange,
+    type Lane,
+    type Pool,
+    type PoolWindow,
+    type Spent,
+} from "./client/allowance.js";

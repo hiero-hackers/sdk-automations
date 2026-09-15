@@ -28,6 +28,7 @@ import {
     type EngineCapability,
     type IssueFacts,
     type ItemRef,
+    type NeededGroups,
     type PullRequestFacts,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
@@ -42,14 +43,13 @@ import {
     stubbedExternals,
     SWEEP_EFFECT,
     repositoryOfScheduleId,
-    SWEEP_REQUESTS,
     SWEEP_WRITE_CALLS,
     sweepScheduleId,
     type ConfigSource,
     type Decided,
     type EffectOutcome,
+    type Allowance,
     type ItemInput,
-    type RequestBudget,
     type ShellEvent,
     type SweepFacts,
     type SweepFactsSource,
@@ -57,9 +57,9 @@ import {
     type SweepProcessor,
     type SweptItem,
     type SweptItems,
-    type WriteBudget,
 } from "../../../src/shell/index.js";
 import { Store, type Fact } from "../../../src/store/index.js";
+import { spending, type Spending } from "../spending.js";
 import {
     httpHarness,
     installationToken,
@@ -178,6 +178,8 @@ function scriptedReader(script: Script = {}): ScriptedReader {
             Promise.resolve(
                 script.items ?? { ok: true, items: [listedItem(ISSUE), listedItem(PULL)] },
             ),
+        linksFor: (numbers) =>
+            Promise.resolve(new Map(numbers.map((number) => [number, script.closes ?? [ISSUE]]))),
         issueFacts: (listed, links) => {
             const record: IssueFacts = {
                 kind: "issue",
@@ -195,8 +197,7 @@ function scriptedReader(script: Script = {}): ScriptedReader {
             };
             return Promise.resolve(record);
         },
-        pullRequestFacts: (listed) => {
-            const closes = script.closes ?? [ISSUE];
+        pullRequestFacts: (listed, _openIssues, closes) => {
             const record: PullRequestFacts = {
                 kind: "pullRequest",
                 repository: REPOSITORY,
@@ -227,7 +228,7 @@ interface Handed {
     readonly input: Extract<ItemInput, { kind: "facts" }>;
     readonly config: RepositoryConfig;
     readonly at: string;
-    readonly budget: WriteBudget | undefined;
+    readonly allowance: Allowance | undefined;
 }
 
 interface ScriptedProcessor {
@@ -251,13 +252,13 @@ const decidedAs = (config: RepositoryConfig, outcomes: readonly EffectOutcome[])
 function handedIn(
     decided: Handed[],
 ): (...args: Parameters<SweepProcessor["decideItem"]>) => Handed {
-    return (input, config, at, budget) => {
+    return (input, config, at, allowance) => {
         expect(input.kind, "the sweep decides fact records").toBe("facts");
         const handed = {
             input: input as Extract<ItemInput, { kind: "facts" }>,
             config,
             at,
-            budget,
+            allowance,
         };
         decided.push(handed);
         return handed;
@@ -286,23 +287,29 @@ function scriptedProcessor(
 interface Driven {
     readonly reader: ScriptedReader;
     readonly decided: Handed[];
+    /** What each firing told the reader to read (D195). */
+    readonly groups: NeededGroups[];
     run(): Promise<void>;
 }
 
 function driven(script: Script = {}, config = configFrom(CONFIG_TEXT, CAPABILITIES)): Driven {
     const reader = scriptedReader(script);
     const { processor, decided } = scriptedProcessor(config);
+    const groups: NeededGroups[] = [];
     const sweep = createSweep({
         store,
         capabilities: CAPABILITIES,
-        processorFor: sweeping(processor, reader.facts),
+        processorFor: sweeping(processor, (given, needed) => {
+            groups.push(needed);
+            return reader.facts(given);
+        }),
         clock: () => NOW,
         cadenceMs: DAY_MS,
         writeCap: SWEEP_WRITE_CALLS,
-        requestCap: SWEEP_REQUESTS,
+        allowance: spending(),
         log,
     });
-    return { reader, decided, run: () => sweep.runDue() };
+    return { reader, decided, groups, run: () => sweep.runDue() };
 }
 
 // ─── The driver ──────────────────────────────────────────────────────
@@ -347,6 +354,22 @@ describe("a due sweep row", () => {
         expect(decided.every(({ at }) => at === DUE_AT)).toBe(true);
     });
 
+    it("tells the reader which groups this repository's enabled capabilities need", async () => {
+        armed();
+        const { groups, run } = driven();
+
+        await run();
+
+        // `inactivity` is the one sweep capability and needs every group the
+        // sweep's row reads, so today's set is the whole row.
+        expect(groups).toEqual([
+            {
+                issue: ["assignees", "links"],
+                pullRequest: ["assignees", "links", "review", "readiness"],
+            },
+        ]);
+    });
+
     it("gives each issue the pull requests that close it, from the sweep's own reads", async () => {
         armed();
         const { decided, run } = driven();
@@ -367,7 +390,7 @@ describe("a due sweep row", () => {
         expect(decided[0]?.input.facts.links).toEqual({ openPullRequests: [] });
     });
 
-    it("leaves every issue's links unread when one pull request's links were not read", async () => {
+    it("leaves every issue's links unread when one pull request's links were not read, and its own too", async () => {
         armed();
         const { decided, run } = driven({ closes: "unread" });
 
@@ -429,7 +452,7 @@ describe("a firing that reads nothing", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -465,7 +488,7 @@ describe("a firing that reads nothing", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -497,7 +520,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -564,6 +587,7 @@ describe("the claim", () => {
                         read.push(`${repository.owner}/${repository.repo}`);
                         return Promise.resolve({ ok: true, items: [listedItem(ISSUE)] });
                     },
+                    linksFor: () => Promise.resolve(new Map()),
                     issueFacts: (listed, links) =>
                         Promise.resolve({
                             kind: "issue",
@@ -585,7 +609,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -630,7 +654,7 @@ describe("the claim", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -662,20 +686,20 @@ const effectOn = (
     detail: null,
 });
 
-interface Spending {
+interface Writing {
     readonly processor: Deciding;
-    /** Every call the firing handed down, to see whether they shared one budget. */
+    /** Every call the firing handed down, to see whether they shared one allowance. */
     readonly handed: Handed[];
     /** The item numbers a write landed on, in order. */
     readonly written: number[];
 }
 
 /**
- * A box that spends the firing's budget the way the applier does: one write per
- * item nothing has written to, nothing for one already written, and a
- * `sweepWriteCap` refusal once the firing's writes are spent.
+ * A box that spends the tick's mutation lane the way the applier does: one write
+ * per item nothing has written to, nothing for one already written, and a
+ * `sweepWriteCap` refusal once the lane is spent.
  */
-function spending(config: RepositoryConfig): Spending {
+function writing(config: RepositoryConfig): Writing {
     const handed: Handed[] = [];
     const record = handedIn(handed);
     const written: number[] = [];
@@ -685,18 +709,17 @@ function spending(config: RepositoryConfig): Spending {
         processor: {
             configuration: () => Promise.resolve(config),
             decideItem: (...args) => {
-                const { input, config: under, budget } = record(...args);
+                const { input, config: under, allowance } = record(...args);
                 const { item } = input.facts;
-                const left = budget ?? { remaining: 0 };
                 if (written.includes(item.number)) {
                     return Promise.resolve(decidedAs(under, [effectOn(item, "already")]));
                 }
-                if (left.remaining === 0) {
+                if (allowance === undefined || allowance.exhausted() === "mutations") {
                     return Promise.resolve(
                         decidedAs(under, [effectOn(item, "refused", "sweepWriteCap")]),
                     );
                 }
-                left.remaining -= 1;
+                (allowance as Spending).charge("mutations");
                 written.push(item.number);
                 return Promise.resolve(decidedAs(under, [effectOn(item, "applied")]));
             },
@@ -709,7 +732,8 @@ describe("the writes one firing may send", () => {
         armed();
         const items = [12, 13, 14].map((number) => listedItem({ kind: "issue", number }));
         const reader = scriptedReader({ items: { ok: true, items } });
-        const { processor, handed, written } = spending(configFrom(CONFIG_TEXT, CAPABILITIES));
+        const { processor, handed, written } = writing(configFrom(CONFIG_TEXT, CAPABILITIES));
+        const allowance = spending();
         let now = NOW;
         const sweep = createSweep({
             store,
@@ -718,7 +742,7 @@ describe("the writes one firing may send", () => {
             clock: () => now,
             cadenceMs: DAY_MS,
             writeCap: 2,
-            requestCap: SWEEP_REQUESTS,
+            allowance,
             log,
         });
 
@@ -728,8 +752,8 @@ describe("the writes one firing may send", () => {
         expect(events("sweepFinished")).toMatchObject([
             { items: 3, decided: 3, writes: 2, heldBack: 1 },
         ]);
-        // One budget for the firing, not one per record.
-        expect(new Set(handed.map(({ budget }) => budget)).size).toBe(1);
+        // One allowance for the tick, not one per record.
+        expect(new Set(handed.map((call) => call.allowance)).size).toBe(1);
 
         now = new Date(NOW.getTime() + DAY_MS);
         await sweep.runDue();
@@ -742,6 +766,7 @@ describe("the writes one firing may send", () => {
     it("counts no write for a record that never reached a write path", async () => {
         armed();
         const reader = scriptedReader();
+        const allowance = spending();
         const sweep = createSweep({
             store,
             capabilities: CAPABILITIES,
@@ -760,7 +785,7 @@ describe("the writes one firing may send", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: 2,
-            requestCap: SWEEP_REQUESTS,
+            allowance,
             log,
         });
 
@@ -770,15 +795,23 @@ describe("the writes one firing may send", () => {
     });
 });
 
-// ─── The request budget ──────────────────────────────────────────────
+// ─── The allowance ───────────────────────────────────────────────────
 
 /** Five open issues, listed out of order: the numbers a cursor walks through (D170). */
 const FIVE: readonly SweptItem[] = [13, 11, 15, 12, 14].map((number) =>
     listedItem({ kind: "issue", number }),
 );
 
-/** What the counted reader below charges: one request for the list, two for an item. */
+/** What a firing spent, as `sweepFinished` reports it: reads are core requests. */
+const CORE = (core: number): { core: number; graphql: number; mutations: number } => ({
+    core,
+    graphql: 0,
+    mutations: 0,
+});
+
+/** What the counted reader below charges: one for the list, one for the links, two for an item. */
 const LIST_COST = 1;
+const LINKS_COST = 1;
 const ITEM_COST = 2;
 
 interface Budgeted {
@@ -792,31 +825,35 @@ interface Budgeted {
     fire(days: number): Promise<void>;
 }
 
-/** One sweep under a request budget, fired as often as a case likes. */
-function budgeted(requestCap: number, items: readonly SweptItem[] = FIVE): Budgeted {
+/** One sweep under an allowance of `coreCap` requests, fired as often as a case likes. */
+function budgeted(coreCap: number, items: readonly SweptItem[] = FIVE): Budgeted {
     const listing: { items: SweptItems } = { items: { ok: true, items } };
     const { processor, decided } = scriptedProcessor(configFrom(CONFIG_TEXT, CAPABILITIES));
     const cost = { item: ITEM_COST };
+    const allowance = spending({ core: coreCap });
     /** The scripted reader, charging what the live one's reads would cost. */
-    const counted = (config: RepositoryConfig, budget: RequestBudget): SweepFacts => {
+    const counted = (config: RepositoryConfig): SweepFacts => {
         const reader = scriptedReader(listing).facts(config);
         const spend = (cost: number): void => {
-            const sent = Math.min(cost, budget.remaining);
-            budget.remaining -= sent;
-            if (sent < cost) budget.exhausted = true;
+            allowance.charge("core", cost);
         };
         return {
             openItems: () => {
                 spend(LIST_COST);
                 return reader.openItems();
             },
+            // One POST for the whole list, and none at all when no pull request is listed.
+            linksFor: (numbers) => {
+                if (numbers.length > 0) spend(LINKS_COST);
+                return reader.linksFor(numbers);
+            },
             issueFacts: (listed, links) => {
                 spend(cost.item);
                 return reader.issueFacts(listed, links);
             },
-            pullRequestFacts: (listed, openIssues) => {
+            pullRequestFacts: (listed, openIssues, closes) => {
                 spend(cost.item);
-                return reader.pullRequestFacts(listed, openIssues);
+                return reader.pullRequestFacts(listed, openIssues, closes);
             },
         };
     };
@@ -828,7 +865,7 @@ function budgeted(requestCap: number, items: readonly SweptItem[] = FIVE): Budge
         clock: () => now,
         cadenceMs: DAY_MS,
         writeCap: SWEEP_WRITE_CALLS,
-        requestCap,
+        allowance,
         log,
     });
     return {
@@ -838,6 +875,9 @@ function budgeted(requestCap: number, items: readonly SweptItem[] = FIVE): Budge
         listing,
         fire: (days) => {
             now = new Date(NOW.getTime() + days * DAY_MS);
+            // A day apart: GitHub's own window has rolled between these firings (D192).
+
+            allowance.openWindow();
             return sweep.runDue();
         },
     };
@@ -848,7 +888,7 @@ const cursorAfter = (days: number): number | null | undefined =>
     store.ledger.claimDue(new Date(NOW.getTime() + days * DAY_MS).toISOString())[0]?.resumeAfter;
 
 describe("the requests one firing may spend", () => {
-    it("shares one request budget across one hundred repositories", async () => {
+    it("shares one allowance across one hundred repositories", async () => {
         const repositories = Array.from({ length: 100 }, (_, index) => ({
             owner: "hiero-hackers",
             repo: `sdk-${String(index).padStart(3, "0")}`,
@@ -857,28 +897,26 @@ describe("the requests one firing may spend", () => {
             store.ledger.schedule(sweepScheduleId(repository), DUE_AT, SWEEP_EFFECT);
         }
         const config = configFrom(CONFIG_TEXT, CAPABILITIES);
-        const budgets = new Set<RequestBudget>();
+        const allowance = spending({ core: 10 });
+        const handles = new Set<Allowance>();
         let configured = 0;
-        let requests = 0;
         const sweep = createSweep({
             store,
             capabilities: CAPABILITIES,
-            processorFor: (_repository, requestBudget) => ({
+            processorFor: (_repository, handed) => ({
                 configuration: () => {
                     configured += 1;
-                    budgets.add(requestBudget);
-                    requestBudget.remaining -= 1;
-                    requests += 1;
+                    handles.add(handed);
+                    allowance.charge("core");
                     return Promise.resolve(config);
                 },
                 decideItem: () => Promise.reject(new Error("an empty repository decides nothing")),
-                facts: (_config, budget) => ({
+                facts: () => ({
                     openItems: () => {
-                        budgets.add(budget);
-                        budget.remaining -= 1;
-                        requests += 1;
+                        allowance.charge("core");
                         return Promise.resolve({ ok: true, items: [] });
                     },
+                    linksFor: () => Promise.resolve(new Map()),
                     issueFacts: () => Promise.reject(new Error("an empty repository has no issue")),
                     pullRequestFacts: () =>
                         Promise.reject(new Error("an empty repository has no pull request")),
@@ -887,26 +925,39 @@ describe("the requests one firing may spend", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: 10,
+            allowance,
             log,
         });
 
         await sweep.runDue();
 
-        expect(requests).toBe(10);
+        expect(allowance.spent().core).toBe(10);
         expect(configured).toBe(5);
-        expect(budgets.size).toBe(1);
+        expect(handles).toEqual(new Set([allowance]));
+        // Every repository the allowance did not reach is due again at once (D192).
+
         expect(store.ledger.claimDue(NOW.toISOString())).toHaveLength(95);
     });
 
-    it("does not claim an issue has no linked pull request after a partial scan", async () => {
+    /**
+     * The links of every LISTED pull request are read before the walk, so what the
+     * walk reached decides nothing about them: a firing cut short at item three
+     * still answers item two's links, from a pull request it never built a record for.
+     */
+    it("answers an issue's links though the firing stopped before the pull request", async () => {
         armed();
-        const firing = budgeted(LIST_COST + ITEM_COST, [listedItem(ISSUE), listedItem(PULL)]);
+        const mixed = [11, 12, 13, 14, 15].map((number) =>
+            listedItem({ kind: number === 13 ? "pullRequest" : "issue", number }),
+        );
+        const firing = budgeted(LIST_COST + LINKS_COST + 2 * ITEM_COST, mixed);
 
         await firing.fire(0);
 
-        expect(firing.read()).toEqual([ISSUE.number]);
-        expect(firing.facts()[0]?.links).toBe(UNREAD);
+        expect(firing.read()).toEqual([11, 12]);
+        expect(firing.facts().map((facts) => facts.links)).toEqual([
+            { openPullRequests: [] },
+            { openPullRequests: [{ kind: "pullRequest", number: 13 }] },
+        ]);
     });
 
     it("stops at the budget in number order, says what remains, and keeps the cursor", async () => {
@@ -929,7 +980,7 @@ describe("the requests one firing may spend", () => {
             },
         ]);
         expect(events("sweepFinished")).toMatchObject([
-            { items: 5, decided: 2, remaining: 3, resumeAfter: 12, requests: 5 },
+            { items: 5, decided: 2, remaining: 3, resumeAfter: 12, spent: CORE(5) },
         ]);
         expect(cursorAfter(1)).toBe(12);
     });
@@ -942,7 +993,7 @@ describe("the requests one firing may spend", () => {
 
         expect(firing.read()).toEqual([11]);
         expect(events("sweepFinished")).toMatchObject([
-            { decided: 1, remaining: 4, resumeAfter: 11, requests: 4 },
+            { decided: 1, remaining: 4, resumeAfter: 11, spent: CORE(4) },
         ]);
 
         await firing.fire(1);
@@ -963,7 +1014,7 @@ describe("the requests one firing may spend", () => {
             decided: 0,
             remaining: 4,
             resumeAfter: 11,
-            requests: 3,
+            spent: CORE(3),
         });
 
         firing.cost.item = ITEM_COST;
@@ -1005,7 +1056,7 @@ describe("the requests one firing may spend", () => {
             decided: 1,
             remaining: 0,
             resumeAfter: null,
-            requests: LIST_COST + ITEM_COST,
+            spent: CORE(LIST_COST + ITEM_COST),
         });
         expect(cursorAfter(3)).toBeNull();
     });
@@ -1019,7 +1070,7 @@ describe("the requests one firing may spend", () => {
         expect(firing.read()).toEqual([11, 12, 13, 14, 15]);
         expect(events("sweepPartial")).toEqual([]);
         expect(events("sweepFinished")).toMatchObject([
-            { decided: 5, remaining: 0, resumeAfter: null, requests: 11 },
+            { decided: 5, remaining: 0, resumeAfter: null, spent: CORE(11) },
         ]);
         expect(cursorAfter(1)).toBeNull();
     });
@@ -1034,7 +1085,7 @@ describe("the requests one firing may spend", () => {
         expect(firing.read()).toEqual([]);
         expect(events("sweepPartial")).toEqual([]);
         expect(events("sweepFinished")).toMatchObject([
-            { items: 5, decided: 0, remaining: 5, resumeAfter: null, requests: LIST_COST },
+            { items: 5, decided: 0, remaining: 5, resumeAfter: null, spent: CORE(LIST_COST) },
         ]);
         expect(cursorAfter(1)).toBeNull();
     });
@@ -1053,35 +1104,127 @@ describe("the requests one firing may spend", () => {
         expect(events("sweepFinished")[1]).toMatchObject({
             items: 0,
             resumeAfter: 12,
-            requests: LIST_COST,
+            spent: CORE(LIST_COST),
         });
         expect(cursorAfter(2)).toBe(12);
     });
 });
 
-describe("the budgets shared by repositories", () => {
-    it("gives deferred repositories a fresh budget on later ticks", async () => {
+describe("the one re-arm rule", () => {
+    /** A firing that did not finish its list is due at once, deferred or cut short (D192). */
+    it("gives a cut-short firing and an untouched repository the same next due date", async () => {
+        armed();
+        const other = { owner: "o", repo: "untouched" };
+        store.ledger.schedule(sweepScheduleId(other), DUE_AT, SWEEP_EFFECT);
+        // The list and two of five items; the allowance is spent for the window.
+        const firing = budgeted(LIST_COST + 2 * ITEM_COST);
+
+        await firing.fire(0);
+
+        expect(events("sweepFinished")).toMatchObject([
+            { scheduleId: SCHEDULE, deferred: false, resumeAfter: 12, reused: 0 },
+            { deferred: true, resumeAfter: null, reused: 0 },
+        ]);
+        const dueNow = store.ledger.claimDue(NOW.toISOString());
+        expect(dueNow.map((row) => row.scheduleId).sort()).toEqual(
+            [SCHEDULE, sweepScheduleId(other)].sort(),
+        );
+    });
+
+    it("gives a firing that read nothing the cadence, so a broken file cannot spin", async () => {
+        armed();
+        const { run } = driven({ items: { ok: false, detail: "GitHub refused the read" } });
+
+        await run();
+
+        expect(events("sweepFinished")).toMatchObject([
+            { deferred: false, nextDueAt: new Date(NOW.getTime() + DAY_MS).toISOString() },
+        ]);
+        expect(store.ledger.claimDue(NOW.toISOString())).toEqual([]);
+    });
+
+    it("fires the repository that waited longest first", async () => {
+        const repositories = ["a", "b", "c"].map((repo) => ({ owner: "o", repo }));
+        for (const repository of repositories) {
+            store.ledger.schedule(sweepScheduleId(repository), DUE_AT, SWEEP_EFFECT);
+        }
+        const config = configFrom(CONFIG_TEXT, CAPABILITIES);
+        // The list and one item: every firing is cut short, so every row stays due.
+        const allowance = spending({ core: LIST_COST + ITEM_COST });
+        const read: string[] = [];
+        let now = NOW;
+        const sweep = createSweep({
+            store,
+            capabilities: CAPABILITIES,
+            processorFor: (repository) => {
+                const reader = scriptedReader({ items: { ok: true, items: FIVE } }).facts(config);
+                return {
+                    configuration: () => Promise.resolve(config),
+                    decideItem: (_input, under) => Promise.resolve(decidedAs(under, [])),
+                    facts: () => ({
+                        openItems: () => {
+                            allowance.charge("core", LIST_COST);
+                            read.push(repository.repo);
+                            return reader.openItems();
+                        },
+                        linksFor: (numbers) => reader.linksFor(numbers),
+                        issueFacts: (listed, links) => {
+                            allowance.charge("core", ITEM_COST);
+                            return reader.issueFacts(listed, links);
+                        },
+                        pullRequestFacts: () => Promise.reject(new Error("none is listed")),
+                    }),
+                };
+            },
+            clock: () => now,
+            cadenceMs: DAY_MS,
+            writeCap: SWEEP_WRITE_CALLS,
+            allowance,
+            log,
+        });
+
+        /** One tick, in a fresh window: exactly one repository fits the allowance. */
+        const tick = async (minutes: number): Promise<void> => {
+            now = new Date(NOW.getTime() + minutes * 60_000);
+            allowance.openWindow();
+            await sweep.runDue();
+        };
+
+        await tick(0);
+        await tick(1);
+        await tick(2);
+
+        // Each tick reads the one that has gone longest without reading; a deferred
+        // row keeps its place, so the two it waited behind do not overtake it (D192).
+        expect(read).toEqual(["a", "b", "c"]);
+    });
+});
+
+describe("the mutation lane shared by repositories", () => {
+    it("arms it again each tick, so a deferred repository writes on the next one", async () => {
         const repositories = ["one", "two", "three"].map((repo) => ({ owner: "o", repo }));
         for (const repository of repositories) {
             store.ledger.schedule(sweepScheduleId(repository), DUE_AT, SWEEP_EFFECT);
         }
         const config = configFrom(CONFIG_TEXT, CAPABILITIES);
         const written: string[] = [];
-        const budgets = new Set<WriteBudget>();
+        const handles = new Set<Allowance>();
+        const allowance = spending();
         const sweep = createSweep({
             store,
             capabilities: CAPABILITIES,
             processorFor: (repository) => ({
                 configuration: () => Promise.resolve(config),
-                decideItem: (_input, under, _at, budget) => {
-                    expect(budget).toBeDefined();
-                    budgets.add(budget!);
-                    budget!.remaining -= 1;
+                decideItem: (_input, under, _at, handed) => {
+                    expect(handed).toBeDefined();
+                    handles.add(handed!);
+                    (handed as Spending).charge("mutations");
                     written.push(repository.repo);
                     return Promise.resolve(decidedAs(under, [effectOn(ISSUE, "applied")]));
                 },
                 facts: () => ({
                     openItems: () => Promise.resolve({ ok: true, items: [listedItem(ISSUE)] }),
+                    linksFor: () => Promise.resolve(new Map()),
                     issueFacts: (listed, links) =>
                         Promise.resolve({
                             kind: "issue",
@@ -1103,7 +1246,7 @@ describe("the budgets shared by repositories", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: 1,
-            requestCap: SWEEP_REQUESTS,
+            allowance,
             log,
         });
 
@@ -1112,7 +1255,10 @@ describe("the budgets shared by repositories", () => {
         await sweep.runDue();
 
         expect(new Set(written)).toEqual(new Set(["one", "two", "three"]));
-        expect(budgets.size).toBe(3);
+        // One handle for the process; what each tick renews is the lane on it (D192).
+
+        expect(handles).toEqual(new Set([allowance]));
+        expect(allowance.spent().mutations).toBe(1);
     });
 });
 
@@ -1271,15 +1417,15 @@ describe("what one firing prunes", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
         await sweep.runDue();
 
-        // Twice: the prune's own line, then the re-arm's. One would mean the prune's
-        // throw took the re-arm with it.
-        expect(events("sweepFailed")).toHaveLength(2);
+        // Three times: the reading's own line, the prune's, then the re-arm's. Fewer
+        // would mean one throw took the rest of the firing with it.
+        expect(events("sweepFailed")).toHaveLength(3);
         expect(events("sweepFinished")).toEqual([]);
     });
 });
@@ -1312,7 +1458,7 @@ describe("a firing under a suspended installation", () => {
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             suspended: true,
             log,
         });
@@ -1352,6 +1498,171 @@ describe("a firing under a suspended installation", () => {
     });
 });
 
+// ─── The snapshot ────────────────────────────────────────────────────
+
+/** One listed issue, with the change date a case gives it (D193). */
+const changedAt = (number: number, updatedAt: string): SweptItem => ({
+    ...listedItem({ kind: "issue", number }),
+    updatedAt: new Date(updatedAt),
+});
+
+/** Every item of this suite's list, settled long before any firing below. */
+const SETTLED = "2026-09-01T00:00:00.000Z";
+
+interface Snapshotting {
+    /** What the next firing's list answers; a case may drop an item from it. */
+    readonly listing: { items: SweptItems };
+    /** Fire at `at`; the row comes round every ten seconds, so a case may fire whenever. */
+    fire(at: string): Promise<void>;
+}
+
+/**
+ * One sweep over a scripted reader, fired at instants a case chooses.
+ * The reader answers every group of an ISSUE, so what a firing decides from is the one variable.
+ */
+function snapshotting(items: readonly SweptItem[], snapshotMaxAgeMs?: number): Snapshotting {
+    const listing: { items: SweptItems } = { items: { ok: true, items } };
+    const { processor } = scriptedProcessor(configFrom(CONFIG_TEXT, CAPABILITIES));
+    let now = NOW;
+    const sweep = createSweep({
+        store,
+        capabilities: CAPABILITIES,
+        processorFor: sweeping(processor, (config) => scriptedReader(listing).facts(config)),
+        clock: () => now,
+        cadenceMs: 10_000,
+        writeCap: SWEEP_WRITE_CALLS,
+        allowance: spending(),
+        ...(snapshotMaxAgeMs === undefined ? {} : { snapshotMaxAgeMs }),
+        log,
+    });
+    return {
+        listing,
+        fire: (at) => {
+            now = new Date(at);
+            return sweep.runDue();
+        },
+    };
+}
+
+const readOf = (number: number) => store.ledger.snapshotOf(REPOSITORY, { kind: "issue", number });
+
+describe("what a firing decides from a stored read", () => {
+    it("answers an unchanged item without reading it, and says how many", async () => {
+        armed();
+        const { fire } = snapshotting([changedAt(11, SETTLED), changedAt(12, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        await fire("2026-09-09T13:00:00.000Z");
+
+        expect(events("sweepFinished")).toMatchObject([
+            { items: 2, decided: 2, reused: 0 },
+            { items: 2, decided: 2, reused: 2 },
+        ]);
+    });
+
+    it("reads the one item the list says has changed", async () => {
+        armed();
+        const { listing, fire } = snapshotting([changedAt(11, SETTLED), changedAt(12, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        listing.items = {
+            ok: true,
+            items: [changedAt(11, SETTLED), changedAt(12, "2026-09-09T12:30:00.000Z")],
+        };
+        await fire("2026-09-09T13:00:00.000Z");
+
+        expect(events("sweepFinished")).toMatchObject([{ reused: 0 }, { decided: 2, reused: 1 }]);
+        expect(readOf(12)?.updatedAt).toBe("2026-09-09T12:30:00.000Z");
+    });
+
+    /** A review reaches `updated_at` up to thirty seconds late, so a fresh change is read (D193). */
+    it("reads an item whose change is still settling, and reuses it once it has settled", async () => {
+        armed();
+        const { fire } = snapshotting([changedAt(11, "2026-09-09T11:59:50.000Z")]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        await fire("2026-09-09T12:00:30.000Z");
+        await fire("2026-09-09T12:02:00.000Z");
+
+        expect(events("sweepFinished")).toMatchObject([
+            { reused: 0 },
+            { reused: 0 },
+            { reused: 1 },
+        ]);
+    });
+
+    it("reads an item again once its stored read is a day old", async () => {
+        armed();
+        const { fire } = snapshotting([changedAt(11, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        await fire("2026-09-10T13:00:00.000Z");
+
+        expect(events("sweepFinished")).toMatchObject([{ reused: 0 }, { reused: 0 }]);
+    });
+
+    /** Reuse writes nothing back, so a read can never carry itself past the age. */
+    it("stops at the age the operator set, counted from the read itself", async () => {
+        armed();
+        const { fire } = snapshotting([changedAt(11, SETTLED)], 2 * 60 * 60_000);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        await fire("2026-09-09T13:00:00.000Z");
+        await fire("2026-09-09T15:00:01.000Z");
+
+        expect(events("sweepFinished")).toMatchObject([
+            { reused: 0 },
+            { reused: 1 },
+            { reused: 0 },
+        ]);
+    });
+
+    it("drops the read of an item the list no longer carries", async () => {
+        armed();
+        const { listing, fire } = snapshotting([changedAt(11, SETTLED), changedAt(12, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        expect(readOf(12)).not.toBeNull();
+        listing.items = { ok: true, items: [changedAt(11, SETTLED)] };
+        await fire("2026-09-09T13:00:00.000Z");
+
+        expect(readOf(12)).toBeNull();
+        expect(readOf(11)).not.toBeNull();
+    });
+
+    /** An unusable list says nothing about which items are still open, so no row is dropped. */
+    it("keeps every read when the list could not be read", async () => {
+        armed();
+        const { listing, fire } = snapshotting([changedAt(11, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        listing.items = { ok: false, detail: "the open-item list page 1: transient" };
+        await fire("2026-09-09T13:00:00.000Z");
+
+        expect(readOf(11)).not.toBeNull();
+    });
+
+    it("reads an item whose stored read it cannot decode, says so once, and rewrites it", async () => {
+        armed();
+        const { fire } = snapshotting([changedAt(11, SETTLED), changedAt(12, SETTLED)]);
+
+        await fire("2026-09-09T12:00:00.000Z");
+        for (const number of [11, 12]) {
+            store.ledger.putSnapshot(REPOSITORY, {
+                item: { kind: "issue", number },
+                updatedAt: SETTLED,
+                readAt: "2026-09-09T12:00:00.000Z",
+                facts: "{",
+            });
+        }
+        await fire("2026-09-09T13:00:00.000Z");
+
+        expect(events("snapshotUnreadable")).toMatchObject([{ scheduleId: SCHEDULE, rows: 2 }]);
+        expect(events("sweepFinished")).toMatchObject([{ reused: 0 }, { decided: 2, reused: 0 }]);
+        expect(readOf(11)?.facts).toContain("assignees");
+    });
+});
+
 // ─── The whole seam ──────────────────────────────────────────────────
 
 /** Recorded GitHub, routed by path; anything unrouted is a failing 404. */
@@ -1364,64 +1675,71 @@ function routed(routes: Readonly<Record<string, unknown>>): ResponseStep {
     };
 }
 
-describe("the reader and the driver together", () => {
-    /**
-     * One stale issue with one assignee, and one pull request that closes it —
-     * the smallest repository that exercises every group the sweep can fill.
-     */
-    const RECORDED = {
-        "/issues?": [
-            {
-                number: 12,
-                state: "open",
-                updated_at: "2026-08-01T00:00:00Z",
-                labels: [],
-                user: { login: "ada" },
-                assignees: [{ login: "ada" }],
-            },
-            {
-                number: 34,
-                state: "open",
-                updated_at: "2026-08-02T00:00:00Z",
-                labels: [],
-                user: { login: "ada" },
-                assignees: [{ login: "ada" }],
-                pull_request: { url: "https://api.github.com/pulls/34" },
-            },
-        ],
-        "/issues/12/timeline": [
-            { event: "assigned", assignee: { login: "ada" }, created_at: "2026-07-01T00:00:00Z" },
-        ],
-        "/issues/12/comments": [
-            { user: { login: "ada" }, created_at: "2026-07-02T00:00:00Z", body: "/working" },
-        ],
-        "/issues/34/timeline": [
-            { event: "assigned", assignee: { login: "ada" }, created_at: "2026-07-01T00:00:00Z" },
-        ],
-        "/issues/34/comments": [],
-        "/graphql": {
-            data: {
-                repository: {
-                    nameWithOwner: `${REPOSITORY.owner}/${REPOSITORY.repo}`,
-                    pullRequest: {
-                        number: 34,
-                        closingIssuesReferences: {
-                            nodes: [
-                                {
-                                    number: 12,
-                                    repository: {
-                                        nameWithOwner: `${REPOSITORY.owner}/${REPOSITORY.repo}`,
-                                    },
+/**
+ * One stale issue with one assignee, and one pull request that closes it —
+ * the smallest repository that exercises every group the sweep can fill.
+ */
+const RECORDED = {
+    "/issues?": [
+        {
+            number: 12,
+            state: "open",
+            updated_at: "2026-08-01T00:00:00Z",
+            labels: [],
+            user: { login: "ada" },
+            assignees: [{ login: "ada" }],
+        },
+        {
+            number: 34,
+            state: "open",
+            updated_at: "2026-08-02T00:00:00Z",
+            labels: [],
+            user: { login: "ada" },
+            assignees: [{ login: "ada" }],
+            pull_request: { url: "https://api.github.com/pulls/34" },
+        },
+    ],
+    "/issues/12/timeline": [
+        { event: "assigned", assignee: { login: "ada" }, created_at: "2026-07-01T00:00:00Z" },
+    ],
+    "/issues/12/comments": [
+        { user: { login: "ada" }, created_at: "2026-07-02T00:00:00Z", body: "/working" },
+    ],
+    "/issues/34/timeline": [
+        { event: "assigned", assignee: { login: "ada" }, created_at: "2026-07-01T00:00:00Z" },
+    ],
+    "/issues/34/comments": [],
+    // The driver reads links for the whole list, so the answer is the aliased one (D194).
+    "/graphql": {
+        data: {
+            repository: {
+                p0: {
+                    number: 34,
+                    closingIssuesReferences: {
+                        nodes: [
+                            {
+                                number: 12,
+                                repository: {
+                                    nameWithOwner: `${REPOSITORY.owner}/${REPOSITORY.repo}`,
                                 },
-                            ],
-                            pageInfo: { hasNextPage: false, endCursor: null },
-                        },
+                            },
+                        ],
+                        pageInfo: { hasNextPage: false, endCursor: null },
                     },
                 },
             },
         },
-    };
+    },
+};
 
+/** The pull request's own four reads, which `RECORDED` alone leaves 404 and unread. */
+const REVIEWED = {
+    "/pulls/34/reviews": [],
+    "/pulls/34/commits": [{ commit: { committer: { date: "2026-08-02T00:00:00Z" } } }],
+    "/pulls/34": { draft: false, created_at: "2026-07-01T00:00:00Z" },
+};
+
+describe("the reader and the driver together", () => {
     it("carries a recorded repository into decide(), groups read and unread as they are", async () => {
         armed();
         const capabilities: readonly EngineCapability[] = [inactivity];
@@ -1467,26 +1785,26 @@ describe("the reader and the driver together", () => {
             processorFor: sweeping(
                 {
                     configuration: () => lane.configuration(REPOSITORY),
-                    decideItem: async (input, config, at, budget) => {
-                        record(input, config, at, budget);
-                        const answer = await decideItem(input, config, at, budget);
+                    decideItem: async (input, config, at, allowance) => {
+                        record(input, config, at, allowance);
+                        const answer = await decideItem(input, config, at, allowance);
                         answers.push(answer);
                         return answer;
                     },
                 },
-                (config) =>
+                (config, groups) =>
                     createFactsReader({
                         http: http.client,
                         repository: REPOSITORY,
                         config,
-                        knownCapabilities: [],
+                        groups,
                         clock: () => NOW,
                     }),
             ),
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 
@@ -1530,6 +1848,103 @@ describe("the reader and the driver together", () => {
             review: UNREAD,
         });
         expect(events("sweepFinished")).toMatchObject([{ items: 2, decided: 2 }]);
+    });
+});
+
+/**
+ * The same seam, fired twice: what a warm firing costs, and what a restart costs.
+ * The box is scripted, because what these cases ask is what the driver SENT.
+ */
+describe("a second firing over an unchanged list", () => {
+    const REPO = `/repos/${REPOSITORY.owner}/${REPOSITORY.repo}`;
+
+    /** Every read of this repository answered, so no group is left unread by a 404. */
+    const WHOLE = { ...RECORDED, ...REVIEWED };
+
+    /** The real reader over recorded GitHub, driving a scripted box. */
+    function live(open: Store, clock: () => Date) {
+        const http = httpHarness([routed(WHOLE)], {
+            outcomes: [
+                {
+                    ok: true,
+                    token: {
+                        ...installationToken("sweep-token"),
+                        grants: ["issues:write", "pull_requests:read"],
+                    },
+                },
+            ],
+        });
+        const { processor } = scriptedProcessor(configFrom(CONFIG_TEXT, CAPABILITIES));
+        const sweep = createSweep({
+            store: open,
+            capabilities: CAPABILITIES,
+            processorFor: sweeping(processor, (config, groups) =>
+                createFactsReader({
+                    http: http.client,
+                    repository: REPOSITORY,
+                    config,
+                    groups,
+                    clock,
+                }),
+            ),
+            clock,
+            cadenceMs: 60 * 60_000,
+            writeCap: SWEEP_WRITE_CALLS,
+            allowance: spending(),
+            log,
+        });
+        return {
+            sweep,
+            sent: (): string[] => http.scripted.calls.map(({ url }) => new URL(url).pathname),
+        };
+    }
+
+    it("sends the list alone, and answers every item from its own last read", async () => {
+        armed();
+        let now = NOW;
+        const { sweep, sent } = live(store, () => now);
+
+        await sweep.runDue();
+        const cold = sent().length;
+        now = new Date(NOW.getTime() + 60 * 60_000);
+        await sweep.runDue();
+
+        // Cold: the list, the batch for the whole list, then five reads for the pull
+        // request and two for the issue (D194, sweep.md §3).
+        expect(sent().slice(0, cold)).toEqual([
+            `${REPO}/issues`,
+            "/graphql",
+            `${REPO}/issues/12/timeline`,
+            `${REPO}/issues/12/comments`,
+            `${REPO}/issues/34/timeline`,
+            `${REPO}/issues/34/comments`,
+            `${REPO}/pulls/34/reviews`,
+            `${REPO}/pulls/34`,
+            `${REPO}/pulls/34/commits`,
+        ]);
+        // Warm: the list pages, and nothing else at all — the batch included (D193).
+        expect(sent().slice(cold)).toEqual([`${REPO}/issues`]);
+        expect(events("sweepFinished")).toMatchObject([
+            { items: 2, decided: 2, reused: 0 },
+            { items: 2, decided: 2, reused: 2 },
+        ]);
+    });
+
+    /** The store outlives the process, which the in-process cache never did (F3). */
+    it("is warm again after a restart, over the same store file", async () => {
+        armed();
+        await live(store, () => NOW).sweep.runDue();
+
+        const restarted = new Store(temp.file("store.sqlite"));
+        try {
+            const second = live(restarted, () => new Date(NOW.getTime() + 60 * 60_000));
+            await second.sweep.runDue();
+
+            expect(second.sent()).toEqual([`${REPO}/issues`]);
+            expect(events("sweepFinished").at(-1)).toMatchObject({ decided: 2, reused: 2 });
+        } finally {
+            restarted.close();
+        }
     });
 });
 
@@ -1661,25 +2076,25 @@ describe("an item the platform released within the minute", () => {
             processorFor: sweeping(
                 {
                     configuration: () => lane.configuration(REPOSITORY),
-                    decideItem: async (input, config, at, budget) => {
-                        const answer = await decideItem(input, config, at, budget);
+                    decideItem: async (input, config, at, allowance) => {
+                        const answer = await decideItem(input, config, at, allowance);
                         answers.push(answer);
                         return answer;
                     },
                 },
-                (config) =>
+                (config, groups) =>
                     createFactsReader({
                         http: http.client,
                         repository: REPOSITORY,
                         config,
-                        knownCapabilities: [],
+                        groups,
                         clock: () => NOW,
                     }),
             ),
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            allowance: spending(),
             log,
         });
 

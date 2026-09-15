@@ -201,6 +201,10 @@ const ROUTING: Record<
         },
         problem: true,
     },
+    snapshotUnreadable: {
+        event: { event: "snapshotUnreadable", scheduleId: "sweep:owner/repo", rows: 2 },
+        problem: true,
+    },
     sweepPartial: {
         event: {
             event: "sweepPartial",
@@ -209,6 +213,16 @@ const ROUTING: Record<
             remaining: 12,
             resumeAfter: 512,
             requests: 2000,
+        },
+        problem: false,
+    },
+    limits: {
+        event: {
+            event: "limits",
+            pool: "core",
+            limit: 12_500,
+            remaining: 11_900,
+            resetAt: "2026-09-09T13:00:00.000Z",
         },
         problem: false,
     },
@@ -227,7 +241,9 @@ const ROUTING: Record<
             heldBack: 0,
             remaining: 0,
             resumeAfter: null,
-            requests: 14,
+            reused: 0,
+            spent: { core: 14, graphql: 1, mutations: 2 },
+            deferred: false,
             nextDueAt: "2026-09-10T10:00:00.000Z",
         },
         problem: false,

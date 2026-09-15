@@ -6,12 +6,12 @@
  */
 
 import type { RepositoryRef } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import {
     describeFailure,
     type GitHubHttpClient,
     type GitHubHttpFailureClass,
     type GitHubWriteRequest,
-    type GitHubRequestBudget,
     type WriteIdempotency,
 } from "../client/contract.js";
 import { writeVerbsOf } from "./operations/index.js";
@@ -44,6 +44,12 @@ function resultOfFailure(
 ): WriteResult {
     switch (failure.kind) {
         case "notSent":
+            // The hourly ceiling refused this creation locally, so nothing was sent
+            // and the comment is owed, not lost (D192).
+
+            if (failure.reason === "contentCreationCeiling") {
+                return retryLater("this hour's content-creation ceiling is reached");
+            }
             return unsupported(
                 failure.reason === "brokenSeam"
                     ? `nothing was sent: ${describeFailure(failure)}`
@@ -112,9 +118,9 @@ export function createWriteVerbs({ http, repository }: WriteVerbsOptions): Write
     const apply = async (
         request: GitHubWriteRequest,
         notFound: NotFoundMeaning,
-        budget?: GitHubRequestBudget,
+        allowance?: Allowance,
     ): Promise<WriteResult> => {
-        const outcome = await http.request(request, budget);
+        const outcome = await http.request(request, allowance);
         if (outcome.ok) return { outcome: "applied" };
         // A failure carries no body when no response arrived, and an absent body
         // cannot name a label — the empty string reads the same way.

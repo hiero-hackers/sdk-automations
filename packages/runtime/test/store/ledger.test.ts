@@ -165,6 +165,38 @@ describe("the sweep's worklist", () => {
     });
 });
 
+describe("the order due rows are claimed in", () => {
+    /** The shared allowance goes to the rows that waited longest (D192). */
+    it("fires the oldest started first, and a row that never fired before any", () => {
+        const store = new Store(path);
+        for (const id of ["sweep:o/late", "sweep:o/early", "sweep:o/fresh"]) {
+            store.ledger.schedule(id, AT, "sweep");
+        }
+        const claimed = store.ledger.claimDue(AT);
+        const startedAt: Readonly<Record<string, string>> = {
+            "sweep:o/late": "2026-09-12T09:30:00.000Z",
+            "sweep:o/early": "2026-09-12T09:10:00.000Z",
+        };
+        for (const row of claimed) {
+            const started = startedAt[row.scheduleId];
+            // The fresh row is re-armed without ever having started.
+            if (started !== undefined) {
+                store.ledger.scheduleAgain(row.scheduleId, row.claimToken, AT, null, started);
+            }
+        }
+        const fresh = claimed.find((row) => row.scheduleId === "sweep:o/fresh")!;
+        store.ledger.scheduleDone(fresh.scheduleId, fresh.claimToken);
+        store.ledger.schedule("sweep:o/never", AT, "sweep");
+
+        expect(store.ledger.claimDue(AT).map((row) => row.scheduleId)).toEqual([
+            "sweep:o/never",
+            "sweep:o/early",
+            "sweep:o/late",
+        ]);
+        store.close();
+    });
+});
+
 describe("the writes the platform made on one item", () => {
     it("returns the item's landed facts by time, and nothing else's", () => {
         const store = new Store(path);
@@ -346,6 +378,95 @@ describe("the decisions a pass records", () => {
         expect(store.ledger.decisionsOn(ELSEWHERE, ITEM)).toEqual([
             decision({ passId: "pass-elsewhere", repository: ELSEWHERE }),
         ]);
+        store.close();
+    });
+});
+
+describe("the reads one repository holds", () => {
+    /** One item's stored read, with only the two instants a case varies. */
+    const put = (store: Store, item: ItemRef, readAt: string, repository = REPOSITORY): void => {
+        store.ledger.putSnapshot(repository, {
+            item,
+            updatedAt: "2026-09-12T08:00:00.000Z",
+            readAt,
+            facts: `{"kind":"${item.kind}","read":"${readAt}"}`,
+        });
+    };
+
+    it("reads back one item's stored read, and nothing for an item without one", () => {
+        const store = new Store(path);
+
+        put(store, ITEM, AT);
+
+        expect(store.ledger.snapshotOf(REPOSITORY, ITEM)).toEqual({
+            item: ITEM,
+            updatedAt: "2026-09-12T08:00:00.000Z",
+            readAt: AT,
+            facts: '{"kind":"issue","read":"2026-09-12T09:00:00.000Z"}',
+        });
+        expect(store.ledger.snapshotOf(REPOSITORY, OTHER)).toBeNull();
+        // The same number in another repository is another item (D169).
+
+        expect(store.ledger.snapshotOf(ELSEWHERE, ITEM)).toBeNull();
+        store.close();
+    });
+
+    it("replaces the read it held for an item", () => {
+        const store = new Store(path);
+
+        put(store, ITEM, AT);
+        put(store, ITEM, "2026-09-12T10:00:00.000Z");
+
+        expect(store.ledger.snapshotOf(REPOSITORY, ITEM)?.readAt).toBe("2026-09-12T10:00:00.000Z");
+        expect(store.ledger.snapshots()).toEqual([
+            { repository: REPOSITORY, count: 1, oldest: "2026-09-12T10:00:00.000Z" },
+        ]);
+        expect(() => put(store, ITEM, "whenever")).toThrow(/readAt/);
+        store.close();
+    });
+
+    it("drops every read of an item the list no longer carries, and no other repository's", () => {
+        const store = new Store(path);
+
+        put(store, ITEM, AT);
+        put(store, OTHER, AT);
+        put(store, ITEM, AT, ELSEWHERE);
+
+        expect(store.ledger.dropSnapshotsNotIn(REPOSITORY, [OTHER.number])).toBe(1);
+        expect(store.ledger.snapshotOf(REPOSITORY, ITEM)).toBeNull();
+        expect(store.ledger.snapshotOf(REPOSITORY, OTHER)).not.toBeNull();
+        expect(store.ledger.snapshotOf(ELSEWHERE, ITEM)).not.toBeNull();
+        // An empty list is a repository with nothing open, not a list nobody read.
+
+        expect(store.ledger.dropSnapshotsNotIn(REPOSITORY, [])).toBe(1);
+        expect(store.ledger.snapshots()).toEqual([{ repository: ELSEWHERE, count: 1, oldest: AT }]);
+        store.close();
+    });
+
+    it("says how many reads each repository holds and the oldest of them", () => {
+        const store = new Store(path);
+
+        put(store, ITEM, "2026-09-12T10:00:00.000Z");
+        put(store, OTHER, AT);
+        put(store, ITEM, "2026-09-12T11:00:00.000Z", ELSEWHERE);
+
+        expect(store.ledger.snapshots()).toEqual([
+            { repository: ELSEWHERE, count: 1, oldest: "2026-09-12T11:00:00.000Z" },
+            { repository: REPOSITORY, count: 2, oldest: AT },
+        ]);
+        store.close();
+    });
+
+    /** The retention pass is the safety net for a repository that stopped being swept (D193). */
+    it("prunes a read older than the settled-effect window with the effects", () => {
+        const store = new Store(path);
+
+        put(store, ITEM, "2026-09-12T08:00:00.000Z");
+        put(store, OTHER, "2026-09-20T09:00:00.000Z");
+
+        expect(store.ledger.prune(AT)).toBe(0);
+        expect(store.ledger.snapshotOf(REPOSITORY, ITEM)).toBeNull();
+        expect(store.ledger.snapshotOf(REPOSITORY, OTHER)).not.toBeNull();
         store.close();
     });
 });

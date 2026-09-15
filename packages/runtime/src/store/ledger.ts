@@ -20,6 +20,7 @@ import type {
 import { fold } from "./fold.js";
 import { assertNonEmpty, assertUtcInstant } from "./guards.js";
 import type { ClaimedScheduleRow, ScheduleRow, ScheduleStanding } from "./schedules.js";
+import type { ItemSnapshot, SnapshotStanding } from "./snapshots.js";
 
 /** The kinds that close an open send; `unsent` closes one without spending an attempt. */
 const CLOSING = "('landed','refused','abandoned','unsent')";
@@ -63,6 +64,14 @@ const PROMISE_AHEAD = `
 const ALREADY_LANDED = `
     SELECT landed.effect_id FROM effect_fact landed
     WHERE landed.kind = 'landed' AND landed.seq >= 1`;
+
+/** Which of two rows fires first: the one that started longer ago, and never-fired before all (D192). */
+function firedFirst(left: string | null, right: string | null): number {
+    if (left === right) return 0;
+    if (left === null) return -1;
+    if (right === null) return 1;
+    return left < right ? -1 : 1;
+}
 
 /** The column's spelling, and the reference it is read back as: `owner/repo` (D169). */
 const spelled = (repository: RepositoryRef): string => `${repository.owner}/${repository.repo}`;
@@ -378,6 +387,96 @@ export class Ledger {
         return rows.map((row) => ({ verdict: row.verdict, count: row.taken }));
     }
 
+    /** Managed comments landed after `since`; the client's own ceiling counts attempts (D193). */
+    commentsSince(since: string): number {
+        assertUtcInstant(since, "since");
+        const row = this.db
+            .prepare(
+                `
+                SELECT COUNT(*) AS created FROM effect_fact
+                WHERE kind = 'landed' AND verb = 'postComment' AND at > ?
+            `,
+            )
+            .get(since) as unknown as { created: number };
+        return row.created;
+    }
+
+    // ── Snapshots ───────────────────────────────────────────────────
+
+    /** One item's last read, or `null` where this repository has none (D193). */
+    snapshotOf(repository: RepositoryRef, item: ItemRef): ItemSnapshot | null {
+        const row = this.db
+            .prepare(
+                `
+                SELECT updated_at, read_at, facts FROM item_snapshot
+                WHERE repository = ? AND item_kind = ? AND item_number = ?
+            `,
+            )
+            .get(spelled(repository), item.kind, item.number) as
+            { updated_at: string; read_at: string; facts: string } | undefined;
+        return row === undefined
+            ? null
+            : { item, updatedAt: row.updated_at, readAt: row.read_at, facts: row.facts };
+    }
+
+    /** Write one item's read, replacing whatever stood for it (D193). */
+    putSnapshot(repository: RepositoryRef, snapshot: ItemSnapshot): void {
+        assertUtcInstant(snapshot.updatedAt, "updatedAt");
+        assertUtcInstant(snapshot.readAt, "readAt");
+        this.db
+            .prepare(
+                `
+                INSERT INTO item_snapshot VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(repository, item_kind, item_number) DO UPDATE SET
+                    updated_at = excluded.updated_at,
+                    read_at = excluded.read_at,
+                    facts = excluded.facts
+            `,
+            )
+            .run(
+                spelled(repository),
+                snapshot.item.kind,
+                snapshot.item.number,
+                snapshot.updatedAt,
+                snapshot.readAt,
+                snapshot.facts,
+            );
+    }
+
+    /**
+     * Drop every read of this repository for an item `numbers` does not carry (D193).
+     * Only a COMPLETE list may say so: a firing that read part of one knows nothing about the rest.
+     */
+    dropSnapshotsNotIn(repository: RepositoryRef, numbers: readonly number[]): number {
+        return this.db
+            .prepare(
+                `
+                DELETE FROM item_snapshot
+                WHERE repository = $repository
+                  AND item_number NOT IN (SELECT value FROM json_each($numbers))
+            `,
+            )
+            .run({ $repository: spelled(repository), $numbers: JSON.stringify(numbers) })
+            .changes as number;
+    }
+
+    /** How many reads each repository holds, and the oldest of them (D168). */
+    snapshots(): SnapshotStanding[] {
+        const rows = this.db
+            .prepare(
+                `
+                SELECT repository, COUNT(*) AS held, MIN(read_at) AS oldest
+                FROM item_snapshot GROUP BY repository ORDER BY repository
+            `,
+            )
+            .all() as unknown as { repository: string; held: number; oldest: string }[];
+        return rows.map((row) => ({
+            repository: refOf(row.repository),
+            count: row.held,
+            oldest: row.oldest,
+        }));
+    }
+
     // ── Claims (lock) ───────────────────────────────────────────────
 
     /**
@@ -416,7 +515,9 @@ export class Ledger {
     schedule(scheduleId: string, dueAt: string, effect: string): void {
         assertUtcInstant(dueAt, "dueAt");
         this.db
-            .prepare("INSERT OR IGNORE INTO schedule VALUES (?, ?, ?, 'pending', NULL, NULL, NULL)")
+            .prepare(
+                "INSERT OR IGNORE INTO schedule VALUES (?, ?, ?, 'pending', NULL, NULL, NULL, NULL)",
+            )
             .run(scheduleId, dueAt, effect);
     }
 
@@ -434,7 +535,7 @@ export class Ledger {
                     claimed_at = ?,
                     claim_token = lower(hex(randomblob(16)))
                 WHERE status = 'pending' AND due_at <= ?
-                RETURNING schedule_id, due_at, effect, claim_token, resume_after
+                RETURNING schedule_id, due_at, effect, claim_token, resume_after, started_at
             `,
             )
             .all(now, now) as {
@@ -443,14 +544,21 @@ export class Ledger {
             effect: string;
             claim_token: string;
             resume_after: number | null;
+            started_at: string | null;
         }[];
-        return rows.map((r) => ({
-            scheduleId: r.schedule_id,
-            dueAt: r.due_at,
-            effect: r.effect,
-            claimToken: r.claim_token,
-            resumeAfter: r.resume_after,
-        }));
+        // The shared allowance goes to the rows that waited longest, so a deferred
+        // repository is read before one this tick's caller already read (D192). An
+        // UPDATE cannot order its own RETURNING, so the claimed rows are ordered here.
+
+        return rows
+            .sort((left, right) => firedFirst(left.started_at, right.started_at))
+            .map((r) => ({
+                scheduleId: r.schedule_id,
+                dueAt: r.due_at,
+                effect: r.effect,
+                claimToken: r.claim_token,
+                resumeAfter: r.resume_after,
+            }));
     }
 
     /** Complete a firing, and only for the token that claimed it. */
@@ -470,25 +578,27 @@ export class Ledger {
     /**
      * Complete this firing and arm the next one, in one statement: `schedule()` is
      * `INSERT OR IGNORE`, so a completed sweep could never come round again, and a crash between two statements would lose the schedule or strand the claim.
-     * The read cursor is written with the due date: where the next firing starts (D170).
+     * The cursor and the firing's start ride on the due date; a `null` start leaves the row's own, so a firing that read nothing keeps its place in the order (D170, D192).
      */
     scheduleAgain(
         scheduleId: string,
         claimToken: string,
         dueAt: string,
         resumeAfter: number | null,
+        startedAt: string | null,
     ): boolean {
         assertUtcInstant(dueAt, "dueAt");
+        if (startedAt !== null) assertUtcInstant(startedAt, "startedAt");
         const result = this.db
             .prepare(
                 `
                 UPDATE schedule
                 SET status = 'pending', due_at = ?, claimed_at = NULL, claim_token = NULL,
-                    resume_after = ?
+                    resume_after = ?, started_at = COALESCE(?, started_at)
                 WHERE schedule_id = ? AND status = 'running' AND claim_token = ?
             `,
             )
-            .run(dueAt, resumeAfter, scheduleId, claimToken);
+            .run(dueAt, resumeAfter, startedAt, scheduleId, claimToken);
         return result.changes === 1;
     }
 
@@ -549,9 +659,11 @@ export class Ledger {
     /**
      * Delete whole effects settled at or before `before` — never single facts (D161).
      * An effect with an open send is kept however old, and so is one whose warning promises an action still ahead (D166).
+     * Reads older than the window go with them, and the count stays the effects' (D193).
      */
     prune(before: string): number {
         assertUtcInstant(before, "before");
+        this.db.prepare("DELETE FROM item_snapshot WHERE read_at <= ?").run(before);
         return this.db
             .prepare(
                 `

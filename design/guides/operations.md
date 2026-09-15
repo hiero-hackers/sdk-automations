@@ -33,10 +33,14 @@ every sweep firing runs all three windows:
 | Done deliveries, each with its report | 30 days | `inbox.pruneCompletedDeliveries` |
 | Decision rows (D163) | 30 days | `ledger.pruneDecisions` |
 | Settled effects, whole and never by row (D161) | 90 days | `ledger.prune` |
+| Stored item reads (D193) | the item stays open, and 90 days | `ledger.prune` |
 
 An effect with an open send is kept however old, and so is one whose warning promised an action
 still ahead: the promise outlives the window. Nothing prunes outside a firing, and a firing says
-`sweepPruned` only when something went.
+`sweepPruned` only when something went. A stored read is normally dropped long before the window,
+by the firing whose open-item list no longer carries its item; the window is what removes the reads
+of a repository nobody sweeps any more. A read carries no payload — the groups of one item, as
+instants — and is rebuilt by the next read of that item.
 
 ## 2. Intake
 
@@ -50,11 +54,13 @@ still ahead: the promise outlives the window. Nothing prunes outside a firing, a
 
 - **The adapter is the only component handling rate-limit and retry behaviour.**
 - **Capabilities never implement a private retry loop.**
-- The adapter records primary and secondary rate-limit headers.
+- The adapter records primary and secondary rate-limit headers, one slot per pool.
 - It uses conditional reads where supported and paginates every list operation.
 - It paces writes and applies bounded backoff.
-- One reconciliation tick shares at most `SWEEP_WRITE_CALLS` writes and `SWEEP_REQUESTS` total
-  GitHub requests across every due repository, 20 and 2,000 by default (D167, D170).
+- The sweep spends one allowance for the process: `SWEEP_SHARE` of each pool's own reported limit,
+  in GitHub's units and over GitHub's window, 0.4 by default (D192, D193).
+- `SWEEP_WRITE_CALLS` is a per-tick lane on that allowance, 20 by default (D167), and
+  `CONTENT_CREATION_HOURLY` bounds comment creation across both lanes, 400 by default.
 - It stops retrying when GitHub's response says waiting is required.
 - Measured budgets (Q10):
   [`../findings/endpoint-permission-matrix.md`](../findings/endpoint-permission-matrix.md).

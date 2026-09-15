@@ -9,7 +9,7 @@ import {
 
 export const RELEASE_ASSIGNMENT = {
     verbs: (context: VerbContext): Pick<WriteVerbs, "releaseAssignment"> => ({
-        releaseAssignment: (item, login, budget) =>
+        releaseAssignment: (item, login, allowance) =>
             context.apply(
                 {
                     url: `${issuePath(context.repository, item)}/assignees`,
@@ -18,7 +18,7 @@ export const RELEASE_ASSIGNMENT = {
                     idempotency: "idempotent",
                 },
                 "invisible",
-                budget,
+                allowance,
             ),
     }),
 } satisfies OperationTransport;

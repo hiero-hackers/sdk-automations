@@ -7,6 +7,7 @@
  */
 
 import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import {
     advertisesNextPage,
     describeFailure,
@@ -97,6 +98,8 @@ export interface ReadBack {
 export interface ReadBackOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** What these reads are charged to; unset spends from no lane (D192). */
+    readonly allowance?: Allowance;
     readonly identity: AppIdentity;
     readonly clock: () => Date;
     readonly sleep: (milliseconds: number) => Promise<void>;
@@ -165,7 +168,11 @@ export function createReadBack({
     identity,
     clock,
     sleep,
+    allowance,
 }: ReadBackOptions): ReadBack {
+    /** The shape the sibling readers take: this client, this repository, this lane. */
+    const reads = { http, repository, ...(allowance === undefined ? {} : { allowance }) };
+
     /**
      * Every page of one list, or the reason the list is incomplete.
      * Incomplete is a refusal, never a shorter list.
@@ -174,10 +181,13 @@ export function createReadBack({
         const entries: unknown[] = [];
         let lastPage = 1;
         for (let page = 1; page <= MAX_READ_BACK_PAGES; page += 1) {
-            const outcome = await http.request({
-                url: `${base}?per_page=${String(READ_BACK_PAGE_SIZE)}&page=${String(page)}`,
-                method: "GET",
-            });
+            const outcome = await http.request(
+                {
+                    url: `${base}?per_page=${String(READ_BACK_PAGE_SIZE)}&page=${String(page)}`,
+                    method: "GET",
+                },
+                allowance,
+            );
             if (!outcome.ok) {
                 return {
                     ok: false,
@@ -245,10 +255,13 @@ export function createReadBack({
      */
     const readItem = async (item: ItemRef): Promise<ReadBackOutcome<ItemFacts>> => {
         const resource = item.kind === "issue" ? "issues" : "pulls";
-        const outcome = await http.request({
-            url: `${repoPath(repository)}/${resource}/${String(item.number)}`,
-            method: "GET",
-        });
+        const outcome = await http.request(
+            {
+                url: `${repoPath(repository)}/${resource}/${String(item.number)}`,
+                method: "GET",
+            },
+            allowance,
+        );
         if (!outcome.ok) {
             return {
                 ok: false,
@@ -302,7 +315,7 @@ export function createReadBack({
      */
     const changesRequestedOn = async (item: ItemRef): Promise<ReadBackOutcome<boolean>> =>
         item.kind === "pullRequest"
-            ? await readChangesRequested({ http, repository }, item.number)
+            ? await readChangesRequested(reads, item.number)
             : { ok: true, value: false };
 
     return {
@@ -312,11 +325,11 @@ export function createReadBack({
         changesRequested: changesRequestedOn,
         pullRequestActivity: (item, working) =>
             item.kind === "pullRequest"
-                ? readPullRequestActivity({ http, repository }, item.number, working)
+                ? readPullRequestActivity(reads, item.number, working)
                 : Promise.resolve({ ok: true, value: null }),
         // The resolvers' reader, not a second one: assignees arrive whole on the item (6.9).
 
-        assignees: (item) => readAssigneesOf({ http, repository }, item.number),
+        assignees: (item) => readAssigneesOf(reads, item.number),
         commentPresence: (item, matches) => presenceOf(() => comments(item), matches),
         // Exact names: this asks about the managed name the platform itself wrote (D4).
 

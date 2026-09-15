@@ -13,18 +13,26 @@ import {
     carriesFactGroup,
     FACT_GROUPS,
     FACT_KINDS,
+    type FactGroup,
+    type FactKind,
     type PullRequestFacts,
     type Unread,
 } from "../../src/catalogue.js";
 import {
+    groupsNeeded,
     PRODUCER_NAMES,
     PRODUCERS,
     producerReads,
     producersReading,
     producesKind,
+    spec,
     WEBHOOK_PRODUCERS,
+    type DeclaredTrigger,
+    type DeclaringCapability,
     type ProducedFacts,
 } from "../../src/capability/index.js";
+import { NO_CONFIG } from "../../src/config/index.js";
+import { configEnabling } from "../../src/author/testing.js";
 
 describe("the producer registry", () => {
     it("is the webhook producers and the sweep, each with a row", () => {
@@ -78,6 +86,79 @@ describe("the producer registry", () => {
         expect(producerReads("pull_request", "pullRequest", "review")).toBe(false);
         expect(producerReads("sweep", "pullRequest", "review")).toBe(true);
         expect(producersReading("pullRequest", "review")).toEqual(["sweep"]);
+    });
+});
+
+const HOURLY: readonly DeclaredTrigger[] = [{ kind: "schedule", description: "hourly" }];
+
+/** One capability, as `groupsNeeded` reads it. */
+function declaring(
+    name: string,
+    needs: readonly FactGroup[],
+    facts: readonly FactKind[] = FACT_KINDS,
+    triggers: readonly DeclaredTrigger[] = HOURLY,
+): DeclaringCapability {
+    return { declaration: { name, triggers, facts, needs } };
+}
+
+const SHIPPED = [
+    declaring("reviews", ["review"]),
+    declaring("stale", ["assignees", "links"]),
+    declaring("prOnly", ["assignees"], ["pullRequest"]),
+    declaring("onComment", ["review"], FACT_KINDS, [{ kind: "event", event: "pull_request" }]),
+    declaring("onCommand", ["command"]),
+];
+
+const enabling = (...names: readonly string[]) =>
+    configEnabling(
+        names,
+        SHIPPED.map(({ declaration }) => ({
+            name: declaration.name,
+            settings: spec({}),
+            requiredMappings: {},
+        })),
+    );
+
+describe("the groups a repository's enabled set needs", () => {
+    it("is one enabled capability's needs and nobody else's", () => {
+        const config = enabling("reviews");
+
+        expect(groupsNeeded(config, SHIPPED, "pullRequest")).toEqual(["review"]);
+        expect(groupsNeeded(config, SHIPPED, "issue")).toEqual([]);
+    });
+
+    it("is the union of two, in the row's order", () => {
+        const config = enabling("reviews", "stale");
+
+        expect(groupsNeeded(config, SHIPPED, "pullRequest")).toEqual([
+            "assignees",
+            "links",
+            "review",
+        ]);
+        expect(groupsNeeded(config, SHIPPED, "issue")).toEqual(["assignees", "links"]);
+    });
+
+    it("takes nothing from a capability with no schedule trigger", () => {
+        expect(groupsNeeded(enabling("onComment"), SHIPPED, "pullRequest")).toEqual([]);
+    });
+
+    it("takes nothing from a capability the repository has not enabled", () => {
+        expect(groupsNeeded(NO_CONFIG, SHIPPED, "pullRequest")).toEqual([]);
+        expect(groupsNeeded(enabling(), SHIPPED, "pullRequest")).toEqual([]);
+    });
+
+    it("takes nothing from a capability that makes no record of this kind", () => {
+        expect(groupsNeeded(enabling("prOnly"), SHIPPED, "issue")).toEqual([]);
+        expect(groupsNeeded(enabling("prOnly"), SHIPPED, "pullRequest")).toEqual(["assignees"]);
+    });
+
+    /**
+     * `command` is carried by an issue and read by `issue_comment` alone, so
+     * the boot check refuses this declaration. The intersection is the second
+     * guard: a group the sweep does not read is never asked for.
+     */
+    it("never returns a group the sweep's own row does not read", () => {
+        expect(groupsNeeded(enabling("onCommand"), SHIPPED, "issue")).toEqual([]);
     });
 });
 

@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { NO_CONFIG, type ItemRef } from "@hiero-hackers/automation-core";
+import { createAllowance } from "../../../src/adapter/client/allowance.js";
 import {
     causeFingerprintOf,
     installationGrants,
@@ -715,6 +716,47 @@ describe("live externals for one delivery", () => {
             );
         }
         expect(outcome.ok).toBe(true);
+    });
+
+    /**
+     * One delivery, one lane: the ordering read and every resolver behind these
+     * facts spend the allowance the composition handed in, and stop with it (D192).
+     */
+    it("charges both its ordering read and its resolvers to the lane's allowance", async () => {
+        const allowance = createAllowance({ share: 1 });
+        const tokens = tokenSource([{ ok: true, token: token("t") }]);
+        const built = harness([
+            page([], { "x-ratelimit-limit": "1", "x-ratelimit-reset": "1787300060" }),
+        ]);
+
+        const outcome = await liveExternalsForDelivery(
+            {
+                tokenSource: tokens.source,
+                http: built.client,
+                repository: REPOSITORY,
+                config: NO_CONFIG,
+                knownCapabilities: [],
+                allowance,
+                ownWrites: () => [],
+            },
+            PAYLOAD,
+        );
+
+        expect(outcome.ok).toBe(true);
+        if (!outcome.ok) return;
+        expect(await outcome.facts.latestHumanChangeAt(ITEM)).toBeNull();
+        expect(allowance.spent().core).toBe(1);
+        // The share is spent, so the resolver behind the same facts is refused unsent.
+        expect(
+            await outcome.facts.resolve("mergeability", {
+                item: { kind: "pullRequest", number: 34 },
+            }),
+        ).toMatchObject({
+            ok: false,
+            reason: "unavailable",
+            detail: expect.stringContaining("allowance is spent; the pool resets at 2026-"),
+        });
+        expect(built.scripted.calls).toHaveLength(1);
     });
 
     it("binds a fresh ordering memo to every delivery", async () => {

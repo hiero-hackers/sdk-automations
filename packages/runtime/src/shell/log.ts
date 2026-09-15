@@ -5,6 +5,7 @@
  */
 
 import type { ReleaseDeliveryAfterFailureResult } from "../store/index.js";
+import type { Lane, Spent } from "./allowance.js";
 import type { EffectOutcomeCode } from "./effects.js";
 
 /**
@@ -72,6 +73,8 @@ export type ShellEvent =
           readonly attempts: number | null;
           readonly maxAttempts: number;
           readonly retryNotBefore: string | null;
+          /** The lane whose allowance refused a read of this pass, where one did (D192). */
+          readonly pool?: Lane;
           readonly detail: string;
       }
     | {
@@ -125,16 +128,30 @@ export type ShellEvent =
           readonly detail: string;
       }
     | {
-          /** The request budget stopped a firing short; the next one continues from the cursor (D170). */
+          /** Stored reads this firing could not decode; each is read again and rewritten (D193). */
+          readonly event: "snapshotUnreadable";
+          readonly scheduleId: string;
+          readonly rows: number;
+      }
+    | {
+          /** The allowance stopped a firing short; the next one continues from the cursor (D192). */
           readonly event: "sweepPartial";
           readonly scheduleId: string;
-          /** Items this firing read facts for before the budget stopped it. */
+          /** Items this firing answered before the allowance stopped it, stored reads included. */
           readonly read: number;
           readonly remaining: number;
           /** The item number the next firing resumes after. */
           readonly resumeAfter: number;
-          /** Requests this firing's reading spent (D170). */
+          /** Core requests this firing's reading spent (D192). */
           readonly requests: number;
+      }
+    | {
+          /** GitHub's own numbers for one pool, said once as each window opens (D192). */
+          readonly event: "limits";
+          readonly pool: "core" | "graphql";
+          readonly limit: number;
+          readonly remaining: number;
+          readonly resetAt: string;
       }
     | {
           /** A firing's retention pass removed something; it says nothing when it removed nothing. */
@@ -147,7 +164,7 @@ export type ShellEvent =
           /** A firing ended and the next one is armed. */
           readonly event: "sweepFinished";
           readonly scheduleId: string;
-          /** Open items the list held; `decided` says how many of them this firing read. */
+          /** Open items the list held; `decided` says how many of them this firing answered. */
           readonly items: number;
           readonly decided: number;
           /** Records whose links went unread; see `sweep.ts` on the inverse. */
@@ -156,12 +173,16 @@ export type ShellEvent =
           readonly writes: number;
           /** Approved effects the cap held back; the next firing decides each again. */
           readonly heldBack: number;
-          /** Items the request budget left for the next firing (D170). */
+          /** Items the allowance left for the next firing (D192). */
           readonly remaining: number;
           /** Where the next firing starts reading; null starts the list again. */
           readonly resumeAfter: number | null;
-          /** Requests this firing's reading spent of the budget (D170). */
-          readonly requests: number;
+          /** Items answered from their stored read rather than read again (D193). */
+          readonly reused: number;
+          /** What this firing spent of the allowance, per lane (D192). */
+          readonly spent: Spent;
+          /** This repository was left untouched for the next tick: the allowance was spent. */
+          readonly deferred: boolean;
           readonly nextDueAt: string;
       }
     | {
@@ -190,6 +211,7 @@ const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
     "sweepRequeued",
     "sweepFailed",
     "sweepUnreadable",
+    "snapshotUnreadable",
     "drainFailed",
     "storeCloseFailed",
 ]);

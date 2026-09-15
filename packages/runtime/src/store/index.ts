@@ -35,4 +35,12 @@ export { Inbox } from "./inbox.js";
 export { Ledger } from "./ledger.js";
 export type { ClaimedScheduleRow, ScheduleRow, ScheduleStanding } from "./schedules.js";
 export { CURRENT_STORAGE_SCHEMA_VERSION } from "./schema.js";
+export { decodeSnapshot, encodeSnapshot, snapshotAnswers } from "./snapshots.js";
+export type {
+    ItemSnapshot,
+    SnapshotFacts,
+    SnapshotStanding,
+    StoredIssueFacts,
+    StoredPullRequestFacts,
+} from "./snapshots.js";
 export * from "./store.js";

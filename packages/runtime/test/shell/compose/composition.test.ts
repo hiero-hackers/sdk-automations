@@ -14,7 +14,11 @@ import {
     type Composition,
 } from "../../../src/shell/compose/composition.js";
 import { DEFAULT_TICK_MS } from "../../../src/shell/compose/shell.js";
-import { SWEEP_REQUESTS, SWEEP_WRITE_CALLS } from "../../../src/shell/sweep/budgets.js";
+import {
+    SNAPSHOT_MAX_AGE_MS,
+    SWEEP_SHARE,
+    SWEEP_WRITE_CALLS,
+} from "../../../src/shell/sweep/budgets.js";
 
 const STATE_HOME = "/var/lib/state";
 const DATA_DIR = join(STATE_HOME, "sdk-automations");
@@ -71,7 +75,12 @@ const CADENCE = "SWEEP_CADENCE_HOURS must be a whole number of hours, 1 or more.
 const CADENCE_UNBACKED =
     "SWEEP_CADENCE_HOURS arms the fact sweep and needs APP_ID, PRIVATE_KEY_PATH and INSTALLATION_ID to read GitHub with.";
 const WRITE_CAP = "SWEEP_WRITE_CALLS must be a whole number of calls, 1 or more.";
-const READ_BUDGET = "SWEEP_REQUESTS must be a whole number of requests, 1 or more.";
+const SHARE = "SWEEP_SHARE must be a fraction of GitHub's own rate limit, above 0 and at most 1.";
+const RETIRED =
+    "SWEEP_REQUESTS and SWEEP_READ_REQUESTS are no longer read; SWEEP_SHARE says what " +
+    "share of the installation's own rate limit the sweep may spend.";
+const CREATION_CEILING = "CONTENT_CREATION_HOURLY must be a whole number of comments, 1 or more.";
+const SNAPSHOT_AGE = "SNAPSHOT_MAX_AGE_HOURS must be a whole number of hours, 1 or more.";
 
 const absent = (name: string): Overrides => ({ [name]: undefined });
 
@@ -162,21 +171,42 @@ const TABLE: readonly Refusal[] = [
         env: { SWEEP_WRITE_CALLS: "twenty" },
         sentence: WRITE_CAP,
     },
-    { title: "SWEEP_REQUESTS zero", env: { SWEEP_REQUESTS: "0" }, sentence: READ_BUDGET },
+    { title: "SWEEP_SHARE zero", env: { SWEEP_SHARE: "0" }, sentence: SHARE },
+    { title: "SWEEP_SHARE negative", env: { SWEEP_SHARE: "-0.4" }, sentence: SHARE },
+    { title: "SWEEP_SHARE above one", env: { SWEEP_SHARE: "1.5" }, sentence: SHARE },
+    { title: "SWEEP_SHARE unreadable", env: { SWEEP_SHARE: "most" }, sentence: SHARE },
+    // The two retired names are refused whatever they say (D165, D192).
+    { title: "SWEEP_REQUESTS at all", env: { SWEEP_REQUESTS: "2000" }, sentence: RETIRED },
+    { title: "SWEEP_READ_REQUESTS at all", env: { SWEEP_READ_REQUESTS: "12" }, sentence: RETIRED },
     {
-        title: "SWEEP_REQUESTS negative",
-        env: { SWEEP_REQUESTS: "-1" },
-        sentence: READ_BUDGET,
+        title: "CONTENT_CREATION_HOURLY zero",
+        env: { CONTENT_CREATION_HOURLY: "0" },
+        sentence: CREATION_CEILING,
     },
     {
-        title: "SWEEP_REQUESTS fractional",
-        env: { SWEEP_REQUESTS: "1.5" },
-        sentence: READ_BUDGET,
+        title: "CONTENT_CREATION_HOURLY fractional",
+        env: { CONTENT_CREATION_HOURLY: "1.5" },
+        sentence: CREATION_CEILING,
     },
     {
-        title: "SWEEP_REQUESTS unreadable",
-        env: { SWEEP_REQUESTS: "all" },
-        sentence: READ_BUDGET,
+        title: "CONTENT_CREATION_HOURLY unreadable",
+        env: { CONTENT_CREATION_HOURLY: "four hundred" },
+        sentence: CREATION_CEILING,
+    },
+    {
+        title: "SNAPSHOT_MAX_AGE_HOURS zero",
+        env: { SNAPSHOT_MAX_AGE_HOURS: "0" },
+        sentence: SNAPSHOT_AGE,
+    },
+    {
+        title: "SNAPSHOT_MAX_AGE_HOURS fractional",
+        env: { SNAPSHOT_MAX_AGE_HOURS: "0.5" },
+        sentence: SNAPSHOT_AGE,
+    },
+    {
+        title: "SNAPSHOT_MAX_AGE_HOURS unreadable",
+        env: { SNAPSHOT_MAX_AGE_HOURS: "a day" },
+        sentence: SNAPSHOT_AGE,
     },
 ];
 
@@ -236,6 +266,7 @@ describe("an environment the composition accepts", () => {
             credentials: null,
             writes: null,
             sweep: null,
+            contentCreationHourly: null,
             switches: { killSwitch: false, suspended: false },
             paths: {
                 configFile: join(DATA_DIR, "automations.yml"),
@@ -257,7 +288,9 @@ describe("an environment the composition accepts", () => {
                 TICK_SECONDS: "5",
                 SWEEP_CADENCE_HOURS: "6",
                 SWEEP_WRITE_CALLS: "3",
-                SWEEP_REQUESTS: "40",
+                SWEEP_SHARE: "0.25",
+                CONTENT_CREATION_HOURLY: "120",
+                SNAPSHOT_MAX_AGE_HOURS: "6",
                 KILL_SWITCH: "1",
                 SUSPENDED: "1",
             }),
@@ -270,30 +303,32 @@ describe("an environment the composition accepts", () => {
                 privateKeyPath: "/keys/app.pem",
             },
             writes: { appSlug: "hiero-hackers-sandbox" },
-            sweep: { cadenceMs: 6 * 60 * 60_000, writeCap: 3, requestCap: 40 },
+            sweep: {
+                cadenceMs: 6 * 60 * 60_000,
+                writeCap: 3,
+                share: 0.25,
+                snapshotMaxAgeMs: 6 * 60 * 60_000,
+            },
+            contentCreationHourly: 120,
             switches: { killSwitch: true, suspended: true },
             paths: { configFile: "/etc/automations.yml", storeFile: "/var/shell.sqlite" },
             tickMs: 5_000,
         });
     });
 
-    /** The cap and the budget arm nothing, so an armed sweep takes `sweep.ts`'s own. */
+    /** The cap and the share arm nothing, so an armed sweep takes `budgets.ts`'s own. */
     it("arms the sweep with the bounds the sweep declares", () => {
         expect(composed({ ...CREDENTIALS, SWEEP_CADENCE_HOURS: "1" }).sweep).toEqual({
             cadenceMs: 60 * 60_000,
             writeCap: SWEEP_WRITE_CALLS,
-            requestCap: SWEEP_REQUESTS,
+            share: SWEEP_SHARE,
+            snapshotMaxAgeMs: SNAPSHOT_MAX_AGE_MS,
         });
     });
 
-    it("keeps the previous request-budget name as a compatibility alias", () => {
-        expect(
-            composed({
-                ...CREDENTIALS,
-                SWEEP_CADENCE_HOURS: "1",
-                SWEEP_READ_REQUESTS: "12",
-            }).sweep?.requestCap,
-        ).toBe(12);
+    /** Unset leaves the ceiling to the client that enforces it (D192). */
+    it("leaves the content-creation ceiling unset unless an operator names one", () => {
+        expect(composed().contentCreationHourly).toBeNull();
     });
 
     /**

@@ -46,6 +46,7 @@ export interface CapabilityDeclaration {
     readonly settings: Spec;
     readonly requiredMappings: DeclaredMappings;
     readonly facts: readonly string[];
+    /** A need declared is a read paid for: the sweep reads these and no more (D195). */
     readonly needs: readonly string[];
     readonly resolvers: readonly string[];
     readonly intents: readonly string[];

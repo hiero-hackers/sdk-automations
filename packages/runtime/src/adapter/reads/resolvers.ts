@@ -25,44 +25,24 @@ import {
     type ResolverOutput,
     type ResolverSource,
 } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../client/allowance.js";
 import {
     advertisesNextPage,
-    describeFailure,
-    GITHUB_GRAPHQL_URL,
     lastPageFromLink,
     repoPath,
-    type GitHubFailure,
     type GitHubHttpClient,
-    type GitHubSuccess,
 } from "../client/contract.js";
 import { decodeContents } from "./config.js";
+import type { RepositoryReads } from "./facts.js";
+import { httpFailure, unavailable, type ResolverFailure } from "./failures.js";
+import { readLinkedIssues } from "./links.js";
 import { field, jsonArrayOf, jsonRecordOf } from "../client/untrusted.js";
-
-const LINKED_ISSUES_QUERY = `query LinkedIssues(
-  $owner: String!
-  $repo: String!
-  $number: Int!
-  $after: String
-) {
-  repository(owner: $owner, name: $repo) {
-    nameWithOwner
-    pullRequest(number: $number) {
-      number
-      closingIssuesReferences(first: 100, after: $after, excludeUserLinked: true) {
-        nodes { number repository { nameWithOwner } }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}`;
-
-const MAX_LINKED_ISSUE_PAGES = 10;
-
-type ResolverFailure = Extract<ResolverAnswer<never>, { readonly ok: false }>;
 
 export interface ResolverSourceOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** What these reads are charged to; unset spends from no lane (D192). */
+    readonly allowance?: Allowance;
     /** The label mapping `openAssignments` projects each assignment's labels through (contract.md §2). */
     readonly config: RepositoryConfig;
     /** The declarations the shell ships; the adapter may not import them itself. */
@@ -103,171 +83,6 @@ const PAGE_SIZE = 100;
 /** How many pages one list read may walk before the honest answer is that nobody read it. */
 const MAX_LIST_PAGES = 10;
 
-/** GitHub's own words reach an operator verbatim, so they are kept short. */
-const QUOTED_HEADER_LIMIT = 40;
-
-const unavailable = (detail: string): ResolverFailure => ({
-    ok: false,
-    reason: "unavailable",
-    detail,
-});
-
-const rateLimited = (detail: string): ResolverFailure => ({
-    ok: false,
-    reason: "rateLimited",
-    detail,
-});
-
-/**
- * A failed call as a resolver answer.
- * `reason` is the capability's half and stays coarse; `detail` is the operator's.
- */
-function httpFailure(outcome: GitHubFailure): ResolverFailure {
-    const failure = outcome.failure;
-    switch (failure.kind) {
-        case "permissionMissing":
-            return { ok: false, reason: "noPermission", detail: "GitHub denied the query" };
-        case "primaryExhausted":
-            return rateLimited(
-                "GitHub primary rate limit reached; the budget resets at " +
-                    (failure.resetAt ?? "an instant GitHub did not report"),
-            );
-        case "secondaryLimit":
-            return rateLimited(
-                failure.retryAfterSeconds === undefined
-                    ? "GitHub secondary rate limit reached, with no retry-after to wait on"
-                    : `GitHub secondary rate limit reached; retry-after ${String(failure.retryAfterSeconds)}s`,
-            );
-        case "rateLimitResponseUnusable":
-            return rateLimited(
-                `GitHub rate limit reached; ${failure.headerName} ` +
-                    `"${failure.headerValue.slice(0, QUOTED_HEADER_LIMIT)}" is ${failure.reason}`,
-            );
-        default:
-            return unavailable(`GitHub query failed: ${describeFailure(failure)}`);
-    }
-}
-
-function graphqlFailure(response: GitHubSuccess, errors: readonly unknown[]): ResolverFailure {
-    const types = errors.map((error) => field(error, "type"));
-    if (
-        response.headers["x-ratelimit-remaining"] === "0" ||
-        response.headers["retry-after"] !== undefined ||
-        types.includes("RATE_LIMITED")
-    ) {
-        return { ok: false, reason: "rateLimited", detail: "GitHub GraphQL rate limit reached" };
-    }
-    if (types.includes("FORBIDDEN")) {
-        return { ok: false, reason: "noPermission", detail: "GitHub denied the GraphQL query" };
-    }
-    return unavailable("GitHub GraphQL returned errors");
-}
-
-interface LinkedIssuesPage {
-    readonly issues: readonly ItemRef[];
-    readonly nextCursor: string | null;
-}
-
-function parsePage(
-    response: GitHubSuccess,
-    repository: RepositoryRef,
-    number: number,
-): { readonly ok: true; readonly page: LinkedIssuesPage } | ResolverFailure {
-    const root = jsonRecordOf(response.body);
-    if (root === null) return unavailable("GitHub returned malformed linked-issue data");
-
-    const errors = field(root, "errors");
-    if (errors !== undefined) {
-        if (!Array.isArray(errors)) return unavailable("GitHub returned malformed GraphQL errors");
-        if (errors.length > 0) return graphqlFailure(response, errors);
-    }
-
-    const returnedRepository = field(field(root, "data"), "repository");
-    const pullRequest = field(returnedRepository, "pullRequest");
-    const connection = field(pullRequest, "closingIssuesReferences");
-    const nodes = field(connection, "nodes");
-    const pageInfo = field(connection, "pageInfo");
-    const hasNextPage = field(pageInfo, "hasNextPage");
-    const endCursor = field(pageInfo, "endCursor");
-    const expectedRepository = `${repository.owner}/${repository.repo}`.toLowerCase();
-
-    if (
-        typeof field(returnedRepository, "nameWithOwner") !== "string" ||
-        (field(returnedRepository, "nameWithOwner") as string).toLowerCase() !==
-            expectedRepository ||
-        field(pullRequest, "number") !== number ||
-        !Array.isArray(nodes) ||
-        typeof hasNextPage !== "boolean" ||
-        (endCursor !== null && typeof endCursor !== "string")
-    ) {
-        return unavailable("GitHub returned malformed linked-issue data");
-    }
-
-    const issues: ItemRef[] = [];
-    for (const node of nodes) {
-        const issueNumber = field(node, "number");
-        const nameWithOwner = field(field(node, "repository"), "nameWithOwner");
-        if (
-            typeof issueNumber !== "number" ||
-            !Number.isSafeInteger(issueNumber) ||
-            issueNumber < 1 ||
-            typeof nameWithOwner !== "string"
-        ) {
-            return unavailable("GitHub returned malformed linked-issue data");
-        }
-        if (nameWithOwner.toLowerCase() === expectedRepository) {
-            issues.push({ kind: "issue", number: issueNumber });
-        }
-    }
-
-    if (hasNextPage && (typeof endCursor !== "string" || endCursor.length === 0)) {
-        return unavailable("GitHub returned a missing linked-issue cursor");
-    }
-    return { ok: true, page: { issues, nextCursor: hasNextPage ? endCursor : null } };
-}
-
-async function linkedIssues(
-    { http, repository }: ResolverSourceOptions,
-    input: unknown,
-): Promise<ResolverAnswer<readonly ItemRef[]>> {
-    const item = field(input, "item");
-    const number = field(item, "number");
-    if (
-        field(item, "kind") !== "pullRequest" ||
-        typeof number !== "number" ||
-        !Number.isSafeInteger(number) ||
-        number < 1
-    ) {
-        return unavailable("linkedIssues requires a valid pull request item");
-    }
-
-    const issues: ItemRef[] = [];
-    const cursors = new Set<string>();
-    let after: string | null = null;
-    for (let pageNumber = 1; pageNumber <= MAX_LINKED_ISSUE_PAGES; pageNumber += 1) {
-        const outcome = await http.request({
-            url: GITHUB_GRAPHQL_URL,
-            method: "POST",
-            body: JSON.stringify({
-                operationName: "LinkedIssues",
-                query: LINKED_ISSUES_QUERY,
-                variables: { owner: repository.owner, repo: repository.repo, number, after },
-            }),
-        });
-        if (!outcome.ok) return httpFailure(outcome);
-
-        const parsed = parsePage(outcome, repository, number);
-        if (!parsed.ok) return parsed;
-        issues.push(...parsed.page.issues);
-        const next = parsed.page.nextCursor;
-        if (next === null) return { ok: true, value: issues };
-        if (cursors.has(next)) return unavailable("GitHub repeated a linked-issue cursor");
-        cursors.add(next);
-        after = next;
-    }
-    return unavailable("GitHub linked-issue pagination exceeded 10 pages");
-}
-
 // ─── The item reads ──────────────────────────────────────────────────
 
 /**
@@ -283,6 +98,17 @@ function itemNumber(input: unknown, kind: ItemRef["kind"]): number | null {
         number >= 1
         ? number
         : null;
+}
+
+/** The `linkedIssues` arm: the item's number, then the per-item read (`links.ts`). */
+async function linkedIssues(
+    options: ResolverSourceOptions,
+    input: unknown,
+): Promise<ResolverAnswer<readonly ItemRef[]>> {
+    const number = itemNumber(input, "pullRequest");
+    return number === null
+        ? unavailable("linkedIssues requires a valid pull request item")
+        : readLinkedIssues(options, number);
 }
 
 /**
@@ -323,17 +149,20 @@ function attestationOf(entry: unknown): CommitAttestation | null {
  * `verified` is GitHub's word and not a signature this file checks.
  */
 export async function readCommitAttestations(
-    { http, repository }: ResolverSourceOptions,
+    { http, repository, allowance }: ResolverSourceOptions,
     number: number,
 ): Promise<ResolverAnswer<readonly CommitAttestation[]>> {
     const base = `${repoPath(repository)}/pulls/${String(number)}/commits`;
     const commits: CommitAttestation[] = [];
     for (let page = 1; page <= MAX_COMMIT_PAGES; page += 1) {
-        const outcome = await http.request({
-            url: `${base}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`,
-            method: "GET",
-        });
-        if (!outcome.ok) return httpFailure(outcome);
+        const outcome = await http.request(
+            {
+                url: `${base}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`,
+                method: "GET",
+            },
+            allowance,
+        );
+        if (!outcome.ok) return httpFailure(outcome, allowance);
         const entries = jsonArrayOf(outcome.body);
         if (entries === null) return unavailable("GitHub returned malformed commit data");
         for (const entry of entries) {
@@ -368,17 +197,17 @@ async function commitAttestations(
  * GitHub reports `null` while it is still computing; that is neither `true` nor `false`.
  */
 async function mergeability(
-    { http, repository }: ResolverSourceOptions,
+    { http, repository, allowance }: ResolverSourceOptions,
     input: unknown,
 ): Promise<ResolverAnswer<boolean>> {
     const number = itemNumber(input, "pullRequest");
     if (number === null) return unavailable("mergeability requires a valid pull request item");
 
-    const outcome = await http.request({
-        url: `${repoPath(repository)}/pulls/${String(number)}`,
-        method: "GET",
-    });
-    if (!outcome.ok) return httpFailure(outcome);
+    const outcome = await http.request(
+        { url: `${repoPath(repository)}/pulls/${String(number)}`, method: "GET" },
+        allowance,
+    );
+    if (!outcome.ok) return httpFailure(outcome, allowance);
     const body = jsonRecordOf(outcome.body);
     if (body === null) return unavailable("GitHub returned malformed pull request data");
     if (body["number"] !== number) {
@@ -393,17 +222,17 @@ async function mergeability(
 
 /**
  * The logins assigned to one item. Unpaged: GitHub caps assignees at ten.
- * Takes only the two options it uses, so the release's read-back can call it without a configuration it has no business holding.
+ * Takes only what it reads through, so the release's read-back can call it without a configuration it has no business holding.
  */
 export async function readAssigneesOf(
-    { http, repository }: Pick<ResolverSourceOptions, "http" | "repository">,
+    { http, repository, allowance }: RepositoryReads,
     number: number,
 ): Promise<ResolverAnswer<readonly string[]>> {
-    const outcome = await http.request({
-        url: `${repoPath(repository)}/issues/${String(number)}`,
-        method: "GET",
-    });
-    if (!outcome.ok) return httpFailure(outcome);
+    const outcome = await http.request(
+        { url: `${repoPath(repository)}/issues/${String(number)}`, method: "GET" },
+        allowance,
+    );
+    if (!outcome.ok) return httpFailure(outcome, allowance);
     const body = jsonRecordOf(outcome.body);
     if (body === null) return unavailable("GitHub returned malformed issue data");
     if (body["number"] !== number) return unavailable("GitHub answered about a different issue");
@@ -440,21 +269,23 @@ async function assigneesOf(
  * A list still advertising a successor past the walk's bound is a failure, not a short list.
  */
 async function assignedPages(
-    http: GitHubHttpClient,
-    repository: RepositoryRef,
+    { http, repository, allowance }: RepositoryReads,
     login: string,
 ): Promise<{ readonly ok: true; readonly entries: readonly unknown[] } | ResolverFailure> {
     const url = `${repoPath(repository)}/issues`;
     const entries: unknown[] = [];
     let lastPage = 1;
     for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
-        const outcome = await http.request({
-            url:
-                `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}` +
-                `&state=open&assignee=${encodeURIComponent(login)}`,
-            method: "GET",
-        });
-        if (!outcome.ok) return httpFailure(outcome);
+        const outcome = await http.request(
+            {
+                url:
+                    `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}` +
+                    `&state=open&assignee=${encodeURIComponent(login)}`,
+                method: "GET",
+            },
+            allowance,
+        );
+        if (!outcome.ok) return httpFailure(outcome, allowance);
         const read = jsonArrayOf(outcome.body);
         if (read === null) return unavailable("GitHub returned malformed assignment data");
         entries.push(...read);
@@ -470,7 +301,7 @@ async function assignedPages(
  * The `assignee=` filter's answer is re-checked, and a pull request in the list is dropped.
  */
 async function openAssignments(
-    { http, repository, config }: ResolverSourceOptions,
+    options: ResolverSourceOptions,
     input: unknown,
 ): Promise<ResolverAnswer<ResolverOutput<"openAssignments">>> {
     const login = field(input, "login");
@@ -478,7 +309,7 @@ async function openAssignments(
         return unavailable("openAssignments requires a valid login");
     }
 
-    const listed = await assignedPages(http, repository, login);
+    const listed = await assignedPages(options, login);
     if (!listed.ok) return listed;
 
     const wanted = login.toLowerCase();
@@ -520,7 +351,7 @@ async function openAssignments(
         if (!holders.includes(wanted)) continue;
         assignments.push({
             item: { kind: "issue", number },
-            meanings: meaningsOfLabels(config, names),
+            meanings: meaningsOfLabels(options.config, names),
         });
     }
     return { ok: true, value: assignments };
@@ -542,18 +373,20 @@ const COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
  * A rename AWAY from the path counts; the path is matched exactly (`CONFIG_PATH`, D93).
  */
 async function configFileChange(
-    http: GitHubHttpClient,
-    repository: RepositoryRef,
+    { http, repository, allowance }: RepositoryReads,
     number: number,
 ): Promise<ConfigFileChange> {
     const url = `${repoPath(repository)}/pulls/${String(number)}/files`;
     let lastPage = 1;
     for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
-        const outcome = await http.request({
-            url: `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`,
-            method: "GET",
-        });
-        if (!outcome.ok) return httpFailure(outcome);
+        const outcome = await http.request(
+            {
+                url: `${url}?per_page=${String(PAGE_SIZE)}&page=${String(page)}`,
+                method: "GET",
+            },
+            allowance,
+        );
+        if (!outcome.ok) return httpFailure(outcome, allowance);
         const entries = jsonArrayOf(outcome.body);
         if (entries === null) return unavailable("GitHub returned malformed pull request files");
 
@@ -580,15 +413,14 @@ async function configFileChange(
  * The shape is checked before the value reaches a URL.
  */
 async function headShaOf(
-    http: GitHubHttpClient,
-    repository: RepositoryRef,
+    { http, repository, allowance }: RepositoryReads,
     number: number,
 ): Promise<{ readonly ok: true; readonly sha: string } | ResolverFailure> {
-    const outcome = await http.request({
-        url: `${repoPath(repository)}/pulls/${String(number)}`,
-        method: "GET",
-    });
-    if (!outcome.ok) return httpFailure(outcome);
+    const outcome = await http.request(
+        { url: `${repoPath(repository)}/pulls/${String(number)}`, method: "GET" },
+        allowance,
+    );
+    if (!outcome.ok) return httpFailure(outcome, allowance);
     const body = jsonRecordOf(outcome.body);
     if (body === null) return unavailable("GitHub returned malformed pull request data");
     if (body["number"] !== number)
@@ -604,13 +436,14 @@ async function headShaOf(
  * A 404 is absence only where the pull request's own file list said so (D51, D122).
  */
 async function configAtHead(
-    { http, repository, knownCapabilities }: ResolverSourceOptions,
+    options: ResolverSourceOptions,
     input: unknown,
 ): Promise<ResolverAnswer<ConfigAtHead>> {
+    const { http, repository, knownCapabilities, allowance } = options;
     const number = itemNumber(input, "pullRequest");
     if (number === null) return unavailable("configAtHead requires a valid pull request item");
 
-    const change = await configFileChange(http, repository, number);
+    const change = await configFileChange(options, number);
     if (!change.ok) return change;
     if (change.status === null) return { ok: true, value: { touched: false } };
     if (change.status === "removed") {
@@ -629,14 +462,19 @@ async function configAtHead(
         };
     }
 
-    const head = await headShaOf(http, repository, number);
+    const head = await headShaOf(options, number);
     if (!head.ok) return head;
 
-    const outcome = await http.request({
-        url: `${repoPath(repository)}/contents/${CONFIG_PATH}?ref=${encodeURIComponent(head.sha)}`,
-        method: "GET",
-    });
-    if (!outcome.ok) return httpFailure(outcome);
+    const outcome = await http.request(
+        {
+            url:
+                `${repoPath(repository)}/contents/${CONFIG_PATH}` +
+                `?ref=${encodeURIComponent(head.sha)}`,
+            method: "GET",
+        },
+        allowance,
+    );
+    if (!outcome.ok) return httpFailure(outcome, allowance);
     const decoded = decodeContents(outcome.body);
     if (decoded.kind !== "document") {
         return unavailable(

@@ -19,7 +19,9 @@ import {
 import { intake } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { Store } from "../../../src/store/index.js";
-import type { Applier, WriteBudget } from "../../../src/shell/apply/apply.js";
+import { spending } from "../spending.js";
+import type { Allowance } from "../../../src/shell/allowance.js";
+import type { Applier } from "../../../src/shell/apply/apply.js";
 import { createItemDecider, type DecideItem } from "../../../src/shell/decide/item.js";
 import {
     stubbedExternals,
@@ -169,11 +171,11 @@ describe("the write path", () => {
         const passes: {
             effects: readonly Effect[];
             revision: string;
-            budget: WriteBudget | undefined;
+            allowance: Allowance | undefined;
         }[] = [];
         const applier: Applier = {
-            applyAll: (effects, config, budget) => {
-                passes.push({ effects, revision: config.revision, budget });
+            applyAll: (effects, config, allowance) => {
+                passes.push({ effects, revision: config.revision, allowance });
                 return Promise.resolve(
                     effects.map((effect) => ({
                         effectId: effect.intent.idempotencyKey,
@@ -240,16 +242,16 @@ describe("the write path", () => {
         expect(decided).toMatchObject({ kind: "decided", outcomes: [] });
     });
 
-    /** One budget for a whole firing, spent by the applier; a webhook passes none (D167). */
-    it("hands the applier the caller's budget, and nothing when it has none", async () => {
+    /** One allowance for the process, spent by the applier; a webhook passes none (D192). */
+    it("hands the applier the caller's allowance, and nothing when it has none", async () => {
         const wired = recordingApplier();
         const config = configIn("active");
-        const budget: WriteBudget = { remaining: 3 };
+        const allowance = spending();
 
-        await decider({ applier: wired.applier })(delivered, config, AT, budget);
+        await decider({ applier: wired.applier })(delivered, config, AT, allowance);
         await decider({ applier: wired.applier })(delivered, config, AT);
 
-        expect(wired.passes.map((pass) => pass.budget)).toEqual([budget, undefined]);
+        expect(wired.passes.map((pass) => pass.allowance)).toEqual([allowance, undefined]);
     });
 });
 

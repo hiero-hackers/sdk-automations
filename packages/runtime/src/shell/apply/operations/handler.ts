@@ -7,6 +7,7 @@ import type {
     ItemRef,
     RepositoryConfig,
 } from "@hiero-hackers/automation-core";
+import type { Allowance } from "../../allowance.js";
 import { renderManagedBody, type Call, type Plan } from "../../effects.js";
 
 /** What one write turned out to be, in the endpoint matrix's words. */
@@ -19,18 +20,14 @@ export type WriteResult =
     | { readonly outcome: "unknown"; readonly detail: string }
     | { readonly outcome: "unsupported"; readonly detail: string };
 
-export interface RequestBudget {
-    remaining: number;
-}
-
 /** The six confirmed write endpoints, and nothing else (D4). */
 export interface EffectWriter {
-    addLabel(item: ItemRef, label: string, budget?: RequestBudget): Promise<WriteResult>;
-    removeLabel(item: ItemRef, label: string, budget?: RequestBudget): Promise<WriteResult>;
-    createComment(item: ItemRef, body: string, budget?: RequestBudget): Promise<WriteResult>;
-    updateComment(commentId: number, body: string, budget?: RequestBudget): Promise<WriteResult>;
-    closePullRequest(item: ItemRef, budget?: RequestBudget): Promise<WriteResult>;
-    releaseAssignment(item: ItemRef, login: string, budget?: RequestBudget): Promise<WriteResult>;
+    addLabel(item: ItemRef, label: string, allowance?: Allowance): Promise<WriteResult>;
+    removeLabel(item: ItemRef, label: string, allowance?: Allowance): Promise<WriteResult>;
+    createComment(item: ItemRef, body: string, allowance?: Allowance): Promise<WriteResult>;
+    updateComment(commentId: number, body: string, allowance?: Allowance): Promise<WriteResult>;
+    closePullRequest(item: ItemRef, allowance?: Allowance): Promise<WriteResult>;
+    releaseAssignment(item: ItemRef, login: string, allowance?: Allowance): Promise<WriteResult>;
 }
 
 /** A read that answered, or the reason it established nothing. */
@@ -101,7 +98,7 @@ export interface SendContext {
     readonly item: ItemRef;
     readonly writer: EffectWriter;
     readonly reader: EffectReader;
-    readonly budget: RequestBudget | undefined;
+    readonly allowance: Allowance | undefined;
     /** Is a comment the one THIS CALL would be? Authorship and marker, both required (D125). */
     isMine(body: string): (comment: CommentSeen) => boolean;
 }

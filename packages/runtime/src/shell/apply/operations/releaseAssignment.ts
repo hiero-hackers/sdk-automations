@@ -22,7 +22,7 @@ export const releaseAssignment: OperationHandler<"releaseAssignment"> = {
 
     /** One named login, so the other assignees are left where they are (D63). */
     send: async (call, pass) =>
-        await pass.writer.releaseAssignment(pass.item, call.login, pass.budget),
+        await pass.writer.releaseAssignment(pass.item, call.login, pass.allowance),
 
     /**
      * This login, gone from the list the item carries.

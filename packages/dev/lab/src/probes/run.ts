@@ -483,16 +483,28 @@ function urlOf(read: WireRead, environment: Environment, held: Resolved): string
     return /\{[a-z]+\}/.test(filled) ? null : `${API_ORIGIN}${filled}`;
 }
 
+/** What one variable the query declares is filled with; an item number is the default. */
+function variableValue(name: string, environment: Environment, held: Resolved): unknown {
+    if (name === "owner") return environment.owner;
+    if (name === "repo") return environment.repo;
+    if (name === "after") return null;
+    return held.number ?? 0;
+}
+
+/**
+ * The POST body for a record whose request carries a query.
+ * The operation name and the variables are read OFF the query, so a second operation needs no arm here.
+ */
 function graphqlBody(read: WireRead, environment: Environment, held: Resolved): string {
+    const query = read.request.body ?? "";
+    const variables: Record<string, unknown> = {};
+    for (const declared of query.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) {
+        variables[declared[1]!] = variableValue(declared[1]!, environment, held);
+    }
     return JSON.stringify({
-        operationName: "LinkedIssues",
-        query: read.request.body,
-        variables: {
-            owner: environment.owner,
-            repo: environment.repo,
-            number: held.number ?? 0,
-            after: null,
-        },
+        operationName: /^\s*query\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query)?.[1] ?? "",
+        query,
+        variables,
     });
 }
 

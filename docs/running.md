@@ -36,14 +36,17 @@ CONFIG_FILE=…               # credential-free fallback; default <state home>/a
 STORE_PATH=…                # optional; default <state home>/shell.sqlite
 TICK_SECONDS=60             # optional; the reconciliation tick: requeue, recover, drain, fire
 SWEEP_CADENCE_HOURS=1       # optional; arms the fact sweep and sets how often a repository is read
-SWEEP_WRITE_CALLS=20        # optional; how many writes one sweep firing may send
-SWEEP_REQUESTS=2000    # optional; GitHub requests shared by all repositories in one tick
+SWEEP_WRITE_CALLS=20        # optional; how many writes one reconciliation tick may send
+SWEEP_SHARE=0.4             # optional; the share of GitHub's own rate limit the sweep may spend
+CONTENT_CREATION_HOURLY=400 # optional; comments both lanes may create per hour
+SNAPSHOT_MAX_AGE_HOURS=24   # optional; how long an item may be decided from its last read
 KILL_SWITCH=1               # optional; refuse everything, loudly — including armed writes
 SUSPENDED=1                 # optional; accept every delivery, decide and send nothing
 XDG_STATE_HOME=…            # optional; where the state home lives
 ```
 
-`SWEEP_READ_REQUESTS` remains accepted as an older name when `SWEEP_REQUESTS` is absent.
+`SWEEP_REQUESTS` and `SWEEP_READ_REQUESTS` are no longer read; a set value fails the boot and names
+`SWEEP_SHARE`, which replaces both.
 
 The three credentials are required together, and a key file that is not there fails the boot before
 the process listens. Without them the shell reads a local configuration file and stubbed external
@@ -69,13 +72,33 @@ instruction to read GitHub.
 The `startup` line carries `writes: "armed" | "absent"` and `sweep: "armed" | "absent"`, so which
 composition is running is readable before any delivery arrives.
 
-One reconciliation tick sends at most `SWEEP_WRITE_CALLS` writes and makes at most
-`SWEEP_REQUESTS` GitHub requests across every due repository. The request total includes
-configuration, facts, resolvers, apply-time checks, writes, retries, and read-back. A repository left
-untouched when either cap is spent remains due for the next tick. A webhook writes for one item and
-a sweep writes for every one, which is why the cap is the sweep's: an act it holds back is refused
-`sweepRequestCap` or `sweepWriteCap` and decided again from the same cause next firing, and `sweepFinished` carries
-`writes` and `heldBack`, so a repository the cap is starving says so every firing.
+The sweep spends a share of the installation's own rate limit rather than a count of its own.
+`SWEEP_SHARE` is that share of each pool — REST and GraphQL — of whatever `x-ratelimit-limit` the
+installation reports, 5,000 assumed until a response says otherwise, and it is spent over GitHub's
+own window rather than over a tick; the rest is the webhook lane's, which spends its own allowance
+with no write cap on it. The client charges what GitHub charges: a conditional read
+answered `304` costs nothing, a GraphQL query costs its own points, and a write costs one request.
+Configuration, facts, resolvers, apply-time checks, writes, retries and read-back all come out of it.
+
+`SWEEP_WRITE_CALLS` stays a per-tick lane on that allowance, because content creation has limits of
+its own: `CONTENT_CREATION_HOURLY` bounds comments per hour across both lanes, and creations are
+spaced two seconds apart whoever asks for them. A comment either ceiling turns away is retried later,
+never dropped.
+
+Most of that share is never spent, because an item the list says has not changed since the sweep last
+read it is decided from that read rather than read again. The store keeps one row per open item — the
+list's own `updated_at`, when it was read, and the groups the read filled — and a row stands only
+while `updated_at` is unchanged, is at least a minute older than the list read (a submitted review
+reaches the field up to thirty seconds late), and was read inside `SNAPSHOT_MAX_AGE_HOURS`. A row is
+dropped when its item leaves the open list, and rewritten whenever the item is read. `sweepFinished`
+says how many items a firing answered this way as `reused`. Because the store outlives the process, a
+restart is warm; the in-process conditional-read cache never was.
+
+A repository left untouched when a pool is spent, and one stopped part-way through its list, are both
+due again on the next tick; due repositories are read oldest-first, so none starves. An act held back
+is refused `sweepRequestCap` (naming the pool) or `sweepWriteCap` and decided again from the same
+cause next firing. `sweepFinished` carries `spent` per lane, `writes`, `heldBack` and `deferred`, and
+a `limits` line reports GitHub's own `limit`, `remaining` and `resetAt` once per pool per window.
 
 ## The two switches
 
@@ -103,7 +126,16 @@ pnpm shell:explain <effect-id>
 pnpm shell:explain --item issue#40 --repo owner/repo
 ```
 
-`shell:status` prints what the store can say about the platform now, one line per question;
+A store file written before this version is not opened: the schema is version 1 and rewritten in
+place, so a file whose shape does not match it is refused before the process listens. Delete the file
+`STORE_PATH` names — `shell.sqlite` in the state home by default — and start again. The fleet is then
+cold for one sweep; see [troubleshooting.md](troubleshooting.md).
+
+`shell:status` prints what the store can say about the platform now, one line per question — the
+deliveries, the open sends, the standing warnings, the schedule rows, the stored reads each repository
+holds with the oldest of them, the comments landed in the last hour, and the decisions of the last
+day. The allowance is the running process's and no store holds it, so that line says so; the `limits`
+and `sweepFinished` lines are where an operator reads what a window has spent.
 `shell:explain` prints one effect's facts and where it stands, or one item's effects and decisions.
 Both only read, and exit 1 when no store answered. Every code either prints is in
 [troubleshooting.md](troubleshooting.md).

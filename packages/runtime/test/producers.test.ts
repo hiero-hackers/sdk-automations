@@ -36,8 +36,10 @@ import {
     normalizeDelivery,
     parseConfigDocument,
     PRODUCER_NAMES,
+    PRODUCERS,
     producerReads,
     producesKind,
+    UNREAD,
     type FactKind,
     type Facts,
     type ProducerName,
@@ -148,11 +150,11 @@ const ROUTES: Readonly<Record<string, ResponseStep>> = {
     "/pulls/34/reviews": json([]),
     "/pulls/34/commits": json([]),
     "/pulls/34": json({ draft: false, created_at: "2026-08-01T00:00:00Z" }),
+    // The sweep reads links for the whole list, so the answer is the aliased one (D194).
     "/graphql": json({
         data: {
             repository: {
-                nameWithOwner: `${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}`,
-                pullRequest: {
+                p0: {
                     number: 34,
                     closingIssuesReferences: {
                         nodes: [
@@ -194,16 +196,18 @@ async function fromSweep(kind: FactKind): Promise<Facts> {
         http: http.client,
         repository: TEST_REPOSITORY,
         config: config(),
-        knownCapabilities: [],
+        // Every group the row promises, so this file asks about the row alone.
+        groups: PRODUCERS.sweep,
         clock: () => NOW,
     });
     const outcome = await reader.openItems();
     expect(outcome.ok, "the open-item list was readable").toBe(true);
     if (!outcome.ok) throw new Error("unreachable: asserted above");
     const [issue, pull] = outcome.items;
+    const closes = await reader.linksFor([pull!.item.number]);
     return kind === "issue"
         ? reader.issueFacts(issue!, [pull!.item])
-        : reader.pullRequestFacts(pull!, [issue!]);
+        : reader.pullRequestFacts(pull!, [issue!], closes.get(pull!.item.number) ?? UNREAD);
 }
 
 function recordFrom(producer: ProducerName, kind: FactKind): Promise<Facts> {

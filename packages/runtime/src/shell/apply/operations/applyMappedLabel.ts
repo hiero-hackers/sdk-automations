@@ -79,9 +79,9 @@ export const applyMappedLabel: OperationHandler<"applyMappedLabel"> = {
     async send(call, pass) {
         switch (call.verb) {
             case "addLabel":
-                return await pass.writer.addLabel(pass.item, call.label, pass.budget);
+                return await pass.writer.addLabel(pass.item, call.label, pass.allowance);
             case "removeLabel":
-                return await pass.writer.removeLabel(pass.item, call.label, pass.budget);
+                return await pass.writer.removeLabel(pass.item, call.label, pass.allowance);
         }
     },
 

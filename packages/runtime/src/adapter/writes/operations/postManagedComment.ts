@@ -10,7 +10,7 @@ import {
 
 export const POST_MANAGED_COMMENT = {
     verbs: (context: VerbContext): Pick<WriteVerbs, "createComment" | "updateComment"> => ({
-        createComment: (item, body, budget) =>
+        createComment: (item, body, allowance) =>
             context.apply(
                 {
                     url: `${issuePath(context.repository, item)}/comments`,
@@ -19,9 +19,9 @@ export const POST_MANAGED_COMMENT = {
                     idempotency: "nonIdempotent",
                 },
                 "invisible",
-                budget,
+                allowance,
             ),
-        updateComment: (commentId, body, budget) =>
+        updateComment: (commentId, body, allowance) =>
             context.apply(
                 {
                     url: `${repoPath(context.repository)}/issues/comments/${String(commentId)}`,
@@ -30,7 +30,7 @@ export const POST_MANAGED_COMMENT = {
                     idempotency: "idempotent",
                 },
                 "invisible",
-                budget,
+                allowance,
             ),
     }),
 } satisfies OperationTransport;

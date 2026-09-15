@@ -65,7 +65,15 @@ const LINKED_ISSUES_QUERY = `query LinkedIssues($owner: String!, $repo: String!,
   }
 }`;
 
+/**
+ * The same connection, aliased. The batched query is this a hundred times over,
+ * one `$n{i}` and one `p{i}:` per pull request; one alias is enough to check the shape.
+ */
+const LINKED_ISSUES_BATCH_QUERY = `query LinkedIssuesBatch($owner: String!, $repo: String!, $n0: Int!) { repository(owner: $owner, name: $repo) { p0: pullRequest(number: $n0) { number closingIssuesReferences(first: 100, excludeUserLinked: true) { nodes { number repository { nameWithOwner } } pageInfo { hasNextPage endCursor } } } } }`;
+
 const LINKED = "data.repository.pullRequest.closingIssuesReferences";
+
+const LINKED_BATCH = "data.repository.p0.closingIssuesReferences";
 
 /**
  * One record per name of `CONFIRMED_SWEEP_READS` and `CONFIRMED_RESOLVER_READS`, plus the
@@ -154,6 +162,25 @@ export const SHAPE_RECORDS: readonly ShapeRecord[] = [
                 `${LINKED}.nodes[].repository.nameWithOwner`,
                 `${LINKED}.pageInfo.hasNextPage`,
                 `${LINKED}.pageInfo.endCursor`,
+            ],
+        },
+    },
+    {
+        name: "linkedIssuesBatch",
+        row: "Read linked issues, batched",
+        request: { method: "POST", path: "/graphql", body: LINKED_ISSUES_BATCH_QUERY },
+        fixture: "PR_READY",
+        shape: {
+            status: 200,
+            permission: "issues:read+pull_requests:read",
+            headers: [],
+            pagination: "none",
+            conditional: "none",
+            fields: [
+                "data.repository.p0.number",
+                `${LINKED_BATCH}.nodes[].number`,
+                `${LINKED_BATCH}.nodes[].repository.nameWithOwner`,
+                `${LINKED_BATCH}.pageInfo.hasNextPage`,
             ],
         },
     },

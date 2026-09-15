@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import type { AdmittedCapability, Externals, RepositoryRef } from "@hiero-hackers/automation-core";
 import {
+    createAllowance,
     createFactsReader,
     createGitHubHttpClient,
     createReadBack,
@@ -18,15 +19,16 @@ import {
     liveExternalsForDelivery,
     orderingEvidenceSource,
     wait,
-    withRequestBudget,
+    type Allowance as ClientAllowance,
     type FactsReader,
     type OrderingEvidenceOptions,
     type ReadBack,
     type WriteVerbs,
 } from "../../adapter/index.js";
+import type { Allowance } from "../allowance.js";
 import type { EffectReader, EffectWriter } from "../apply/apply.js";
 import type { Log } from "../log.js";
-import type { RequestBudget, SweepFacts } from "../sweep/sweep.js";
+import type { SweepFacts } from "../sweep/sweep.js";
 import type { Credentials } from "./composition.js";
 import type { RepositorySeams } from "./shell.js";
 
@@ -38,10 +40,15 @@ type Satisfies<Contract, Given extends Contract> = Given;
 type _WriterSeamIsTheAdapterSurface = Satisfies<EffectWriter, WriteVerbs>;
 type _ReaderSeamIsTheAdapterSurface = Satisfies<EffectReader, ReadBack>;
 type _SweepSeamIsTheAdapterSurface = Satisfies<SweepFacts, FactsReader>;
+type _AllowanceIsTheClientLedger = Satisfies<Allowance, ClientAllowance>;
 
 export interface LiveGitHub {
     /** One set per repository, built on demand and held: the installation may deliver for any. */
-    readonly seamsFor: (repository: RepositoryRef, budget?: RequestBudget) => RepositorySeams;
+    seamsFor(repository: RepositoryRef, allowance?: ClientAllowance): RepositorySeams;
+    /** The sweep's one allowance, for the process and not for a tick (D192). */
+    readonly sweepAllowance: Allowance;
+    /** The webhook lane's, holding the share the sweep does not (D192). */
+    readonly deliveryAllowance: Allowance;
 }
 
 /** The record's own fields, plus the seams a record cannot carry. */
@@ -50,6 +57,10 @@ export interface LiveOptions {
     readonly writes: { readonly appSlug: string } | null;
     readonly killSwitchActive: boolean;
     readonly clock: () => Date;
+    /** What share of each of GitHub's pools the sweep may spend; the rest is the lane's (D192). */
+    readonly share: number;
+    /** Comments both lanes may create per hour; `null` takes the client's own ceiling. */
+    readonly contentCreationHourly: number | null;
     /** Handed down because the adapter may not import the capabilities package. */
     readonly knownCapabilities: readonly AdmittedCapability[];
     /** One repository's landed calls, as the adapter's ordering read asks for them (D159). */
@@ -62,6 +73,8 @@ export function liveGitHub({
     writes,
     killSwitchActive,
     clock,
+    share,
+    contentCreationHourly,
     knownCapabilities,
     ownWrites,
     log,
@@ -79,11 +92,27 @@ export function liveGitHub({
         mint: githubMintInstallationToken(),
         clock,
     });
-    const http = createGitHubHttpClient({ tokenSource });
+    const http = createGitHubHttpClient({
+        tokenSource,
+        ...(contentCreationHourly === null ? {} : { contentCreationHourly }),
+    });
+    /** The sweep's share of GitHub's pools, for the process. */
+    const sweepAllowance = createAllowance({
+        share,
+        onWindow: ({ pool, limit, remaining, resetAt }) => {
+            log({ event: "limits", pool, limit, remaining, resetAt });
+        },
+    });
+    /**
+     * The webhook lane's: what the sweep leaves of each pool, and no write cap.
+     * GitHub's own numbers are one installation's, so only the sweep's says them.
+     */
+    const deliveryAllowance = createAllowance({ share: 1 - share });
 
     /** One repository's seams, each built exactly as a one-repository process built them. */
-    const seamsIn = (repository: RepositoryRef, requestBudget?: RequestBudget): RepositorySeams => {
-        const client = requestBudget === undefined ? http : withRequestBudget(http, requestBudget);
+    const seamsIn = (repository: RepositoryRef, allowance: ClientAllowance): RepositorySeams => {
+        /** What every read of this seam set is charged to; one lane holds one set. */
+        const charged = { allowance };
         const landed = ownWrites(repository);
 
         /**
@@ -101,33 +130,29 @@ export function liveGitHub({
                 killSwitchActive,
                 installationGrants: grants.grants,
                 latestHumanChangeAt: orderingEvidenceSource({
-                    http: client,
+                    http,
                     repository,
                     ownWrites: landed,
+                    ...charged,
                 }),
             };
         };
 
         return {
-            facts: (config, budget) =>
-                createFactsReader({
-                    http: requestBudget === undefined ? withRequestBudget(http, budget) : client,
-                    repository,
-                    config,
-                    clock,
-                    knownCapabilities,
-                }),
-            configSource: githubConfigSource({ client, repository }),
+            facts: (config, groups) =>
+                createFactsReader({ http, repository, config, clock, groups, ...charged }),
+            configSource: githubConfigSource({ client: http, repository, ...charged }),
             // One call per delivery, so the seam below is bound to that delivery.
 
             externals: async ({ payload, deliveryId, config }) => {
                 const outcome = await liveExternalsForDelivery(
                     {
                         tokenSource,
-                        http: client,
+                        http,
                         repository,
                         config,
                         knownCapabilities,
+                        ...charged,
                         ownWrites: landed,
                         onUnknownOrdering: (detail) => {
                             log({ event: "orderingUnknown", deliveryId, detail });
@@ -149,10 +174,11 @@ export function liveGitHub({
                 writes === null
                     ? null
                     : {
-                          writer: createWriteVerbs({ http: client, repository }),
+                          writer: createWriteVerbs({ http, repository }),
                           reader: createReadBack({
-                              http: client,
+                              http,
                               repository,
+                              ...charged,
                               // Both halves of the one App registration this process already holds.
 
                               identity: { appId, botLogin: `${writes.appSlug}[bot]` },
@@ -168,10 +194,14 @@ export function liveGitHub({
 
     const built = new Map<string, RepositorySeams>();
     return {
-        seamsFor: (repository, budget) => {
-            if (budget !== undefined) return seamsIn(repository, budget);
+        sweepAllowance,
+        deliveryAllowance,
+        // Held seams are the webhook lane's, and spend its allowance; the sweep passes its own.
+
+        seamsFor: (repository, allowance) => {
+            if (allowance !== undefined) return seamsIn(repository, allowance);
             const key = `${repository.owner}/${repository.repo}`;
-            const held = built.get(key) ?? seamsIn(repository);
+            const held = built.get(key) ?? seamsIn(repository, deliveryAllowance);
             built.set(key, held);
             return held;
         },

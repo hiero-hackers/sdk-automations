@@ -4,6 +4,7 @@
  */
 
 import type { FactGroup, FactKind, Facts, Unread } from "../catalogue.js";
+import type { RepositoryConfig } from "../config/schema.js";
 
 /** The producers that wake on a webhook delivery — and so the events core consumes. */
 export const WEBHOOK_PRODUCERS = ["issues", "issue_comment", "pull_request"] as const;
@@ -55,6 +56,40 @@ export function producerReads(producer: ProducerName, kind: FactKind, group: Fac
 /** The producers that do read this group — what a boot refusal names instead. */
 export function producersReading(kind: FactKind, group: FactGroup): readonly ProducerName[] {
     return PRODUCER_NAMES.filter((producer) => producerReads(producer, kind, group));
+}
+
+/** A capability as this question reads it; `EngineCapability` is one, unimported (D91). */
+export interface DeclaringCapability {
+    readonly declaration: {
+        readonly name: string;
+        readonly triggers: readonly { readonly kind: string }[];
+        readonly facts: readonly FactKind[];
+        readonly needs: readonly FactGroup[];
+    };
+}
+
+/** The groups to read on each kind — what one sweep firing asks `groupsNeeded` for. */
+export type NeededGroups = { readonly [K in FactKind]: readonly FactGroup[] };
+
+/**
+ * The groups this repository's enabled schedule capabilities need on `kind`, of
+ * those the sweep's row reads. A need declared is a read paid for (D195).
+ */
+export function groupsNeeded(
+    config: RepositoryConfig,
+    capabilities: readonly DeclaringCapability[],
+    kind: FactKind,
+): readonly FactGroup[] {
+    const needed = new Set<FactGroup>();
+    for (const { declaration } of capabilities) {
+        if (config.capabilities[declaration.name]?.enabled !== true) continue;
+        if (!declaration.triggers.some((trigger) => trigger.kind === "schedule")) continue;
+        if (!declaration.facts.includes(kind)) continue;
+        for (const need of declaration.needs) needed.add(need);
+    }
+    // `PRODUCERS`, not `ROWS`: the sweep's row makes both kinds, so there is no null arm.
+
+    return PRODUCERS.sweep[kind].filter((group) => needed.has(group));
 }
 
 /** The groups producer `P` reads on kind `K`, as a union of their names. */

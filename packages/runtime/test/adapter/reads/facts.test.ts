@@ -18,7 +18,9 @@ import { describe, expect, it } from "vitest";
 import {
     NO_CONFIG,
     parseConfigDocument,
+    PRODUCERS,
     UNREAD,
+    type NeededGroups,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core";
 import {
@@ -31,6 +33,7 @@ import {
     readReapableSince,
     readReview,
     SWEEP_READS,
+    type ClosedIssues,
     type FactsReader,
     type OpenItem,
 } from "../../../src/adapter/reads/facts.js";
@@ -112,6 +115,32 @@ const WORKING_ADA = {
     body: "/working on it now",
 };
 
+/** Pull request 34 closes issue 12, and closes nothing else. */
+const CLOSES_12 = {
+    nodes: [
+        {
+            number: 12,
+            repository: { nameWithOwner: `${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}` },
+        },
+    ],
+    pageInfo: { hasNextPage: false, endCursor: null },
+};
+
+/** That answer in whichever shape the query asked for — aliased, or one pull request. */
+const linkAnswer: ResponseStep = (_url, init) =>
+    success(
+        JSON.stringify({
+            data: {
+                repository: String(init.body).includes('"LinkedIssuesBatch"')
+                    ? { p0: { number: 34, closingIssuesReferences: CLOSES_12 } }
+                    : {
+                          nameWithOwner: `${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}`,
+                          pullRequest: { number: 34, closingIssuesReferences: CLOSES_12 },
+                      },
+            },
+        }),
+    );
+
 /** The whole happy repository: one issue, one pull request that closes it. */
 function wholeRepository(): Readonly<Record<string, ResponseStep>> {
     return {
@@ -120,33 +149,38 @@ function wholeRepository(): Readonly<Record<string, ResponseStep>> {
         "/issues/12/comments": json([WORKING_ADA]),
         "/issues/34/timeline": json([ASSIGNED_GRACE]),
         "/issues/34/comments": json([]),
-        "/graphql": json({
-            data: {
-                repository: {
-                    nameWithOwner: `${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}`,
-                    pullRequest: {
-                        number: 34,
-                        closingIssuesReferences: {
-                            nodes: [
-                                {
-                                    number: 12,
-                                    repository: {
-                                        nameWithOwner: `${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}`,
-                                    },
-                                },
-                            ],
-                            pageInfo: { hasNextPage: false, endCursor: null },
-                        },
-                    },
-                },
-            },
-        }),
+        "/graphql": linkAnswer,
     };
 }
+
+/** The pull request's own reads, answering every fact the review group folds. */
+const REVIEW_ROUTES = {
+    "/pulls/34/reviews": json([
+        { state: "CHANGES_REQUESTED", user: { login: "linus" } },
+        { state: "COMMENTED", user: { login: "linus" } },
+    ]),
+    "/pulls/34/commits": json([
+        { commit: { committer: { date: "2026-08-30T00:00:00Z" } } },
+        { commit: { committer: { date: "2026-08-28T00:00:00Z" } } },
+    ]),
+    "/pulls/34": json({ draft: true, created_at: "2026-08-01T00:00:00Z" }),
+    "/issues/34/timeline": json([
+        ASSIGNED_GRACE,
+        { event: "convert_to_draft", created_at: "2026-08-25T00:00:00Z" },
+        { event: "reviewed", state: "changes_requested", submitted_at: "2026-08-26T00:00:00Z" },
+        {
+            event: "labeled",
+            label: { name: REVISION_LABEL },
+            created_at: "2026-08-27T00:00:00Z",
+        },
+    ]),
+};
 
 interface Harness {
     readonly reader: FactsReader;
     readonly urls: () => string[];
+    /** The operation each POST named, so a case can say which query was sent. */
+    readonly operations: () => string[];
 }
 
 /**
@@ -165,9 +199,13 @@ const SWEEP_GRANTS = [
     },
 ];
 
+/** What a repository enabling every sweep capability needs: the whole row. */
+const EVERY_GROUP: NeededGroups = PRODUCERS.sweep;
+
 function readerOver(
     routes: Readonly<Record<string, ResponseStep>>,
     config = configWith(),
+    groups: NeededGroups = EVERY_GROUP,
 ): Harness {
     const http = httpHarness([routed(routes)], { outcomes: SWEEP_GRANTS });
     return {
@@ -176,10 +214,37 @@ function readerOver(
             repository: TEST_REPOSITORY,
             config,
             clock: () => NOW,
-            knownCapabilities: [],
+            groups,
         }),
         urls: () => http.scripted.calls.map((call) => call.url),
+        operations: () =>
+            http.scripted.calls
+                .filter((call) => call.init.body !== undefined)
+                .map(
+                    (call) =>
+                        (JSON.parse(String(call.init.body)) as { operationName: string })
+                            .operationName,
+                ),
     };
+}
+
+/** What one pull request closes, read the way the driver reads it: for the whole list. */
+async function closesFor(reader: FactsReader, number: number): Promise<ClosedIssues> {
+    const answered = await reader.linksFor([number]);
+    return answered.get(number) ?? UNREAD;
+}
+
+/** One pull-request record, with its links read first, as the driver orders them. */
+async function pullFacts(
+    reader: FactsReader,
+    listedItem: OpenItem,
+    openIssues: readonly OpenItem[],
+) {
+    return reader.pullRequestFacts(
+        listedItem,
+        openIssues,
+        await closesFor(reader, listedItem.item.number),
+    );
 }
 
 /** The listed items, asserted readable so each case can index them. */
@@ -191,7 +256,7 @@ async function listed(reader: FactsReader): Promise<readonly OpenItem[]> {
 }
 
 describe("the confirmed read set", () => {
-    it("names every read the matrix confirmed, which since 6.9 is all eight", () => {
+    it("names every read the matrix confirmed, which is all nine", () => {
         expect([...CONFIRMED_SWEEP_READS].sort()).toEqual(
             [
                 "assignedAt",
@@ -200,6 +265,7 @@ describe("the confirmed read set", () => {
                 "lastCommitAt",
                 "lastWorkingAt",
                 "linkedIssues",
+                "linkedIssuesBatch",
                 "openItems",
                 "reapableSince",
             ].sort(),
@@ -316,7 +382,7 @@ describe("the open-item list", () => {
             repository: TEST_REPOSITORY,
             config: configWith(),
             clock: () => NOW,
-            knownCapabilities: [],
+            groups: EVERY_GROUP,
         });
 
         const first = await listed(reader);
@@ -427,7 +493,7 @@ describe("the links group", () => {
         const { reader } = readerOver(wholeRepository());
         const items = await listed(reader);
 
-        const record = await reader.pullRequestFacts(items[1]!, [items[0]!]);
+        const record = await pullFacts(reader, items[1]!, [items[0]!]);
 
         expect(record.links).toEqual({
             issues: [
@@ -449,7 +515,7 @@ describe("the links group", () => {
         const { reader, urls } = readerOver(wholeRepository());
         const items = await listed(reader);
 
-        const record = await reader.pullRequestFacts(items[1]!, []);
+        const record = await pullFacts(reader, items[1]!, []);
 
         expect(record.links).toEqual({ issues: [] });
         expect(urls().some((url) => url.includes("/issues/12/"))).toBe(false);
@@ -459,9 +525,36 @@ describe("the links group", () => {
         const { reader } = readerOver({ ...wholeRepository(), "/graphql": refuses(502) });
         const items = await listed(reader);
 
-        const record = await reader.pullRequestFacts(items[1]!, [items[0]!]);
+        const record = await pullFacts(reader, items[1]!, [items[0]!]);
 
         expect(record.links).toBe(UNREAD);
+    });
+
+    it("reads every listed pull request in one POST, and sends none when nobody needs links", async () => {
+        const { reader, operations } = readerOver(wholeRepository());
+        const unneeded = readerOver(wholeRepository(), configWith(), {
+            issue: [],
+            pullRequest: ["review"],
+        });
+        await listed(reader);
+
+        const answered = await reader.linksFor([34]);
+        const asked = await unneeded.reader.linksFor([34]);
+
+        expect([...answered.keys()]).toEqual([34]);
+        expect(answered.get(34)).toEqual([{ kind: "issue", number: 12 }]);
+        expect(operations()).toEqual(["LinkedIssuesBatch"]);
+        expect(asked.get(34)).toBe(UNREAD);
+        expect(unneeded.urls().some((url) => url.endsWith("/graphql"))).toBe(false);
+    });
+
+    it("answers every pull request unread when the batch refused", async () => {
+        const { reader } = readerOver({ ...wholeRepository(), "/graphql": refuses(502) });
+        await listed(reader);
+
+        const answered = await reader.linksFor([34, 35]);
+
+        expect([...answered.values()]).toEqual([UNREAD, UNREAD]);
     });
 
     it("takes an issue's open pull requests from the driver, unread and all", async () => {
@@ -481,7 +574,7 @@ describe("the links group", () => {
         const { reader, urls } = readerOver(wholeRepository());
         const items = await listed(reader);
 
-        await reader.pullRequestFacts(items[1]!, [items[0]!]);
+        await pullFacts(reader, items[1]!, [items[0]!]);
         await reader.issueFacts(items[0]!, []);
 
         expect(urls().filter((url) => url.includes("/issues/12/timeline"))).toHaveLength(1);
@@ -489,39 +582,17 @@ describe("the links group", () => {
 });
 
 describe("the review group — the three reads protocol 6.9 confirmed", () => {
-    const REVIEW_ROUTES = {
-        "/pulls/34/reviews": json([
-            { state: "CHANGES_REQUESTED", user: { login: "linus" } },
-            { state: "COMMENTED", user: { login: "linus" } },
-        ]),
-        "/pulls/34/commits": json([
-            { commit: { committer: { date: "2026-08-30T00:00:00Z" } } },
-            { commit: { committer: { date: "2026-08-28T00:00:00Z" } } },
-        ]),
-        "/pulls/34": json({ draft: true, created_at: "2026-08-01T00:00:00Z" }),
-        "/issues/34/timeline": json([
-            { event: "convert_to_draft", created_at: "2026-08-25T00:00:00Z" },
-            { event: "reviewed", state: "changes_requested", submitted_at: "2026-08-26T00:00:00Z" },
-            {
-                event: "labeled",
-                label: { name: REVISION_LABEL },
-                created_at: "2026-08-27T00:00:00Z",
-            },
-        ]),
-    };
-
     const context = (routes: Readonly<Record<string, ResponseStep>> = REVIEW_ROUTES) => ({
         http: httpHarness([routed(routes)], { outcomes: SWEEP_GRANTS }).client,
         repository: TEST_REPOSITORY,
         config: NO_CONFIG,
-        knownCapabilities: [],
     });
 
     it("is READ on a pull-request record, now that all three reads are confirmed", async () => {
         const { reader } = readerOver({ ...wholeRepository(), ...REVIEW_ROUTES });
         const items = await listed(reader);
 
-        const record = await reader.pullRequestFacts(items[1]!, [items[0]!]);
+        const record = await pullFacts(reader, items[1]!, [items[0]!]);
 
         expect(record.review).not.toBe(UNREAD);
         expect(record.review).toEqual({
@@ -628,13 +699,156 @@ describe("the review group — the three reads protocol 6.9 confirmed", () => {
     });
 });
 
+describe("what one cold item sends", () => {
+    const REPO = `/repos/${TEST_REPOSITORY.owner}/${TEST_REPOSITORY.repo}`;
+
+    /** Every send after the open-item list, as the path it asked GitHub for. */
+    const walked = (urls: () => string[], after: number): string[] =>
+        urls()
+            .slice(after)
+            .map((url) => new URL(url).pathname);
+
+    /** The whole repository with the pull request's own reads answering too. */
+    const coldRepository = () => ({ ...wholeRepository(), ...REVIEW_ROUTES });
+
+    it("reads an issue's timeline, then its comments", async () => {
+        const { reader, urls } = readerOver(coldRepository());
+        const items = await listed(reader);
+        const listCalls = urls().length;
+
+        const record = await reader.issueFacts(items[0]!, []);
+
+        expect(record.assignees).not.toBe(UNREAD);
+        expect(walked(urls, listCalls)).toEqual([
+            `${REPO}/issues/12/timeline`,
+            `${REPO}/issues/12/comments`,
+        ]);
+    });
+
+    it("reads an issue's timeline alone when the repository maps no `working`", async () => {
+        const { reader, urls } = readerOver(coldRepository(), configWith(""));
+        const items = await listed(reader);
+        const listCalls = urls().length;
+
+        const record = await reader.issueFacts(items[0]!, []);
+
+        expect(record.assignees).not.toBe(UNREAD);
+        expect(walked(urls, listCalls)).toEqual([`${REPO}/issues/12/timeline`]);
+    });
+
+    it("reads a pull request in five: timeline, comments, reviews, pull, commits", async () => {
+        const { reader, urls } = readerOver(coldRepository());
+        const items = await listed(reader);
+        const closes = await closesFor(reader, 34);
+        const listCalls = urls().length;
+
+        const record = await reader.pullRequestFacts(items[1]!, [], closes);
+
+        for (const group of [record.assignees, record.links, record.review, record.readiness]) {
+            expect(group).not.toBe(UNREAD);
+        }
+        // The links arrived with the list, so the record itself sends no POST.
+        expect(walked(urls, listCalls)).toEqual([
+            `${REPO}/issues/34/timeline`,
+            `${REPO}/issues/34/comments`,
+            `${REPO}/pulls/34/reviews`,
+            `${REPO}/pulls/34`,
+            `${REPO}/pulls/34/commits`,
+        ]);
+    });
+
+    /**
+     * The read table by enabled set (D195): a repository whose only sweep
+     * capability needs `review` pays for the three reads that group folds and
+     * for nothing else — its issues cost no call at all.
+     */
+    it("sends the review reads alone, and nothing for an issue, for a `review`-only set", async () => {
+        const { reader, urls } = readerOver(coldRepository(), configWith(), {
+            issue: [],
+            pullRequest: ["review"],
+        });
+        const items = await listed(reader);
+        const listCalls = urls().length;
+
+        const pull = await pullFacts(reader, items[1]!, [items[0]!]);
+        const issue = await reader.issueFacts(items[0]!, [items[1]!.item]);
+
+        expect(pull.review).not.toBe(UNREAD);
+        for (const group of [pull.assignees, pull.links, pull.readiness]) {
+            expect(group).toBe(UNREAD);
+        }
+        expect(issue.assignees).toBe(UNREAD);
+        expect(issue.links).toBe(UNREAD);
+        expect(walked(urls, listCalls)).toEqual([
+            `${REPO}/pulls/34/reviews`,
+            `${REPO}/pulls/34`,
+            `${REPO}/issues/34/timeline`,
+            `${REPO}/pulls/34/commits`,
+        ]);
+    });
+
+    /**
+     * A stored read stands in for the reads that made it (D193). The record is built
+     * where a read one is, so it carries this sweep's instant and the list's own fields.
+     */
+    it("takes a record's groups from a stored read, and sends nothing for them", async () => {
+        const { reader, urls } = readerOver(coldRepository());
+        const items = await listed(reader);
+        const listCalls = urls().length;
+        const clocks = [
+            {
+                login: "ada",
+                assignedAt: new Date("2026-07-01T00:00:00Z"),
+                lastWorkingAt: null,
+            },
+        ];
+
+        const issue = await reader.issueFacts(items[0]!, [], { assignees: clocks });
+        const pull = await reader.pullRequestFacts(items[1]!, [], UNREAD, {
+            assignees: clocks,
+            links: { issues: [] },
+            review: UNREAD,
+            readiness: { draft: true },
+        });
+
+        expect(walked(urls, listCalls)).toEqual([]);
+        expect(issue.assignees).toEqual(clocks);
+        expect(pull).toMatchObject({
+            item: { kind: "pullRequest", number: 34 },
+            observedAt: NOW,
+            trigger: { kind: "sweep" },
+            author: "grace",
+            links: { issues: [] },
+            review: UNREAD,
+            readiness: { draft: true },
+        });
+    });
+
+    it("reads a pull request in four when the repository maps no `working`", async () => {
+        const { reader, urls } = readerOver(coldRepository(), configWith(""));
+        const items = await listed(reader);
+        const closes = await closesFor(reader, 34);
+        const listCalls = urls().length;
+
+        const record = await reader.pullRequestFacts(items[1]!, [], closes);
+
+        expect(record.review).not.toBe(UNREAD);
+        expect(walked(urls, listCalls)).toEqual([
+            `${REPO}/issues/34/timeline`,
+            `${REPO}/pulls/34/reviews`,
+            `${REPO}/pulls/34`,
+            `${REPO}/pulls/34/commits`,
+        ]);
+    });
+});
+
 describe("the projection", () => {
     it("is the mapped meanings of the labels the list carried", async () => {
         const { reader } = readerOver(wholeRepository());
         const items = await listed(reader);
 
         const issue = await reader.issueFacts(items[0]!, []);
-        const pull = await reader.pullRequestFacts(items[1]!, []);
+        const pull = await pullFacts(reader, items[1]!, []);
 
         expect(issue.position).toEqual({
             kind: "position",

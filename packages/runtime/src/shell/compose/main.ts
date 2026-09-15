@@ -17,6 +17,7 @@ import { defaultDataDir } from "../paths.js";
 import { createShutdown } from "../jobs/shutdown.js";
 import { parseComposition } from "./composition.js";
 import { liveGitHub } from "./live.js";
+import { SWEEP_SHARE } from "../sweep/budgets.js";
 
 /** The name this process holds both kinds of claim under — a delivery's and a lease's. */
 const WORKER = `shell-${randomUUID()}`;
@@ -26,7 +27,16 @@ if (!parsed.ok) {
     for (const refusal of parsed.errors) console.error(refusal);
     process.exit(1);
 }
-const { credentials, endpoint, paths, repository, switches, tickMs, writes } = parsed.composition;
+const {
+    contentCreationHourly,
+    credentials,
+    endpoint,
+    paths,
+    repository,
+    switches,
+    tickMs,
+    writes,
+} = parsed.composition;
 const sweepRecord = parsed.composition.sweep;
 mkdirSync(defaultDataDir(process.env), { recursive: true });
 
@@ -34,7 +44,7 @@ mkdirSync(defaultDataDir(process.env), { recursive: true });
 const log = createLogger();
 /** One clock for the whole composition — the applier's leases and the sweep's. */
 const clock = (): Date => new Date();
-/** The shipped declarations, as the adapter's reads want them. */
+/** The shipped declarations, as the adapter's externals want them. */
 const knownCapabilities = CAPABILITIES.map(({ declaration }) => declaration);
 
 const store = new Store(paths.storeFile);
@@ -47,6 +57,8 @@ const live =
               writes,
               killSwitchActive: switches.killSwitch,
               clock,
+              share: sweepRecord?.share ?? SWEEP_SHARE,
+              contentCreationHourly,
               knownCapabilities,
               // The seam GitHub's own actor cannot answer: this item's landed calls (D159).
 
@@ -65,7 +77,15 @@ const local: RepositorySeams = {
 };
 
 /** The fact sweep, armed or absent — what this process does when nobody is talking. */
-const sweep = sweepRecord === null || live === null ? undefined : sweepRecord;
+const sweep =
+    sweepRecord === null || live === null
+        ? undefined
+        : {
+              cadenceMs: sweepRecord.cadenceMs,
+              writeCap: sweepRecord.writeCap,
+              allowance: live.sweepAllowance,
+              snapshotMaxAgeMs: sweepRecord.snapshotMaxAgeMs,
+          };
 
 const shell = createShell({
     secret: endpoint.secret,
@@ -73,6 +93,7 @@ const shell = createShell({
     capabilities: CAPABILITIES,
     seams: live === null ? () => local : live.seamsFor,
     ...(repository === null ? {} : { repository }),
+    ...(live === null ? {} : { deliveryAllowance: live.deliveryAllowance }),
     worker: WORKER,
     clock,
     tickMs,

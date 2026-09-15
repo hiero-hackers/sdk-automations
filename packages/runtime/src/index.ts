@@ -3,4 +3,4 @@
 export * from "./store/index.js";
 export * from "./adapter/index.js";
 export * from "./shell/index.js";
-export type { WriteResult } from "./shell/index.js";
+export type { Allowance, Lane, Spent, WriteResult } from "./shell/index.js";

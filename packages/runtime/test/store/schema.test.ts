@@ -71,13 +71,20 @@ describe("storage schema versions", () => {
         expect(points).toEqual(["migration:1"]);
         expect(schemaState(databasePath)).toEqual({
             version: CURRENT_STORAGE_SCHEMA_VERSION,
-            tables: ["decision", "effect_claim", "effect_fact", "schedule", "seen_delivery"],
+            tables: [
+                "decision",
+                "effect_claim",
+                "effect_fact",
+                "item_snapshot",
+                "schedule",
+                "seen_delivery",
+            ],
         });
         // The fingerprint is the contract: a schema that reaches the right
         // version with a different CHECK is the failure worth naming.
 
         const created = schemaFingerprint(databasePath);
-        expect(Object.keys(created)).toHaveLength(11);
+        expect(Object.keys(created)).toHaveLength(12);
         expect(created["seen_delivery"]).toContain("retry_not_before");
         expect(created["seen_delivery"]).toContain("'failed'");
         expect(created["effect_fact"]).toContain("'abandoned'");
@@ -88,6 +95,18 @@ describe("storage schema versions", () => {
 
         expect(created["fact_by_item"]).toContain("(repository, item_kind, item_number");
         expect(created["decision_by_item"]).toContain("(repository, item_kind, item_number");
+        // The cursor and the firing's start both ride on the row (D170, D192).
+
+        expect(created["schedule"]).toContain("resume_after INTEGER");
+        expect(created["schedule"]).toContain("started_at TEXT");
+        // One row per open item, keyed the way every item-keyed read asks (D169, D193).
+
+        expect(created["item_snapshot"]).toContain("updated_at TEXT NOT NULL");
+        expect(created["item_snapshot"]).toContain("read_at TEXT NOT NULL");
+        expect(created["item_snapshot"]).toContain("facts TEXT NOT NULL");
+        expect(created["item_snapshot"]).toContain(
+            "PRIMARY KEY (repository, item_kind, item_number)",
+        );
     });
 
     it("changes nothing when the file it already created is reopened", () => {

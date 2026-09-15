@@ -39,9 +39,10 @@ import type {
     ItemSeen,
     ReadAnswer,
     SeenState,
-    RequestBudget,
     WriteResult,
 } from "../../../src/shell/apply/operations/handler.js";
+import type { Allowance } from "../../../src/shell/allowance.js";
+import type { Spending } from "../spending.js";
 
 // ─── The repository under test ───────────────────────────────────────
 
@@ -456,7 +457,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         verb: string,
         argument: string,
         change: () => WriteResult,
-        budget?: RequestBudget,
+        allowance?: Allowance,
     ): WriteResult => {
         calls.push(`${verb} ${argument}`);
         if (faults.crashOn?.verb === verb && faults.crashOn.when === "beforeSend") {
@@ -464,8 +465,8 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         }
         const scripted = faults.scripted.shift();
         const answer = scripted ?? change();
-        if (budget !== undefined && answer.outcome !== "unsupported") {
-            budget.remaining -= 1;
+        if (allowance !== undefined && answer.outcome !== "unsupported") {
+            (allowance as Spending).charge("mutations");
         }
         if (faults.crashOn?.verb === verb && faults.crashOn.when === "afterSend") {
             throw new Error(`crash after ${verb}`);
@@ -475,7 +476,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
     };
 
     const writer: EffectWriter = {
-        addLabel: (_item, label, budget) =>
+        addLabel: (_item, label, allowance) =>
             Promise.resolve(
                 perform(
                     "addLabel",
@@ -484,10 +485,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         if (!world.labels.includes(label)) world.labels.push(label);
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
-        removeLabel: (_item, label, budget) =>
+        removeLabel: (_item, label, allowance) =>
             Promise.resolve(
                 perform(
                     "removeLabel",
@@ -498,10 +499,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         world.labels.splice(at, 1);
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
-        createComment: (_item, body, budget) =>
+        createComment: (_item, body, allowance) =>
             Promise.resolve(
                 perform(
                     "createComment",
@@ -511,10 +512,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         nextCommentId += 1;
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
-        updateComment: (commentId, body, budget) =>
+        updateComment: (commentId, body, allowance) =>
             Promise.resolve(
                 perform(
                     "updateComment",
@@ -528,10 +529,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         );
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
-        closePullRequest: (item, budget) =>
+        closePullRequest: (item, allowance) =>
             Promise.resolve(
                 perform(
                     "closePullRequest",
@@ -541,10 +542,10 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         world.closed = true;
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
-        releaseAssignment: (_item, login, budget) =>
+        releaseAssignment: (_item, login, allowance) =>
             Promise.resolve(
                 perform(
                     "releaseAssignment",
@@ -555,7 +556,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                         world.assignees.splice(at, 1);
                         return { outcome: "applied" };
                     },
-                    budget,
+                    allowance,
                 ),
             ),
     };

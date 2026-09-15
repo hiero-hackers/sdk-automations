@@ -180,6 +180,8 @@ export interface HttpHarnessOptions {
     readonly sleep?: (milliseconds: number) => Promise<void>;
     readonly timeoutMs?: number;
     readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
+    /** Comments the client may create per hour; the default is the client's own (D192). */
+    readonly contentCreationHourly?: number;
 }
 
 /** The real client over scripted GitHub, scripted tokens, and a fixed clock. */
@@ -200,6 +202,9 @@ export function httpHarness(steps: readonly ResponseStep[], options: HttpHarness
             return options.sleep === undefined ? Promise.resolve() : options.sleep(milliseconds);
         },
         ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        ...(options.contentCreationHourly === undefined
+            ? {}
+            : { contentCreationHourly: options.contentCreationHourly }),
         timeoutSignal:
             options.timeoutSignal ??
             ((milliseconds) => {

@@ -39,7 +39,9 @@ import {
     type ExternalsForDelivery,
 } from "../../../src/shell/decide/externals.js";
 import type { ConfigSource } from "../../../src/shell/decide/config.js";
+import type { Allowance } from "../../../src/shell/allowance.js";
 import type { Log, ShellEvent } from "../../../src/shell/log.js";
+import { spending, type Spending } from "../spending.js";
 
 /**
  * Every lane here logs into one list, cleared per test. The event stream is
@@ -105,6 +107,7 @@ interface Wiring {
     readonly repository?: RepositoryRef;
     readonly externals?: ExternalsForDelivery;
     readonly applier?: Applier;
+    readonly allowance?: Allowance;
     readonly suspended?: boolean;
 }
 
@@ -129,6 +132,7 @@ function laneWith(wiring: Wiring) {
         worker: "test-worker",
         log,
         clock: wiring.clock,
+        ...(wiring.allowance === undefined ? {} : { allowance: wiring.allowance }),
         ...(wiring.suspended === undefined ? {} : { suspended: wiring.suspended }),
     });
 }
@@ -550,6 +554,116 @@ describe("a crash counts an attempt", () => {
                 "2026-08-07T09:00:00.000Z",
             ),
         ).toMatchObject({ attempts: 0 });
+    });
+});
+
+/**
+ * The lane's own share of GitHub's limits (D192). A delivery decided around a
+ * read the allowance refused is NOT the answer to that delivery, so it is not
+ * completed: the attempt is counted and the delivery waits, on the same ladder
+ * a crash puts it on, but no longer than the pool's own window.
+ */
+describe("a read this lane's allowance refused", () => {
+    /** When GitHub's window rolls — sooner than the ladder's first step, which is thirty seconds. */
+    const RESET = new Date(BASE.getTime() + 20_000).toISOString();
+
+    /** A lane charged one core read per delivery, with the clock in the case's hands. */
+    function charged(allowance: Spending, at: () => Date) {
+        return laneWith({
+            capabilities: [toEngine(intake)],
+            configSource,
+            externals: () => {
+                allowance.charge("core");
+                return stubbedExternals();
+            },
+            clock: at,
+            allowance,
+        });
+    }
+
+    const failures = (): ShellEvent[] =>
+        logged.filter((event) => event.event === "deliveryAttemptFailed");
+
+    it("retries at the pool's reset, then decides once the window has rolled", async () => {
+        // The cap is the fake's own record, so the case can open the window on it.
+        const caps = { core: 0 };
+        const allowance = spending(caps);
+        allowance.resetAt = RESET;
+        let at = new Date(BASE.getTime() + 1_000);
+        const refusing = charged(allowance, () => at);
+
+        await expect(refusing.processOnce()).rejects.toThrow(
+            "the webhook lane's core allowance refused a read",
+        );
+
+        expect(completions()).toEqual([]);
+        expect(failures()).toEqual([
+            {
+                event: "deliveryAttemptFailed",
+                deliveryId: GUID as string,
+                disposition: "retryScheduled",
+                attempts: 1,
+                maxAttempts: 5,
+                // The pool's window, not the ladder's thirty seconds.
+                retryNotBefore: RESET,
+                pool: "core",
+                detail: expect.stringContaining("core allowance refused a read"),
+            },
+        ]);
+
+        caps.core = 10;
+        at = new Date(RESET);
+        expect(await refusing.processOnce()).toBe(true);
+        expect(completions()).toEqual([{ deliveryId: GUID as string, kind: "decision" }]);
+    });
+
+    it("waits out the ladder's step where the pool resets later than it", async () => {
+        const allowance = spending({ core: 0 });
+        allowance.resetAt = new Date(BASE.getTime() + 10 * 60_000).toISOString();
+        const at = new Date(BASE.getTime() + 1_000);
+
+        await expect(charged(allowance, () => at).processOnce()).rejects.toThrow();
+
+        expect(failures()[0]).toMatchObject({
+            retryNotBefore: new Date(at.getTime() + 30_000).toISOString(),
+            pool: "core",
+        });
+    });
+
+    /** Five refusals are five attempts: the delivery ends as any other failure does. */
+    it("dead-letters at five refusals", async () => {
+        const allowance = spending({ core: 0 });
+        for (const ms of [10_000, 40_000, 100_000, 220_000, 460_000]) {
+            await charged(allowance, () => new Date(BASE.getTime() + ms)).drain();
+        }
+
+        expect(completions()).toEqual([]);
+        expect(failures()).toHaveLength(5);
+        expect(logged).toContainEqual({
+            event: "deliveryDeadLettered",
+            deliveryId: GUID as string,
+            attempts: 5,
+        });
+        expect(store.inbox.deadLetteredDeliveries()).toMatchObject([
+            { deliveryId: GUID, attempts: 5 },
+        ]);
+    });
+
+    /** The refusal must be this delivery's own: an older one cannot keep the lane from finishing. */
+    it("counts only what was refused while its own pass ran", async () => {
+        const allowance = spending({ core: 0 });
+        allowance.charge("core");
+        expect(allowance.refusals()).toBe(1);
+
+        const quiet = laneWith({
+            capabilities: [toEngine(intake)],
+            configSource,
+            clock: () => new Date(BASE.getTime() + 1_000),
+            allowance,
+        });
+
+        expect(await quiet.processOnce()).toBe(true);
+        expect(completions()).toEqual([{ deliveryId: GUID as string, kind: "decision" }]);
     });
 });
 

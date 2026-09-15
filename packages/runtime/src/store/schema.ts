@@ -121,7 +121,10 @@ const EFFECT_CLAIM = `
         at        TEXT NOT NULL
     )`;
 
-/** `resume_after` is the item number a firing stopped reading at; null reads the list from the beginning (D170). */
+/**
+ * `resume_after` is the item number a firing stopped reading at; null reads the list from the beginning (D170).
+ * `started_at` is when this row last began a firing; null has never fired, and due rows fire oldest first (D192).
+ */
 const SCHEDULE = `
     CREATE TABLE schedule (
         schedule_id TEXT PRIMARY KEY,
@@ -130,7 +133,23 @@ const SCHEDULE = `
         status      TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done')),
         claimed_at  TEXT,
         claim_token TEXT,
-        resume_after INTEGER
+        resume_after INTEGER,
+        started_at  TEXT
+    )`;
+
+/**
+ * One row per open item the sweep has read, decided from again while it stands (D193).
+ * `updated_at` is the list's own field at that read, and `facts` the read's groups as JSON.
+ */
+const ITEM_SNAPSHOT = `
+    CREATE TABLE item_snapshot (
+        repository  TEXT NOT NULL,
+        item_kind   TEXT NOT NULL,
+        item_number INTEGER NOT NULL,
+        updated_at  TEXT NOT NULL,
+        read_at     TEXT NOT NULL,
+        facts       TEXT NOT NULL,
+        PRIMARY KEY (repository, item_kind, item_number)
     )`;
 
 const SCHEMA_BY_VERSION = {
@@ -143,6 +162,7 @@ const SCHEMA_BY_VERSION = {
         effect_fact: EFFECT_FACT,
         fact_by_effect: FACT_BY_EFFECT,
         fact_by_item: FACT_BY_ITEM,
+        item_snapshot: ITEM_SNAPSHOT,
         open_sends: OPEN_SENDS,
         schedule: SCHEDULE,
         seen_delivery: SEEN_DELIVERY,
@@ -202,7 +222,7 @@ function createSchema(db: DatabaseSync): void {
         `${SEEN_DELIVERY};${DELIVERY_WORK};
          ${EFFECT_FACT};${FACT_BY_EFFECT};${FACT_BY_ITEM};${OPEN_SENDS};
          ${DECISION};${DECISION_BY_ITEM};${DECISION_BY_AT};
-         ${EFFECT_CLAIM};${SCHEDULE};`,
+         ${EFFECT_CLAIM};${SCHEDULE};${ITEM_SNAPSHOT};`,
     );
 }
 

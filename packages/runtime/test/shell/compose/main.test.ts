@@ -147,7 +147,8 @@ const SHELL_VARIABLES = [
     "TICK_SECONDS",
     "SWEEP_CADENCE_HOURS",
     "SWEEP_WRITE_CALLS",
-    "SWEEP_REQUESTS",
+    "SWEEP_SHARE",
+    "CONTENT_CREATION_HOURLY",
     "XDG_STATE_HOME",
 ];
 
@@ -665,8 +666,8 @@ async function withLiveGitHub(
         readonly cadenceHours?: string;
         /** How many writes one firing may send, over the sweep's own cap. */
         readonly writeCap?: string;
-        /** How many requests one firing may spend reading, over the sweep's own budget. */
-        readonly requestCap?: string;
+        /** What share of GitHub's own limits the sweep may spend, over the sweep's own. */
+        readonly share?: string;
         /** How often the reconciliation tick runs — the sweep rides it. */
         readonly tickSeconds?: string;
     },
@@ -700,7 +701,7 @@ async function withLiveGitHub(
                     ? {}
                     : { SWEEP_CADENCE_HOURS: github.cadenceHours }),
                 ...(github.writeCap === undefined ? {} : { SWEEP_WRITE_CALLS: github.writeCap }),
-                ...(github.requestCap === undefined ? {} : { SWEEP_REQUESTS: github.requestCap }),
+                ...(github.share === undefined ? {} : { SWEEP_SHARE: github.share }),
                 ...(github.tickSeconds === undefined ? {} : { TICK_SECONDS: github.tickSeconds }),
             },
             (shell) => body({ shell, port, storeFile, fetchLog }),
@@ -919,8 +920,8 @@ describe("the sandbox entry point, as a process", () => {
      * route is `timeline`, and this case scripts that empty), so the firing
      * decides nothing and the case stays about the WIRING rather than about a
      * ladder's judgement — which `test/shell/sweep/sweep.test.ts` owns. `SWEEP_WRITE_CALLS`
-     * and `SWEEP_REQUESTS` ride the same wiring: accepted at boot, and spent
-     * by nothing here, so the firing finishes the list with no cursor to keep.
+     * and `SWEEP_SHARE` ride the same wiring: accepted at boot, and barely spent
+     * here, so the firing finishes the list with no cursor to keep.
      */
     it(
         "with SWEEP_CADENCE_HOURS a delivery arms a sweep row, and the tick fires it",
@@ -931,7 +932,7 @@ describe("the sandbox entry point, as a process", () => {
                     timeline: [],
                     cadenceHours: "24",
                     writeCap: "5",
-                    requestCap: "50",
+                    share: "0.5",
                     tickSeconds: "1",
                 },
                 async ({ port, shell }) => {
@@ -950,7 +951,9 @@ describe("the sandbox entry point, as a process", () => {
                         heldBack: 0,
                         remaining: 0,
                         resumeAfter: null,
-                        requests: 2,
+                        reused: 0,
+                        deferred: false,
+                        spent: { core: 2, graphql: 0, mutations: 0 },
                     });
                 },
             );

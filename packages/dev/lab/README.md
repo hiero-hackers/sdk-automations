@@ -33,7 +33,10 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [6.9](protocols/6.9-sweep-and-check-reads.md) | the sweep's reads and the pull-request checks |
 | [6.10](protocols/6.10-destructive-writes.md) | the two destructive writes |
 | [6.11](protocols/6.11-review-facts-fields-labels-mentions.md) | review facts, issue fields, a missing label on add, and team mentions — the reviews design's four unknowns |
+| [6.12](protocols/6.12-updated-at.md) | which events move an item's `updated_at` — the snapshot's key |
+| [6.13](protocols/6.13-read-path-secondary-limit.md) | the read-path secondary limit and whether a 304 costs a point |
 | [7.1](protocols/7.1-capture.md) | capturing webhook payloads as normalizer fixtures |
 | [8.1](protocols/8.1-shell-soak.md) | the shell soak |
 | [8.2](protocols/8.2-first-effects.md) | the first effects sent for real |
 | [8.3](protocols/8.3-close-on-a-mode-claim.md) | closing a pull request on a mode claim |
+| [8.4](protocols/8.4-read-side-pilot.md) | the read-side pilot: what a cold and a warm firing charge |

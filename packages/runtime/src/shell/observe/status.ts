@@ -10,9 +10,11 @@ import {
     type NewestDelivery,
     type OpenSendTally,
     type ScheduleStanding,
+    type SnapshotStanding,
     type StandingWarnings,
     type VerdictTally,
 } from "../../store/index.js";
+import type { Allowance } from "../allowance.js";
 import { storeFile } from "../paths.js";
 
 /** What the store answered: the lines to print, and whether a store was there. */
@@ -23,6 +25,9 @@ export interface Status {
 
 /** How far back the decisions line counts, and the window it prints. */
 const DECISION_WINDOW_HOURS = 24;
+
+/** How far back the creations line counts — GitHub's own content-creation window (D193). */
+const CREATION_WINDOW_HOURS = 1;
 
 const HOUR_MS = 60 * 60_000;
 
@@ -85,6 +90,40 @@ const schedules = (rows: readonly ScheduleStanding[]): string[] =>
               ]),
           );
 
+/** One line per repository holding stored reads, and one saying none does (D193). */
+const snapshots = (rows: readonly SnapshotStanding[]): string[] =>
+    rows.length === 0
+        ? [line("snapshots", [NOTHING])]
+        : rows.map(({ repository, count: held, oldest }) =>
+              line("snapshots", [
+                  `${repository.owner}/${repository.repo}`,
+                  `held ${count(held)}`,
+                  `(oldest read ${instant(oldest)})`,
+              ]),
+          );
+
+const creations = (created: number): string =>
+    line("creations", [
+        `last ${String(CREATION_WINDOW_HOURS)} h: ${count(created)} comments landed`,
+    ]);
+
+/**
+ * What the sweep's allowance has spent of GitHub's window, per pool (D192, D193).
+ * The command reads a store rather than a running process, so it has none to ask and says so.
+ */
+const spending = (allowance: Allowance | null): string =>
+    allowance === null
+        ? line("allowance", ["held by the running process, not by the store"])
+        : line("allowance", [
+              ...allowance
+                  .standing()
+                  .map(
+                      ({ pool, spent, allowed, resetAt }) =>
+                          `${pool} ${count(spent)}/${count(allowed)} (resets ${instant(resetAt)})`,
+                  ),
+              `mutations ${count(allowance.spent().mutations)}`,
+          ]);
+
 const decisions = (tallies: readonly VerdictTally[]): string =>
     line("decisions", [
         `last ${String(DECISION_WINDOW_HOURS)} h: ${
@@ -95,15 +134,23 @@ const decisions = (tallies: readonly VerdictTally[]): string =>
     ]);
 
 /** Every question the store can answer about itself, one read each (D168). */
-export function status(store: Store, now: Date): readonly string[] {
-    const since = new Date(now.getTime() - DECISION_WINDOW_HOURS * HOUR_MS).toISOString();
+export function status(
+    store: Store,
+    now: Date,
+    allowance: Allowance | null = null,
+): readonly string[] {
+    const since = (hours: number): string =>
+        new Date(now.getTime() - hours * HOUR_MS).toISOString();
     return [
         deliveries(store.inbox.counts()),
         delay(store.inbox.newestDelivery()),
         sends(store.ledger.stillOpen()),
         warnings(store.ledger.standingWarnings(now.toISOString())),
         ...schedules(store.ledger.schedules()),
-        decisions(store.ledger.verdictsSince(since)),
+        ...snapshots(store.ledger.snapshots()),
+        creations(store.ledger.commentsSince(since(CREATION_WINDOW_HOURS))),
+        spending(allowance),
+        decisions(store.ledger.verdictsSince(since(DECISION_WINDOW_HOURS))),
     ];
 }
 

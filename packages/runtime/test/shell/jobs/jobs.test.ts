@@ -31,6 +31,7 @@ import {
     type WritePath,
 } from "../../../src/shell/index.js";
 import { fakeGitHub } from "../apply/effect-harness.js";
+import { spending } from "../spending.js";
 
 const SECRET = "shell-test-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
@@ -239,7 +240,7 @@ describe("one tick, four jobs", () => {
                 tickMs: TICK_MS,
                 // The reader is never reached: `intake` runs on events, so the
                 // repository wants no sweeping and the firing reads nothing.
-                sweep: {},
+                sweep: { allowance: spending() },
                 log,
             }),
         );

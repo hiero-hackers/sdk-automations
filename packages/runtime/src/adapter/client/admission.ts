@@ -50,34 +50,53 @@ export type AdmittedRequest =
           readonly ok: true;
           readonly request: GitHubRequest;
           readonly write: AdmittedWrite | null;
+          /** The read grants this request needs — per GraphQL operation, empty for a GET. */
+          readonly reads: readonly PermissionGrant[];
       }
     | { readonly ok: false; readonly refusal: GitHubFailure };
 
-const refused = (reason: Exclude<NotSentReason, "brokenSeam">): AdmittedRequest => ({
+const refused = (
+    reason: Exclude<NotSentReason, "brokenSeam" | "allowanceExhausted">,
+): AdmittedRequest => ({
     ok: false,
     refusal: notSentFailure(reason),
 });
 
 /**
- * The one GraphQL query this package may POST.
- * Nothing else may reach `/graphql`, and this operation may reach nothing else.
+ * The GraphQL operations this package may POST, and the grants each needs.
+ * An operation absent from here reaches `/graphql` never, and these reach nothing else.
  */
+const GRAPHQL_OPERATIONS: Readonly<Record<string, readonly PermissionGrant[]>> = {
+    LinkedIssues: ["issues:read", "pull_requests:read"],
+    LinkedIssuesBatch: ["issues:read", "pull_requests:read"],
+};
+
+/** The declared operation of a POST body, or `null` when the body does not name one. */
+function operationOf(body: string): string | null {
+    const named = jsonRecordOf(body);
+    if (named === null) return null;
+    const operationName = named["operationName"];
+    const query = named["query"];
+    if (typeof operationName !== "string" || typeof query !== "string") return null;
+    if (!Object.hasOwn(GRAPHQL_OPERATIONS, operationName)) return null;
+    // Each operation names its own query, so neither may answer for the other.
+
+    return new RegExp(`^\\s*query\\s+${operationName}(?:\\s|\\()`).test(query)
+        ? operationName
+        : null;
+}
+
 function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest {
     if (url.href !== GITHUB_GRAPHQL_URL) return refused("disallowedMethod");
     if (typeof request.body !== "string") return refused("invalidBody");
-    try {
-        const body = JSON.parse(request.body) as Record<string, unknown>;
-        if (
-            body.operationName !== "LinkedIssues" ||
-            typeof body.query !== "string" ||
-            !/^\s*query\s+LinkedIssues(?:\s|\()/.test(body.query)
-        ) {
-            return refused("invalidBody");
-        }
-    } catch {
-        return refused("invalidBody");
-    }
-    return { ok: true, request: { ...request, url: url.href }, write: null };
+    const operation = operationOf(request.body);
+    if (operation === null) return refused("invalidBody");
+    return {
+        ok: true,
+        request: { ...request, url: url.href },
+        write: null,
+        reads: GRAPHQL_OPERATIONS[operation]!,
+    };
 }
 
 /**
@@ -98,11 +117,11 @@ function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
     } else {
         if (body === undefined || jsonRecordOf(body) === null) return refused("invalidBody");
     }
-    return { ok: true, request: { ...request, url: url.href }, write };
+    return { ok: true, request: { ...request, url: url.href }, write, reads: [] };
 }
 
 /**
- * The admitted methods, the pinned origin, the one GraphQL query, the confirmed
+ * The admitted methods, the pinned origin, the named GraphQL operations, the confirmed
  * write endpoints. It runs before a token is acquired, so a refusal costs no mint.
  */
 export function admit(request: GitHubRequest): AdmittedRequest {
@@ -114,10 +133,8 @@ export function admit(request: GitHubRequest): AdmittedRequest {
     if (!parsed.ok) return refused(parsed.refused);
     if (write) return admitWrite(request, parsed.url);
     if (request.method === "POST") return admitGraphql(request, parsed.url);
-    return { ok: true, request: { ...request, url: parsed.url.href }, write: null };
+    return { ok: true, request: { ...request, url: parsed.url.href }, write: null, reads: [] };
 }
-
-const LINKED_ISSUES_GRANTS: readonly PermissionGrant[] = ["issues:read", "pull_requests:read"];
 
 function hasReadGrant(token: InstallationToken, required: PermissionGrant): boolean {
     const write = `${required.slice(0, -4)}write`;
@@ -125,17 +142,16 @@ function hasReadGrant(token: InstallationToken, required: PermissionGrant): bool
 }
 
 /**
- * Grants this request needs and the token does not carry.
+ * Grants the admission gate named and the token does not carry.
  * A read is satisfied by the matching write grant; a write by the one its own endpoint names, and nothing weaker (D123).
  */
 export function missingGrants(
-    request: GitHubRequest,
+    reads: readonly PermissionGrant[],
     write: AdmittedWrite | null,
     token: InstallationToken,
 ): readonly PermissionGrant[] {
     if (write !== null) {
         return token.grants.some((grant) => grant === write.grant) ? [] : [write.grant];
     }
-    if (request.method !== "POST") return [];
-    return LINKED_ISSUES_GRANTS.filter((grant) => !hasReadGrant(token, grant));
+    return reads.filter((grant) => !hasReadGrant(token, grant));
 }

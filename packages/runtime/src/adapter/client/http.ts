@@ -13,7 +13,9 @@ import {
     type FailureClass,
 } from "@hiero-hackers/automation-core";
 import { admit, missingGrants } from "./admission.js";
+import type { Pool } from "./allowance.js";
 import {
+    allowanceFailure,
     bodyOf,
     brokenSeamFailure,
     DEFAULT_REQUEST_TIMEOUT_MS,
@@ -29,7 +31,6 @@ import {
     type GitHubHttpFailureClass,
     type GitHubOutcome,
     type GitHubRequest,
-    type GitHubRequestBudget,
     type RateLimitSnapshot,
 } from "./contract.js";
 import {
@@ -38,6 +39,7 @@ import {
     type InstallationToken,
     type TokenOutcome,
 } from "./token.js";
+import { field, jsonRecordOf } from "./untrusted.js";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
 
@@ -79,34 +81,6 @@ export const MAX_RETRY_WAIT_MS = 30_000;
  */
 const BACKOFF_JITTER_FRACTION = 0.25;
 
-export function withRequestBudget(
-    client: GitHubHttpClient,
-    budget: GitHubRequestBudget,
-): GitHubHttpClient {
-    return {
-        async request(request, localBudget) {
-            if (localBudget === undefined || localBudget === budget) {
-                return await client.request(request, budget);
-            }
-            const available = Math.min(budget.remaining, localBudget.remaining);
-            const shared: GitHubRequestBudget = { remaining: available };
-            try {
-                return await client.request(request, shared);
-            } finally {
-                const spent = available - shared.remaining;
-                budget.remaining -= spent;
-                localBudget.remaining -= spent;
-                if (shared.exhausted) {
-                    if (budget.remaining === 0) budget.exhausted = true;
-                    if (localBudget.remaining === 0) localBudget.exhausted = true;
-                }
-            }
-        },
-        latestRateLimit: () => client.latestRateLimit(),
-        requestsMade: () => client.requestsMade(),
-    };
-}
-
 /**
  * Primary-budget requests held back rather than spent (threat model §2).
  * Under it this client stops as if already exhausted, countably in the shell.
@@ -118,6 +92,11 @@ export const PRIMARY_BUDGET_RESERVE = 50;
  * Per client instance, and it spaces CREATION only: a label call is not content.
  */
 export const CONTENT_CREATION_SPACING_MS = 2_000;
+
+/** Comments this client may create per hour, under GitHub's documented five hundred (F11). */
+export const CONTENT_CREATION_HOURLY = 400;
+
+const HOUR_MS = 60 * 60_000;
 
 // ─── The retry policy ────────────────────────────────────────────────
 
@@ -250,6 +229,26 @@ function rateLimitHeaders(headers: Readonly<Record<string, string>>): Record<str
     );
 }
 
+// ─── The pools ───────────────────────────────────────────────────────
+
+/** Which pool a request is aimed at; only the admitted GraphQL POST leaves core. */
+function poolOf(request: GitHubRequest): Pool {
+    return !isWrite(request) && request.method === "POST" ? "graphql" : "core";
+}
+
+/** The pool a response names, or the one the request was aimed at (F9). */
+function chargedPool(headers: Readonly<Record<string, string>>, aimedAt: Pool): Pool {
+    const resource = headers["x-ratelimit-resource"];
+    if (resource === "graphql") return "graphql";
+    return resource === "core" ? "core" : aimedAt;
+}
+
+/** The points a GraphQL body reports for itself, or `null` where it reports none. */
+function pointsIn(body: string): number | null {
+    const cost = field(field(field(jsonRecordOf(body), "data"), "rateLimit"), "cost");
+    return typeof cost === "number" && Number.isInteger(cost) && cost > 0 ? cost : null;
+}
+
 // ─── The client ──────────────────────────────────────────────────────
 
 /**
@@ -329,28 +328,32 @@ export function createGitHubHttpClient({
     sleep = wait,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     timeoutSignal = AbortSignal.timeout,
+    contentCreationHourly = CONTENT_CREATION_HOURLY,
 }: GitHubHttpClientOptions): GitHubHttpClient {
     const cache = createRepresentationCache();
-    let latestRateLimit: RateLimitSnapshot | null = null;
-    /** Monotonic for this client's life; useful for operational measurement. */
-    let sent = 0;
+    /** One slot per `x-ratelimit-resource`: a GraphQL answer says nothing about core (F9). */
+    const slots = new Map<string, RateLimitSnapshot>();
+    let latestResource: string | null = null;
 
     const rememberRateLimit = (
+        resource: string,
         url: string,
         status: number,
         headers: Readonly<Record<string, string>>,
     ): void => {
-        latestRateLimit = { url, status, headers: rateLimitHeaders(headers) };
+        slots.set(resource, { url, status, headers: rateLimitHeaders(headers) });
+        latestResource = resource;
     };
 
     /**
-     * The exhaustion the NEXT request should assume — the rate snapshot's one consumer.
+     * The exhaustion the next request on this pool should assume — the slots' one consumer.
      * A count with no usable reset is ignored: pacing on it could never expire.
      */
-    const pacingClass = (): FailureClass | null => {
-        if (latestRateLimit === null) return null;
-        const remaining = parseSecondsHeader(latestRateLimit.headers["x-ratelimit-remaining"]);
-        const resetAt = latestRateLimit.headers["x-ratelimit-reset"];
+    const pacingClass = (pool: Pool): FailureClass | null => {
+        const slot = slots.get(pool);
+        if (slot === undefined) return null;
+        const remaining = parseSecondsHeader(slot.headers["x-ratelimit-remaining"]);
+        const resetAt = slot.headers["x-ratelimit-reset"];
         if (remaining.kind !== "valid" || remaining.seconds >= PRIMARY_BUDGET_RESERVE) return null;
         return parseSecondsHeader(resetAt).kind === "valid"
             ? { kind: "primaryExhausted", resetAt }
@@ -360,7 +363,7 @@ export function createGitHubHttpClient({
     const sendOnce = async (
         request: GitHubRequest,
         token: InstallationToken,
-        budget?: GitHubRequestBudget,
+        pool: Pool,
     ): Promise<GitHubOutcome> => {
         const prepared = prepareHeaders(request, token);
         if (!prepared.ok) return prepared.refusal;
@@ -396,11 +399,6 @@ export function createGitHubHttpClient({
             ...(requestBody === undefined ? {} : { body: requestBody }),
         };
 
-        // Counted here and nowhere else: a retried attempt counts again, and a cached
-        // representation still sends a conditional request.
-
-        if (budget !== undefined) budget.remaining -= 1;
-        sent += 1;
         let response: Response;
         try {
             response = await send(request.url, init);
@@ -409,7 +407,12 @@ export function createGitHubHttpClient({
         }
 
         const responseHeaders = headersToRecord(response.headers);
-        rememberRateLimit(request.url, response.status, responseHeaders);
+        rememberRateLimit(
+            chargedPool(responseHeaders, pool),
+            request.url,
+            response.status,
+            responseHeaders,
+        );
 
         if (response.status === 304) {
             // A 304 with nothing to reuse: a full re-read fixes it.
@@ -500,8 +503,22 @@ export function createGitHubHttpClient({
      */
     let creationLane: Promise<void> = Promise.resolve();
     let lastCreationAt: number | null = null;
+    /** The hour both lanes share, anchored at its own first creation (F11). */
+    let creationHourFrom: number | null = null;
+    let createdThisHour = 0;
 
-    /** Wait out this creation's turn, or name the seam that broke. */
+    /** Take this hour's next creation slot, or answer that the hour is full. */
+    const takeCreationSlot = (at: number): boolean => {
+        if (creationHourFrom === null || at - creationHourFrom >= HOUR_MS) {
+            creationHourFrom = at;
+            createdThisHour = 0;
+        }
+        if (createdThisHour >= contentCreationHourly) return false;
+        createdThisHour += 1;
+        return true;
+    };
+
+    /** Wait out this creation's turn, or name what stops it. */
     const spaceCreation = async (): Promise<GitHubFailure | null> => {
         let startedAt: number;
         try {
@@ -509,6 +526,7 @@ export function createGitHubHttpClient({
         } catch {
             return brokenSeamFailure("clock");
         }
+        if (!takeCreationSlot(startedAt)) return notSentFailure("contentCreationCeiling");
         const due = lastCreationAt === null ? 0 : lastCreationAt + CONTENT_CREATION_SPACING_MS;
         if (due > startedAt) {
             try {
@@ -537,12 +555,29 @@ export function createGitHubHttpClient({
     };
 
     return {
-        async request(request, budget): Promise<GitHubOutcome> {
+        async request(request, allowance): Promise<GitHubOutcome> {
             const admitted = admit(request);
             if (!admitted.ok) return admitted.refusal;
             const safeRequest = admitted.request;
             const write = admitted.write;
             const retriable = mayRetryInClient(safeRequest);
+            const pool = poolOf(safeRequest);
+
+            /** What GitHub charged for this exchange, taken from the response it answered with. */
+            const charge = (outcome: GitHubOutcome): void => {
+                if (allowance === undefined || outcome.status === undefined) return;
+                const headers = outcome.headers ?? {};
+                const charged = chargedPool(headers, pool);
+                // The window is read before the charge: a rolled window starts at this one.
+
+                allowance.observed(charged, headers);
+                allowance.charge({
+                    pool: charged,
+                    mutation: write !== null,
+                    status: outcome.status,
+                    points: charged === "graphql" ? pointsIn(outcome.body ?? "") : null,
+                });
+            };
 
             let waitedMs = 0;
             /** This request's next move, or the broken clock that ends it. */
@@ -570,7 +605,7 @@ export function createGitHubHttpClient({
             const deliver = async (): Promise<GitHubOutcome> => {
                 // Pacing runs once, before the first send; it is not a retry.
 
-                const paced = pacingClass();
+                const paced = pacingClass(pool);
                 if (paced !== null) {
                     const step = move(paced, 0);
                     if (step === "brokenClock") return brokenSeamFailure("clock");
@@ -592,7 +627,7 @@ export function createGitHubHttpClient({
                         return brokenSeamFailure("tokenSource");
                     }
                     if (!tokenOutcome.ok) return tokenOutcome;
-                    const missing = missingGrants(safeRequest, write, tokenOutcome.token);
+                    const missing = missingGrants(admitted.reads, write, tokenOutcome.token);
                     if (missing.length > 0) {
                         return {
                             ok: false,
@@ -603,21 +638,21 @@ export function createGitHubHttpClient({
                         };
                     }
 
-                    if (budget !== undefined) {
-                        if (budget.remaining <= 0) {
-                            budget.exhausted = true;
-                            return previous ?? notSentFailure("requestBudgetExhausted");
-                        }
+                    const refusing = allowance?.refuses(pool, write !== null) ?? null;
+                    if (refusing !== null) {
+                        allowance?.refused(refusing);
+                        return previous ?? allowanceFailure(refusing);
                     }
 
                     let outcome: GitHubOutcome;
                     try {
-                        outcome = await sendOnce(safeRequest, tokenOutcome.token, budget);
+                        outcome = await sendOnce(safeRequest, tokenOutcome.token, pool);
                     } catch {
                         // What escapes `sendOnce()` is a response object that broke mid-read.
 
                         return brokenSeamFailure("response");
                     }
+                    charge(outcome);
                     previous = outcome;
                     if (outcome.ok) return outcome;
                     const responseClass = responseClassOf(outcome.failure);
@@ -656,12 +691,8 @@ export function createGitHubHttpClient({
             return outcome;
         },
         latestRateLimit(): RateLimitSnapshot | null {
-            if (latestRateLimit === null) return null;
-            return {
-                ...latestRateLimit,
-                headers: { ...latestRateLimit.headers },
-            };
+            const latest = latestResource === null ? undefined : slots.get(latestResource);
+            return latest === undefined ? null : { ...latest, headers: { ...latest.headers } };
         },
-        requestsMade: () => sent,
     };
 }

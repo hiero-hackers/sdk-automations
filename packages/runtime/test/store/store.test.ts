@@ -228,6 +228,9 @@ describe("claims — the two-worker race serialized (6.5 scenario 6), now as a l
     });
 });
 
+/** When a firing began, as the re-arm writes it down (D192). */
+const STARTED_AT = "2026-07-23T10:00:00.000Z";
+
 describe("schedules — the stage-five exit-gate behavior, testable today", () => {
     it("a due schedule fires exactly once across two instances and a restart", () => {
         const a = new Store(path);
@@ -296,7 +299,13 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
         const fired = s.ledger.claimDue("2026-07-23T10:00:00.000Z")[0]!;
 
         expect(
-            s.ledger.scheduleAgain("sweep:o/r", fired.claimToken, "2026-07-24T10:00:00.000Z", null),
+            s.ledger.scheduleAgain(
+                "sweep:o/r",
+                fired.claimToken,
+                "2026-07-24T10:00:00.000Z",
+                null,
+                STARTED_AT,
+            ),
         ).toBe(true);
 
         // The claim is gone, the row is pending again, and it fires only once
@@ -317,7 +326,13 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
         const second = s.ledger.claimDue("2026-07-23T10:01:00.000Z")[0]!;
 
         expect(
-            s.ledger.scheduleAgain("sweep:o/r", first.claimToken, "2026-07-24T10:00:00.000Z", null),
+            s.ledger.scheduleAgain(
+                "sweep:o/r",
+                first.claimToken,
+                "2026-07-24T10:00:00.000Z",
+                null,
+                STARTED_AT,
+            ),
         ).toBe(false);
         expect(
             s.ledger.scheduleAgain(
@@ -325,10 +340,11 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
                 second.claimToken,
                 "2026-07-24T10:00:00.000Z",
                 null,
+                STARTED_AT,
             ),
         ).toBe(true);
         expect(() =>
-            s.ledger.scheduleAgain("sweep:o/r", second.claimToken, "nonsense", null),
+            s.ledger.scheduleAgain("sweep:o/r", second.claimToken, "nonsense", null, STARTED_AT),
         ).toThrow(/dueAt/);
         s.close();
     });
@@ -345,6 +361,7 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
                 fired.claimToken,
                 "2026-07-24T10:00:00.000Z",
                 412,
+                STARTED_AT,
             ),
         ).toBe(true);
         before.close();
@@ -360,6 +377,7 @@ describe("schedules — the stage-five exit-gate behavior, testable today", () =
                 resumed.claimToken,
                 "2026-07-25T10:00:00.000Z",
                 null,
+                STARTED_AT,
             ),
         ).toBe(true);
         expect(restarted.ledger.claimDue("2026-07-25T11:00:00.000Z")).toMatchObject([

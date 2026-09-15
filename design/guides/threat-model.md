@@ -38,7 +38,8 @@ flowchart LR
 - GitHub sends events; the App reads repository configuration; capabilities return intents.
 - The platform may write approved effects through an installation token.
 - The shared GitHub API rate budget is also a protected asset.
-- One repository must not be able to make every installation unavailable.
+- One repository must not be able to make every installation unavailable: the sweep and the webhook
+  lane hold separate shares of each rate-limit pool, so neither can spend the other's (D192).
 - Permissions are not fixed: the minimum set depends on the capabilities an installation enables.
 - The production App requests the smallest practical installation-wide set.
 - Every intent is checked against the installation grants required by its platform-owned operation facts.

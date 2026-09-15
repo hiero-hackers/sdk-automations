@@ -18,8 +18,14 @@ import {
     type GitHubRequest,
 } from "../../../src/adapter/client/contract.js";
 import {
+    ASSUMED_POOL_LIMIT,
+    createAllowance,
+    type Allowance,
+} from "../../../src/adapter/client/allowance.js";
+import {
     createGitHubHttpClient,
     wait,
+    CONTENT_CREATION_HOURLY,
     CONTENT_CREATION_SPACING_MS,
     DEFAULT_ETAG_CACHE_BYTES,
     DEFAULT_ETAG_CACHE_ENTRIES,
@@ -27,7 +33,6 @@ import {
     MAX_RESPONSE_BODY_BYTES,
     MAX_RETRY_WAIT_MS,
     PRIMARY_BUDGET_RESERVE,
-    withRequestBudget,
 } from "../../../src/adapter/client/http.js";
 import {
     failure,
@@ -46,6 +51,19 @@ const GRAPHQL_BODY = JSON.stringify({
     operationName: "LinkedIssues",
     query: 'query LinkedIssues { repository(owner: "o", name: "r") { id } }',
 });
+const GRAPHQL_BATCH_BODY = JSON.stringify({
+    operationName: "LinkedIssuesBatch",
+    query: 'query LinkedIssuesBatch($n0: Int!) { repository(owner: "o", name: "r") { id } }',
+});
+const NO_SPEND = { core: 0, graphql: 0, mutations: 0 };
+
+/** An allowance whose core pool is spent and whose GraphQL pool is untouched. */
+function spentCore(): Allowance {
+    const allowance = createAllowance({ share: 1 / ASSUMED_POOL_LIMIT });
+    allowance.charge({ pool: "core", mutation: false, status: 200, points: null });
+    return allowance;
+}
+
 const GRAPHQL_TOKEN = {
     ...token("graphql-token"),
     grants: ["issues:read", "pull_requests:read"],
@@ -127,6 +145,32 @@ describe("request shaping", () => {
             expect(headers.get("if-none-match")).toBeNull();
             expect(headers.get("authorization")).toBe("Bearer graphql-token");
         }
+    });
+
+    it("admits the batched link query, under the same two read grants", async () => {
+        const { client, scripted } = harness([success('{"data":{}}')], {
+            outcomes: [{ ok: true, token: GRAPHQL_TOKEN }],
+        });
+        const refusing = harness([success('{"data":{}}')], {
+            outcomes: [{ ok: true, token: { ...token("thin"), grants: ["issues:read"] } }],
+        });
+
+        expect(
+            await client.request({
+                url: GITHUB_GRAPHQL_URL,
+                method: "POST",
+                body: GRAPHQL_BATCH_BODY,
+            }),
+        ).toMatchObject({ ok: true });
+        expect(
+            await refusing.client.request({
+                url: GITHUB_GRAPHQL_URL,
+                method: "POST",
+                body: GRAPHQL_BATCH_BODY,
+            }),
+        ).toMatchObject({ ok: false, failure: { kind: "permissionMissing" } });
+        expect(scripted.calls).toHaveLength(1);
+        expect(refusing.scripted.calls).toHaveLength(0);
     });
 
     it("retries a read-only GraphQL query with the same body", async () => {
@@ -436,6 +480,8 @@ describe("request shaping", () => {
         const invalidBodies: readonly unknown[] = [
             null,
             "{",
+            "null",
+            "[]",
             JSON.stringify({ query: "query LinkedIssues { viewer { login } }" }),
             JSON.stringify({ operationName: "LinkedIssues", query: 42 }),
             JSON.stringify({
@@ -445,6 +491,20 @@ describe("request shaping", () => {
             JSON.stringify({
                 operationName: "LinkedIssues",
                 query: "mutation LinkedIssues { deleteIssue(input: {}) { clientMutationId } }",
+            }),
+            // A third operation, well formed and named by nothing in the matrix.
+            JSON.stringify({
+                operationName: "RepositoryTopics",
+                query: 'query RepositoryTopics { repository(owner: "o", name: "r") { id } }',
+            }),
+            // Each operation carries its own prefix; neither answers for the other.
+            JSON.stringify({
+                operationName: "LinkedIssuesBatch",
+                query: 'query LinkedIssues { repository(owner: "o", name: "r") { id } }',
+            }),
+            JSON.stringify({
+                operationName: "LinkedIssues",
+                query: "query LinkedIssuesBatch($n0: Int!) { repository { id } }",
             }),
         ];
 
@@ -1373,6 +1433,48 @@ describe("proactive pacing", () => {
         expect(scripted.calls).toHaveLength(3);
     });
 
+    it("paces on the pool the next request will hit, not the last one answered", async () => {
+        const { client, scripted, sleeps } = harness(
+            [
+                success('{"data":{}}', {
+                    "x-ratelimit-remaining": "1",
+                    "x-ratelimit-reset": String(NOW_SECONDS + 600),
+                    "x-ratelimit-resource": "graphql",
+                }),
+                success("second"),
+            ],
+            { outcomes: [{ ok: true, token: GRAPHQL_TOKEN }] },
+        );
+        await client.request({ url: GITHUB_GRAPHQL_URL, method: "POST", body: GRAPHQL_BODY });
+
+        // The GraphQL pool is all but spent; the REST pool has said nothing at all.
+        expect(await client.request(request())).toMatchObject({ ok: true, body: "second" });
+        expect(sleeps).toEqual([]);
+        expect(scripted.calls).toHaveLength(2);
+    });
+
+    it("paces the next request on the pool that reported the exhaustion", async () => {
+        const { client, scripted } = harness(
+            [
+                success('{"data":{}}', {
+                    "x-ratelimit-remaining": "1",
+                    "x-ratelimit-reset": String(NOW_SECONDS + 600),
+                    "x-ratelimit-resource": "graphql",
+                }),
+                success("must not happen"),
+            ],
+            { outcomes: [{ ok: true, token: GRAPHQL_TOKEN }] },
+        );
+        const query = { url: GITHUB_GRAPHQL_URL, method: "POST", body: GRAPHQL_BODY } as const;
+        await client.request(query);
+
+        expect(await client.request(query)).toEqual({
+            ok: false,
+            failure: { kind: "primaryExhausted", resetAt: String(NOW_SECONDS + 600) },
+        });
+        expect(scripted.calls).toHaveLength(1);
+    });
+
     it("names the clock seam when it breaks while pacing", async () => {
         let reads = 0;
         const { client, scripted } = harness([spent("1", 5), success("second")], {
@@ -1503,129 +1605,130 @@ describe("rate awareness", () => {
     });
 });
 
-/** What a request budget spends: sends, not items and not successes (D170). */
-describe("the request count", () => {
-    it("starts at none and counts one request", async () => {
+/** What the allowance is charged, in GitHub's units and from the response (D192). */
+describe("the allowance", () => {
+    it("starts at nothing and charges one request to the core pool", async () => {
         const { client } = harness([success()]);
-        expect(client.requestsMade()).toBe(0);
+        const allowance = createAllowance({ share: 1 });
+        expect(allowance.spent()).toEqual(NO_SPEND);
 
-        await client.request(request());
+        await client.request(request(), allowance);
 
-        expect(client.requestsMade()).toBe(1);
+        expect(allowance.spent()).toEqual({ ...NO_SPEND, core: 1 });
     });
 
-    it("counts a retried attempt again", async () => {
+    it("charges a retried attempt again", async () => {
         const { client } = harness([failure(503, "down"), success("up")]);
+        const allowance = createAllowance({ share: 1 });
 
-        await client.request(request());
+        await client.request(request(), allowance);
 
-        expect(client.requestsMade()).toBe(2);
+        expect(allowance.spent().core).toBe(2);
     });
 
-    it("counts the conditional request a cached representation answers", async () => {
+    it("charges nothing for the conditional request a cached representation answers", async () => {
         const { client } = harness([
             success('{"number":132}', { etag: '"issue-v1"' }),
             new Response(null, { status: 304 }),
         ]);
+        const allowance = createAllowance({ share: 1 });
 
-        await client.request(request());
-        const cached = await client.request(request());
+        await client.request(request(), allowance);
+        const cached = await client.request(request(), allowance);
 
         expect(cached).toMatchObject({ ok: true, status: 304, fromCache: true });
-        expect(client.requestsMade()).toBe(2);
+        expect(allowance.spent().core).toBe(1);
     });
 
-    it("counts nothing for a call the admission gate refused", async () => {
-        const { client } = harness([success()]);
+    it("charges a GraphQL query to its own pool, at the cost it reports", async () => {
+        const { client } = harness(
+            [success('{"data":{"rateLimit":{"cost":3}}}'), success('{"data":{}}')],
+            { outcomes: [{ ok: true, token: GRAPHQL_TOKEN }] },
+        );
+        const allowance = createAllowance({ share: 1 });
+        const query = { url: GITHUB_GRAPHQL_URL, method: "POST", body: GRAPHQL_BODY } as const;
 
-        expect(await client.request(request({ url: "not a URL" }))).toEqual({
+        await client.request(query, allowance);
+        expect(allowance.spent()).toEqual({ ...NO_SPEND, graphql: 3 });
+
+        // A query that reports no cost is charged one point, not one request.
+        await client.request(query, allowance);
+        expect(allowance.spent()).toEqual({ ...NO_SPEND, graphql: 4 });
+    });
+
+    it("charges nothing for a call the admission gate refused", async () => {
+        const { client } = harness([success()]);
+        const allowance = createAllowance({ share: 1 });
+
+        expect(await client.request(request({ url: "not a URL" }), allowance)).toEqual({
             ok: false,
             failure: { kind: "notSent", reason: "malformedUrl" },
         });
-        expect(client.requestsMade()).toBe(0);
+        expect(allowance.spent()).toEqual(NO_SPEND);
     });
 
-    it("sends nothing when the request budget is already spent", async () => {
+    it("sends nothing when the pool the request would hit is spent, and names it", async () => {
         const { client, scripted } = harness([success()]);
-        const budget = { remaining: 0 };
+        const allowance = spentCore();
 
-        expect(await client.request(request(), budget)).toEqual({
+        expect(await client.request(request(), allowance)).toEqual({
             ok: false,
-            failure: { kind: "notSent", reason: "requestBudgetExhausted" },
+            failure: { kind: "notSent", reason: "allowanceExhausted", lane: "core" },
         });
-        expect(budget).toEqual({ remaining: 0, exhausted: true });
         expect(scripted.calls).toHaveLength(0);
-        expect(client.requestsMade()).toBe(0);
     });
 
-    it("spends nothing when request preparation fails before fetch", async () => {
+    it("still sends a GraphQL query when only the core pool is spent", async () => {
+        const { client, scripted } = harness([success('{"data":{}}')], {
+            outcomes: [{ ok: true, token: GRAPHQL_TOKEN }],
+        });
+        const allowance = spentCore();
+
+        const outcome = await client.request(
+            { url: GITHUB_GRAPHQL_URL, method: "POST", body: GRAPHQL_BODY },
+            allowance,
+        );
+
+        expect(outcome.ok).toBe(true);
+        expect(scripted.calls).toHaveLength(1);
+    });
+
+    it("charges nothing when request preparation fails before fetch", async () => {
         const { client, scripted } = harness([success()], {
             timeoutSignal: () => {
                 throw new Error("broken timeout signal");
             },
         });
-        const budget = { remaining: 1 };
+        const allowance = createAllowance({ share: 1 });
 
-        expect(await client.request(request(), budget)).toMatchObject({
+        expect(await client.request(request(), allowance)).toMatchObject({
             ok: false,
             failure: { kind: "notSent", reason: "brokenSeam", seam: "timeoutSignal" },
         });
-        expect(budget).toEqual({ remaining: 1 });
+        expect(allowance.spent()).toEqual(NO_SPEND);
         expect(scripted.calls).toHaveLength(0);
-        expect(client.requestsMade()).toBe(0);
     });
 
-    it("does not retry past the request budget", async () => {
+    it("does not retry past the allowance, and answers with what it already had", async () => {
         const { client, scripted } = harness([failure(503, "down"), success("up")]);
-        const budget = { remaining: 1 };
+        // One request of the pool: the first attempt takes it and the retry is refused.
+        const allowance = createAllowance({ share: 1 / ASSUMED_POOL_LIMIT });
 
-        const outcome = await client.request(request(), budget);
+        const outcome = await client.request(request(), allowance);
 
         expect(outcome).toMatchObject({ ok: false, status: 503 });
-        expect(budget).toEqual({ remaining: 0, exhausted: true });
         expect(scripted.calls).toHaveLength(1);
-        expect(client.requestsMade()).toBe(1);
+        expect(allowance.spent().core).toBe(1);
     });
 
-    it("retries when the request budget permits both attempts", async () => {
+    it("retries when the allowance reaches both attempts", async () => {
         const { client, scripted } = harness([failure(503, "down"), success("up")]);
-        const budget = { remaining: 2 };
+        const allowance = createAllowance({ share: 2 / ASSUMED_POOL_LIMIT });
 
-        expect((await client.request(request(), budget)).ok).toBe(true);
-        expect(budget).toEqual({ remaining: 0 });
+        expect((await client.request(request(), allowance)).ok).toBe(true);
+
         expect(scripted.calls).toHaveLength(2);
-        expect(client.requestsMade()).toBe(2);
-    });
-});
-
-describe("a shared request budget", () => {
-    it("charges retries to the request cap and the write cap", async () => {
-        const { client, scripted } = harness([failure(503, "down"), success("up")]);
-        const requests = { remaining: 3 };
-        const writes = { remaining: 2 };
-
-        expect((await withRequestBudget(client, requests).request(request(), writes)).ok).toBe(
-            true,
-        );
-
-        expect(requests.remaining).toBe(1);
-        expect(writes.remaining).toBe(0);
-        expect(scripted.calls).toHaveLength(2);
-    });
-
-    it("uses the shared cap when a call has no smaller cap", async () => {
-        const { client, scripted } = harness([success(), success("must not be sent")]);
-        const requests = { remaining: 1 };
-        const bounded = withRequestBudget(client, requests);
-
-        expect((await bounded.request(request())).ok).toBe(true);
-        expect(await bounded.request(request())).toMatchObject({
-            ok: false,
-            failure: { kind: "notSent", reason: "requestBudgetExhausted" },
-        });
-
-        expect(requests).toEqual({ remaining: 0, exhausted: true });
-        expect(scripted.calls).toHaveLength(1);
+        expect(allowance.exhausted()).toBe("core");
     });
 });
 
@@ -2158,6 +2261,45 @@ describe("content-creation pacing", () => {
             seam: "sleep",
         });
         expect(scripted.calls).toHaveLength(1);
+    });
+
+    it("refuses the creation past the hour's ceiling, and never the one at it", async () => {
+        const { client, scripted } = harness([() => success("{}")]);
+
+        for (let created = 0; created < CONTENT_CREATION_HOURLY; created += 1) {
+            expect((await client.request(createComment)).ok).toBe(true);
+        }
+
+        expect(await client.request(createComment)).toEqual({
+            ok: false,
+            failure: { kind: "notSent", reason: "contentCreationCeiling" },
+        });
+        expect(scripted.calls).toHaveLength(CONTENT_CREATION_HOURLY);
+    });
+
+    it("starts the ceiling again in the next hour", async () => {
+        let now = NOW;
+        const { client, scripted } = harness([() => success("{}")], { clock: () => now });
+        for (let created = 0; created < CONTENT_CREATION_HOURLY; created += 1) {
+            await client.request(createComment);
+        }
+
+        now = new Date(NOW.getTime() + 60 * 60_000);
+
+        expect((await client.request(createComment)).ok).toBe(true);
+        expect(scripted.calls).toHaveLength(CONTENT_CREATION_HOURLY + 1);
+    });
+
+    it("charges a mutation to the core pool and the mutation lane", async () => {
+        const { client } = harness([() => success("{}")]);
+        const allowance = createAllowance({ share: 1, mutations: 2 });
+        allowance.armMutations(2);
+
+        await client.request(addLabel, allowance);
+        await client.request(createComment, allowance);
+
+        expect(allowance.spent()).toEqual({ core: 2, graphql: 0, mutations: 2 });
+        expect(allowance.exhausted()).toBe("mutations");
     });
 
     it("holds the lane until a creation finishes, so two never overlap", async () => {

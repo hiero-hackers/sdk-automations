@@ -17,9 +17,10 @@ maintainers confirm the split and ownership.
 3. Carry a secondary-rate-limit pause across separate requests when the current client proves
    insufficient.
 4. Record request use per installation and verify the design with a many-repository harness.
+   One repository is measured (protocol 8.4, 2026-09-15); the harness stays open.
 
-The shared request cap is an outbound safety bound. It is not a model of GitHub's separate REST,
-GraphQL, search, and secondary-rate-limit buckets.
+The sweep's allowance is a share of the installation's own limit per pool, in GitHub's units,
+over GitHub's reset window (D192). Search is never used and the secondary limits are the client's.
 
 ### 2. Prove current main
 

@@ -1,5 +1,6 @@
 /** The shell owns ORDER, not decisions (D93, D110); `compose/main.ts` is the unexported entry point. */
 
+export * from "./allowance.js";
 export * from "./apply/apply.js";
 export * from "./effects.js";
 /** The four walks the write path is driven through; `apply/operations/` is otherwise internal. */

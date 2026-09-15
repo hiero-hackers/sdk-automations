@@ -22,6 +22,7 @@ import {
     readCommitAttestations,
 } from "../../../src/adapter/reads/resolvers.js";
 import { parseConfigDocument, type RepositoryConfig } from "@hiero-hackers/automation-core";
+import { createAllowance, type Allowance } from "../../../src/adapter/client/allowance.js";
 import { failure, httpHarness, installationToken, success, type ResponseStep } from "../harness.js";
 
 const REPOSITORY = { owner: "Hiero-Hackers", repo: "SDK-Automations" } as const;
@@ -51,7 +52,11 @@ const CONFIG = configWith();
 /** No declarations: nothing in this file asks the resolver that reads them. */
 const KNOWN: readonly AdmittedCapability[] = [];
 
-function source(steps: readonly ResponseStep[], grants: readonly PermissionGrant[] = GRANTS) {
+function source(
+    steps: readonly ResponseStep[],
+    grants: readonly PermissionGrant[] = GRANTS,
+    allowance?: Allowance,
+) {
     const harness = httpHarness(steps, {
         outcomes: [{ ok: true, token: { ...installationToken("resolver-token"), grants } }],
     });
@@ -61,6 +66,7 @@ function source(steps: readonly ResponseStep[], grants: readonly PermissionGrant
             repository: REPOSITORY,
             config: CONFIG,
             knownCapabilities: KNOWN,
+            ...(allowance === undefined ? {} : { allowance }),
         }),
         calls: harness.scripted.calls,
     };
@@ -339,6 +345,55 @@ describe("mergeability", () => {
         const { resolve } = source([failure(403, "no")]);
 
         expect(await resolve("mergeability", { item: PULL })).toMatchObject({ ok: false });
+    });
+});
+
+/**
+ * What a capability is told when this lane's own share is gone, rather than
+ * GitHub's: `unavailable`, naming the instant the pool the client refused on
+ * resets — the allowance was told that instant by GitHub's own headers (D192).
+ */
+describe("a read the lane's allowance refuses", () => {
+    /** GitHub's own limit for the pool, set to one so the second read is past the share. */
+    const RESET_SECONDS = 1_787_300_060;
+    const ONE_REQUEST = {
+        "x-ratelimit-limit": "1",
+        "x-ratelimit-reset": String(RESET_SECONDS),
+    };
+
+    it("answers unavailable with the pool's own reset, having sent nothing", async () => {
+        const allowance = createAllowance({ share: 1 });
+        const { resolve, calls } = source(
+            [success(JSON.stringify({ number: 34, mergeable: true }), ONE_REQUEST)],
+            GRANTS,
+            allowance,
+        );
+
+        expect(await resolve("mergeability", { item: PULL })).toEqual({ ok: true, value: true });
+        expect(await resolve("mergeability", { item: PULL })).toEqual({
+            ok: false,
+            reason: "unavailable",
+            detail:
+                "this lane's core allowance is spent; the pool resets at " +
+                new Date(RESET_SECONDS * 1_000).toISOString(),
+        });
+        expect(calls).toHaveLength(1);
+        expect(allowance.lastRefusal()).toMatchObject({ lane: "core" });
+    });
+
+    /** Before any response, the allowance knows no window and says so rather than inventing one. */
+    it("says GitHub named no instant when no response has carried one", async () => {
+        const allowance = createAllowance({ share: 0.0001 });
+        const { resolve, calls } = source([success("{}")], GRANTS, allowance);
+
+        expect(await resolve("mergeability", { item: PULL })).toEqual({
+            ok: false,
+            reason: "unavailable",
+            detail:
+                "this lane's core allowance is spent; the pool resets at " +
+                "an instant GitHub has not reported",
+        });
+        expect(calls).toHaveLength(0);
     });
 });
 

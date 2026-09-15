@@ -83,9 +83,9 @@ export const postManagedComment: OperationHandler<"postManagedComment"> = {
         const found = await matchedComment(pass, call.body);
         if (!found.ok) return { outcome: "retryLater", detail: found.detail };
         if (found.value === null)
-            return await pass.writer.createComment(pass.item, call.body, pass.budget);
+            return await pass.writer.createComment(pass.item, call.body, pass.allowance);
         if (found.value.body === call.body) return { outcome: "already" };
-        return await pass.writer.updateComment(found.value.id, call.body, pass.budget);
+        return await pass.writer.updateComment(found.value.id, call.body, pass.allowance);
     },
 
     /** Confirms the exact body, so a lost update response cannot accept the old comment. */

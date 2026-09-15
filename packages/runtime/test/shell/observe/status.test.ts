@@ -12,8 +12,15 @@ import {
     type ItemRef,
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
-import { Store, type Decision, type Fact, type StoredWarning } from "../../../src/store/index.js";
+import {
+    encodeSnapshot,
+    Store,
+    type Decision,
+    type Fact,
+    type StoredWarning,
+} from "../../../src/store/index.js";
 import { readStatus, status } from "../../../src/shell/observe/status.js";
+import { spending } from "../spending.js";
 
 const ITEM: ItemRef = { kind: "issue", number: 40 };
 const REPOSITORY: RepositoryRef = { owner: "o", repo: "r" };
@@ -122,6 +129,16 @@ const decision = (verdict: string, at = "2026-09-12T14:00:00.000Z"): Decision =>
     effectId: null,
 });
 
+/** One item's read, as a firing wrote it back. */
+const stored = (number: number, readAt: string): void => {
+    store.ledger.putSnapshot(REPOSITORY, {
+        item: { kind: "issue", number },
+        updatedAt: "2026-09-10T00:00:00.000Z",
+        readAt,
+        facts: encodeSnapshot({ kind: "issue", groups: ["assignees"], assignees: "unread" }),
+    });
+};
+
 describe("the questions a store holding work answers", () => {
     /** One delivery in each state, one open send, two standing promises, a sweep row, five verdicts. */
     beforeEach(() => {
@@ -143,9 +160,14 @@ describe("the questions a store holding work answers", () => {
         accept(5, "2026-09-12T14:00:00.000Z");
 
         store.ledger.record(fact());
+        store.ledger.record(
+            fact({ effectId: "effect-d", kind: "landed", at: "2026-09-12T14:40:00.000Z" }),
+        );
         store.ledger.record(warned("effect-b", "2026-09-12T16:53:00.000Z"));
         store.ledger.record(warned("effect-c", "2026-09-12T18:00:00.000Z"));
         store.ledger.schedule("sweep:o/r", "2026-09-12T15:32:39.000Z", "sweep");
+        stored(40, "2026-09-12T14:00:00.000Z");
+        stored(41, "2026-09-12T14:30:00.000Z");
         for (const verdict of ["info", "info", "notice", "problem", "refused"]) {
             store.ledger.decide(decision(verdict));
         }
@@ -158,8 +180,32 @@ describe("the questions a store holding work answers", () => {
             "sends        open 1   (oldest 2026-09-12T13:00:00Z)",
             "warnings     standing 2   (next due 2026-09-12T16:53:00Z)",
             "sweep        sweep:o/r   pending   due 2026-09-12T15:32:39Z   claimed —",
+            "snapshots    o/r   held 2   (oldest read 2026-09-12T14:00:00Z)",
+            "creations    last 1 h: 1 comments landed",
+            "allowance    held by the running process, not by the store",
             "decisions    last 24 h: 2 info, 1 notice, 1 problem, 1 refused",
         ]);
+    });
+
+    /** A comment landed before the window is a fact the store holds and this line does not count. */
+    it("counts only the comments GitHub's own creation window still holds", () => {
+        store.ledger.record(
+            fact({ effectId: "effect-e", kind: "landed", at: "2026-09-12T13:30:00.000Z" }),
+        );
+
+        expect(status(store, NOW)[6]).toBe("creations    last 1 h: 1 comments landed");
+    });
+
+    /** The window and the spend are the running process's; a store has neither (D193). */
+    it("prints the allowance a caller holds, per pool and lane", () => {
+        const allowance = spending();
+        allowance.charge("core", 3);
+        allowance.armMutations(20);
+        allowance.charge("mutations", 2);
+
+        expect(status(store, NOW, allowance)[7]).toBe(
+            "allowance    core 5/5,000 (resets —)   graphql 0/5,000 (resets —)   mutations 2",
+        );
     });
 
     /** A decision older than the window is a row the store still holds and this line does not count. */
@@ -188,6 +234,9 @@ describe("the questions a store holding nothing answers", () => {
             "sends        open 0   (oldest —)",
             "warnings     standing 0   (next due —)",
             "sweep        —",
+            "snapshots    —",
+            "creations    last 1 h: 0 comments landed",
+            "allowance    held by the running process, not by the store",
             "decisions    last 24 h: —",
         ]);
     });

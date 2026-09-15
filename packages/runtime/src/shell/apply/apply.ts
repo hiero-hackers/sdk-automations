@@ -8,7 +8,8 @@
 import type { AnyIntent, Effect, RepositoryConfig } from "@hiero-hackers/automation-core";
 import type { Fact, Ledger, OpenSend } from "../../store/index.js";
 import type { Log } from "../log.js";
-import { actionFor, type Action, type Pass, type PassResult, type WriteBudget } from "./actions.js";
+import type { Allowance, Lane } from "../allowance.js";
+import { actionFor, type Action, type Pass, type PassResult } from "./actions.js";
 import type { Call, EffectOutcome } from "../effects.js";
 import type { EffectReader, EffectWriter } from "./operations/handler.js";
 import { operationOf, parseJournaledCall, planFor } from "./operations/index.js";
@@ -26,7 +27,6 @@ export type {
     WriteResult,
 } from "./operations/handler.js";
 export { recordedWarningsIn, type EffectExternalsSource } from "./gates.js";
-export type { WriteBudget } from "./actions.js";
 
 // ─── The chosen bounds ───────────────────────────────────────────────
 
@@ -44,7 +44,6 @@ export const EFFECT_ATTEMPT_CAP = 5;
 
 // ─── The seams ───────────────────────────────────────────────────────
 
-/** The write calls a caller has left to send (D167). */
 export interface ApplierOptions {
     /** The whole store the applier touches: the facts, and the lease beside them (D164). */
     readonly ledger: Ledger;
@@ -62,42 +61,30 @@ export interface ApplierOptions {
 export interface Applier {
     /**
      * Every approved effect of one decision, in order, each under its own lease.
-     * Each request that reaches GitHub spends one of `budget`, including retries. A local refusal spends none. No budget is unlimited, which is what a webhook passes (D167).
+     * Every call that reaches GitHub is charged to `allowance`, retries included; a local refusal is charged nothing. A webhook passes none (D192).
      */
     applyAll(
         effects: readonly Effect[],
         config: RepositoryConfig,
-        budget?: WriteBudget,
+        allowance?: Allowance,
     ): Promise<readonly EffectOutcome[]>;
     /** One open send, resolved against GitHub — the sweep's unit of work. */
     recover(open: OpenSend, config: RepositoryConfig): Promise<void>;
 }
 
-/** An effect a spent budget holds back: nothing claimed, nothing recorded, decided again next firing. */
-const heldBack = (
-    { intent }: Effect,
-    code: "sweepRequestCap" | "sweepWriteCap",
-): EffectOutcome => ({
+/** An effect a spent lane holds back: nothing claimed, nothing recorded, decided again next firing. */
+const heldBack = ({ intent }: Effect, lane: Lane): EffectOutcome => ({
     effectId: intent.idempotencyKey,
     capability: intent.capability,
     operation: intent.operation,
     item: intent.item,
     outcome: "refused",
-    code,
+    code: lane === "mutations" ? "sweepWriteCap" : "sweepRequestCap",
     detail:
-        code === "sweepRequestCap"
-            ? "this tick's request cap is spent; decided again next sweep"
-            : "this firing's write cap is spent; decided again next sweep",
+        lane === "mutations"
+            ? "this firing's write cap is spent; decided again next sweep"
+            : `this window's ${lane} allowance is spent; decided again next sweep`,
 });
-
-const spentBudget = (
-    budget: WriteBudget | undefined,
-): "sweepRequestCap" | "sweepWriteCap" | null =>
-    budget?.requests?.remaining === 0
-        ? "sweepRequestCap"
-        : budget?.remaining === 0
-          ? "sweepWriteCap"
-          : null;
 
 export function createApplier(options: ApplierOptions): Applier {
     const { ledger, writer, reader, externals, worker, clock, log } = options;
@@ -255,7 +242,7 @@ export function createApplier(options: ApplierOptions): Applier {
     const apply = async (
         effect: Effect,
         config: RepositoryConfig,
-        budget: WriteBudget | undefined,
+        allowance: Allowance | undefined,
     ): Promise<EffectOutcome> => {
         const { intent } = effect;
         const pass: Pass = {
@@ -265,7 +252,7 @@ export function createApplier(options: ApplierOptions): Applier {
             item: intent.item,
             config,
             records: effect.records,
-            budget,
+            allowance,
             gated: false,
             changed: false,
             sent: false,
@@ -297,12 +284,14 @@ export function createApplier(options: ApplierOptions): Applier {
     };
 
     return {
-        async applyAll(effects, config, budget) {
+        async applyAll(effects, config, allowance) {
             const outcomes: EffectOutcome[] = [];
             for (const effect of effects) {
-                const spent = spentBudget(budget);
+                const spent = allowance?.exhausted() ?? null;
                 outcomes.push(
-                    spent === null ? await apply(effect, config, budget) : heldBack(effect, spent),
+                    spent === null
+                        ? await apply(effect, config, allowance)
+                        : heldBack(effect, spent),
                 );
             }
             return outcomes;
@@ -344,7 +333,7 @@ export function createApplier(options: ApplierOptions): Applier {
                 item: journaled.item,
                 config,
                 records: null,
-                budget: undefined,
+                allowance: undefined,
                 gated: false,
                 changed: false,
                 sent: false,

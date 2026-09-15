@@ -1,5 +1,5 @@
 {
-    "probedAt": "2026-09-12T12:49:04.502Z",
+    "probedAt": "2026-09-15T16:36:04.350Z",
     "sandbox": "exploreriii/automation-sandbox",
     "results": [
         {
@@ -20,6 +20,10 @@
         },
         {
             "name": "linkedIssues",
+            "ok": true
+        },
+        {
+            "name": "linkedIssuesBatch",
             "ok": true
         },
         {

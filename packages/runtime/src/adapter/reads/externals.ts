@@ -21,6 +21,7 @@ import {
     type GitHubHttpClient,
     type GitHubOutcome,
 } from "../client/contract.js";
+import type { Allowance } from "../client/allowance.js";
 import { createResolverSource } from "./resolvers.js";
 import type { TokenSource } from "../client/token.js";
 import { field, jsonArrayOf } from "../client/untrusted.js";
@@ -86,6 +87,8 @@ export interface LandedWrite {
 export interface OrderingEvidenceOptions {
     readonly http: GitHubHttpClient;
     readonly repository: RepositoryRef;
+    /** What these reads are charged to; unset spends from no lane (D192). */
+    readonly allowance?: Allowance;
     /** The item's own landed calls, which GitHub's actor cannot say (D159). */
     readonly ownWrites: (item: ItemRef) => readonly LandedWrite[];
     /** Absent for sweeps and incomplete or unhandled causes — nothing to exclude. */
@@ -199,7 +202,7 @@ function parsePage(outcome: GitHubOutcome): PageOutcome {
  * Incomplete coverage without a newest-block find must answer `"unknown"`.
  */
 async function readOrdering(
-    { http, repository, ownWrites, cause, onUnknownOrdering }: OrderingEvidenceOptions,
+    { http, repository, ownWrites, cause, onUnknownOrdering, allowance }: OrderingEvidenceOptions,
     item: ItemRef,
 ): Promise<HumanChangeOrdering> {
     const landed = ownWrites(item);
@@ -207,7 +210,7 @@ async function readOrdering(
         `${repoPath(repository)}/issues/${String(item.number)}/timeline` +
         `?per_page=${String(TIMELINE_PAGE_SIZE)}&page=${String(page)}`;
     const read = async (page: number): Promise<PageOutcome> =>
-        parsePage(await http.request({ url: pageUrl(page), method: "GET" }));
+        parsePage(await http.request({ url: pageUrl(page), method: "GET" }, allowance));
 
     /** Say why, then answer the only word the contract has room for. */
     const unknown = (detail: string): "unknown" => {
@@ -317,6 +320,8 @@ export interface LiveExternalsOptions {
     readonly config: RepositoryConfig;
     /** The declarations the shell ships; the adapter may not import them itself. */
     readonly knownCapabilities: readonly AdmittedCapability[];
+    /** What every read of this delivery is charged to; unset spends from no lane (D192). */
+    readonly allowance?: Allowance;
     /** Both passed straight to `OrderingEvidenceOptions`. */
     readonly ownWrites: (item: ItemRef) => readonly LandedWrite[];
     readonly onUnknownOrdering?: (detail: string) => void;
@@ -330,6 +335,7 @@ export async function liveExternalsForDelivery(
         repository,
         config,
         knownCapabilities,
+        allowance,
         ownWrites,
         onUnknownOrdering,
     }: LiveExternalsOptions,
@@ -338,6 +344,8 @@ export async function liveExternalsForDelivery(
     const grants = await installationGrants(tokenSource);
     if (!grants.ok) return grants;
     const cause = causeFingerprintOf(payload);
+    /** What every read below is charged to, or nothing at all. */
+    const charged = allowance === undefined ? {} : { allowance };
     return {
         ok: true,
         facts: {
@@ -346,6 +354,7 @@ export async function liveExternalsForDelivery(
                 http,
                 repository,
                 ownWrites,
+                ...charged,
                 // Stryker disable next-line ConditionalExpression: spreading { cause: undefined } is runtime-identical; the guard serves exactOptionalPropertyTypes.
                 ...(cause === undefined ? {} : { cause }),
                 // Stryker disable next-line ConditionalExpression: as above — the guard serves exactOptionalPropertyTypes, not behaviour.
@@ -356,6 +365,7 @@ export async function liveExternalsForDelivery(
                 repository,
                 config,
                 knownCapabilities,
+                ...charged,
             }),
         },
     };

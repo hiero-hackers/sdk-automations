@@ -42,8 +42,8 @@ your file has to move.
 | Code | In plain terms |
 |---|---|
 | `leaseHeld` | A live worker holds this effect's lease, so this pass did nothing; the next one asks again |
-| `sweepRequestCap` | This tick had spent its shared GitHub request allowance, so the act was held back for the next sweep |
-| `sweepWriteCap` | This firing had spent the writes one sweep may send, so the act was held back; the next sweep decides it again |
+| `sweepRequestCap` | The sweep's share of one of GitHub's pools — the detail names which — was spent, so the act was held back until that window resets |
+| `sweepWriteCap` | This tick had spent the writes one sweep may send, so the act was held back; the next tick decides it again |
 | `rowUnreadable` | The ledger's bytes for this call could not be read, so the call is closed and nothing was resent |
 | `ledgerInconsistent` | The ledger holds a history the App cannot read as one effect; `pnpm shell:explain` prints it, and clearing it is a person's job |
 | `configurationChanged` | Your `automations.yml` changed after this effect started, so nothing more was sent under the file it began under |
@@ -53,7 +53,7 @@ your file has to move.
 | `externalsUnavailable` | The apply-time facts — grants, kill switch, human ordering — could not be built; re-tried each sweep |
 | `writeConflict` | GitHub refused the call as conflicting: nothing landed and nothing will, so the effect is settled |
 | `writeForbidden` | GitHub refused the call outright; the effect is settled, and a `permissionMissing` refusal is the grant you can fix |
-| `writeRetryLater` | GitHub asked for a wait; the call stays open and a later pass resumes it |
+| `writeRetryLater` | GitHub asked for a wait, or this hour's content-creation ceiling was reached; the call stays open and a later pass resumes it |
 | `writeUnknown` | Whether the call landed could not be established; nothing is resent until a read of GitHub settles it |
 | `writeUnsupported` | The platform has no confirmed endpoint for this write yet; the intent stands and is re-tried each sweep |
 | `postconditionUnconfirmed` | GitHub accepted the call, but the read-back did not confirm the state it should have left behind |
@@ -82,3 +82,17 @@ or the delivery, not the work.
 | `installationSuspended` | The endpoint serving you was started with `SUSPENDED=1`, so it verified and accepted your delivery and then finished it without deciding: no configuration was read, no capability ran, and nothing was sent. The delivery is complete and will not be reconsidered when the suspension lifts, so ask your operator to restart the endpoint without `SUSPENDED=1` — the next event on the item is decided normally |
 | `modeUnsupported` | Your file says `mode: active`, and the endpoint serving it was started as a composition that wires no write path — so it is rejected before a decision rather than acted on. That is still the shipped default: writes are armed only when the endpoint is given the App's identity as well as its credentials (`APP_SLUG`, see [Running the shell](running.md)). Until then, choose `observe` or `dry-run` |
 | `repositoryMismatch` | The delivery came from a different repository than the one this endpoint was started for, so nothing about it was read — point the webhook at the right endpoint, or start the endpoint for the right repository (`REPO_OWNER`/`REPO_NAME`) |
+
+## After the store was rebuilt
+
+The store carries no compatibility history until the platform launches, so a file written before an
+upgrade is refused rather than converted: the endpoint does not start until that file is removed, and
+the one it creates holds nothing. Your repository is unaffected — the decisions and the effect
+history are the App's own record — but the fleet is **cold for one sweep**. Every open item is read in
+full instead of being decided from its last read, which spends more of the rate limit than usual and
+can spread the first pass over several ticks. The next sweep is warm again, and stays warm across a
+restart.
+
+`snapshotUnreadable` in the log says a firing found stored reads it could not decode and says how
+many. Each is read again and rewritten, so one firing repairs them; a line that comes back every
+firing is a defect — please open an issue with the count.
