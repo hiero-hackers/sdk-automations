@@ -36,6 +36,6 @@
         "vitest": "^4.1.11"
     },
     "dependencies": {
-        "yaml": "^2.9.0"
+        "yaml": "^2.9.1"
     }
 }
