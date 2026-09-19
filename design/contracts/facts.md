@@ -24,6 +24,13 @@ export interface IssueFacts {
     readonly author: string;
     /** Who caused this record, or `null` on a sweep. Never a group either. */
     readonly actor: { readonly login: string } | null;
+    /** GitHub's current discussion lock state. */
+    readonly locked: boolean;
+    /** The issue transition carried by this observation, or `null` when there is none. */
+    readonly arrival:
+        | { readonly kind: "opened" }
+        | { readonly kind: "label"; readonly meaning: MappableMeaning | null }
+        | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
     /** The open-keyed family: what this item carries, and what just arrived. */
@@ -62,13 +69,14 @@ export const FACT_GROUPS = ["assignees", "links", "review", "readiness", "comman
 
 `AssigneeClock` and `LinkedIssue` (an item with its assignees' clocks) keep their current shapes.
 
-**Three fields are never groups.** `position` is one, because every producer reads labels and state
+**Five fields are never groups.** `position` is one, because every producer reads labels and state
 and the safety world is derived from it. `author` is another: an item nobody opened does not exist,
 so there is no honest `Unread` for it and a payload without one is malformed. `alerts` is the third
 — every producer reads the item's labels already, and the family is read off the same list the
 projection was. `actor` is a field whose value may be `null`, which is NOT an `Unread`: a swept item
 was read because a clock fired, so "nobody caused this" is a fact about the record rather than a
-group somebody skipped.
+group somebody skipped. Issue records also always carry `locked` and `arrival`; `arrival: null`
+means the observation carried no opening or added-label transition.
 
 **A pull-request record carries no head sha.** Nothing above names one, and no group holds one, so
 a capability that needs the commit a pull request currently points at asks a resolver for it — the

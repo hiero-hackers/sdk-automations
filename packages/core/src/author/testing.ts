@@ -292,6 +292,9 @@ export function recordFrom<P extends ProducerName, K extends FactKind>(
         author: "opener",
         // Nobody causes a sweep; a delivery has a sender. Neither is a group.
         actor: producer === "sweep" ? null : { login: "actor" },
+        ...(kind === "issue"
+            ? { locked: false, arrival: producer === "issues" ? { kind: "opened" } : null }
+            : {}),
         position: OPEN,
         alerts: { carried: [], arrived: [] },
         ...groups,

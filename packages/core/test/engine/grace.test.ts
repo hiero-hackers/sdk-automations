@@ -99,6 +99,8 @@ const facts: IssueFacts = {
     trigger: { kind: "sweep" },
     author: "opener",
     actor: null,
+    locked: false,
+    arrival: null,
     alerts: { carried: [], arrived: [] },
     command: "unread",
     position: {

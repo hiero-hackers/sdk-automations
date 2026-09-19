@@ -26,6 +26,7 @@ Every record also carries the repository, the item, `observedAt`, the trigger, `
 record would refuse every intent `preconditionStale` (D141); `author` has no honest absence, since an
 item nobody opened does not exist; `alerts` is read off the same label list the projection was; and
 `actor` is `null` on a sweep, which is a FACT about the record rather than a group somebody skipped.
+Issue records also carry the current discussion lock and any opening or added-label transition.
 
 `assignees` is each assignee with the clock that assignment started; `links` is an issue's open
 linked pull requests, and on a pull request each linked issue with its own assignees' clocks;

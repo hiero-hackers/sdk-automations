@@ -72,7 +72,10 @@ describe("what an issue comment becomes", () => {
             by: "alice",
             at: new Date(AT),
         });
-        expect(facts.trigger).toEqual({ kind: "event", event: "issue_comment" });
+        expect(facts.trigger).toEqual({
+            kind: "event",
+            event: "issue_comment",
+        });
         // The command is the ONE group this producer reads.
         expect(facts.assignees).toBe(UNREAD);
         expect(facts.links).toBe(UNREAD);

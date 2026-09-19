@@ -96,7 +96,11 @@ const swept = sweptIssue({
 
 describe("the seeds' specs", () => {
     it("read the keys their declarations admit, with the defaults they document", () => {
-        expect(viewFor(intake.declaration, {}).settings).toEqual({ announce: false });
+        expect(viewFor(intake.declaration, {}).settings).toEqual({
+            announce: false,
+            unlockWhen: [],
+            confirmUnlock: false,
+        });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
             exemptBlocked: true,
             // Hours: a duration is written `14d` and resolves to 336.

@@ -29,6 +29,8 @@ const issue: IssueFacts = {
     trigger: { kind: "sweep" },
     author: "opener",
     actor: null,
+    locked: false,
+    arrival: null,
     position: POSITION,
     alerts: { carried: [], arrived: [] },
     assignees: [],

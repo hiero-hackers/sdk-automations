@@ -42,6 +42,7 @@ import { detailOf, type Log } from "../log.js";
 export interface SweptItem {
     readonly item: ItemRef;
     readonly author: string;
+    readonly locked: boolean;
     readonly labels: readonly string[];
     readonly assignees: readonly string[];
     readonly closedBy: string | null;

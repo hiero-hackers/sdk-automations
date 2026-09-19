@@ -143,9 +143,38 @@ describe("what the normalizer refuses, and how", () => {
             },
         ],
         [
+            "actionUnreadable",
+            "issues",
+            {
+                repository: { owner: { login: "o" }, name: "r" },
+                issue: {
+                    number: 1,
+                    labels: [],
+                    updated_at: "2026-08-07T00:00:00Z",
+                    user: { login: "opener" },
+                    locked: false,
+                },
+            },
+        ],
+        [
+            "lockedMissing",
+            "issues",
+            {
+                action: "opened",
+                repository: { owner: { login: "o" }, name: "r" },
+                issue: {
+                    number: 1,
+                    labels: [],
+                    updated_at: "2026-08-07T00:00:00Z",
+                    user: { login: "opener" },
+                },
+            },
+        ],
+        [
             "mergedMissing",
             "pull_request",
             {
+                action: "opened",
                 repository: { owner: { login: "o" }, name: "r" },
                 pull_request: {
                     number: 1,
@@ -161,6 +190,7 @@ describe("what the normalizer refuses, and how", () => {
             "draftMissing",
             "pull_request",
             {
+                action: "opened",
                 repository: { owner: { login: "o" }, name: "r" },
                 pull_request: {
                     number: 1,

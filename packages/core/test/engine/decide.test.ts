@@ -88,6 +88,8 @@ const webhookIssue = (over: Partial<IssueFacts> = {}): IssueFacts => ({
     trigger: { kind: "event", event: "issues" },
     author: "opener",
     actor: { login: "opener" },
+    locked: false,
+    arrival: null,
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },

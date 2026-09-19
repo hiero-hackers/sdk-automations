@@ -37,6 +37,17 @@ export function senderOf(payload: Record<string, unknown>): Actor | null {
     return { login: sender["login"] };
 }
 
+/** The webhook action, or `null` when the signed payload does not name one. */
+export function actionOf(payload: Record<string, unknown>): string | null {
+    const action = payload["action"];
+    return typeof action === "string" && action.length > 0 ? action : null;
+}
+
+/** An issue's current discussion lock state, never defaulted. */
+export function lockedOf(item: Record<string, unknown>): boolean | null {
+    return typeof item["locked"] === "boolean" ? item["locked"] : null;
+}
+
 /** The label this delivery ADDED, or `null` when it added none. */
 export function labelAdded(payload: Record<string, unknown>): string | null {
     if (payload["action"] !== "labeled") return null;
@@ -77,11 +88,13 @@ export interface DeliveryFacts {
     readonly number: number;
     readonly author: string;
     readonly meanings: readonly MappableMeaning[];
+    readonly arrivedMeaning: MappableMeaning | null;
     /** What this item carries, and what this delivery added — through `mappings.alerts`. */
     readonly alerts: Alerts;
     /** The delivery's sender, or `null` — see `senderOf`. */
     readonly actor: Actor | null;
     readonly observedAt: Date;
+    readonly action: string;
     /** The delivery body, proved a record — for the item's sibling keys. */
     readonly payload: Record<string, unknown>;
     /** The repository's reviewed configuration, for readings beyond labels. */

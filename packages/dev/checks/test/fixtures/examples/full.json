@@ -6,7 +6,9 @@
         "intake": {
             "enabled": true,
             "settings": {
-                "announce": true
+                "announce": true,
+                "unlockWhen": [],
+                "confirmUnlock": false
             }
         },
         "prDashboard": {

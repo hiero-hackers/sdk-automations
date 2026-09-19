@@ -85,6 +85,8 @@ const issue = (projection: Projection<IssueMeaning>): IssueFacts => ({
     trigger: { kind: "sweep" },
     author: "opener",
     actor: null,
+    locked: false,
+    arrival: null,
     position: projection,
     alerts: { carried: [], arrived: [] },
     assignees: UNREAD,

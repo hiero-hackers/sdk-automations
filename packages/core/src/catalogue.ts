@@ -91,6 +91,13 @@ export interface IssueFacts {
     /** Who opened the item — always read, so there is no honest `Unread` for it. */
     readonly author: string;
     readonly actor: Actor | null;
+    /** GitHub's current discussion lock state. */
+    readonly locked: boolean;
+    /** The issue transition this observation carries, or `null` when it carries none. */
+    readonly arrival:
+        | { readonly kind: "opened" }
+        | { readonly kind: "label"; readonly meaning: MappableMeaning | null }
+        | null;
     /** Always read: the projection every gate judges by. */
     readonly position: Projection<IssueMeaning>;
     readonly alerts: Alerts;
