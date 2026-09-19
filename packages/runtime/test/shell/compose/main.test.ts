@@ -79,6 +79,7 @@ const ITEM_REF = { kind: "issue", number: ISSUE_NUMBER } as const;
 const APP_ID = "123";
 const APP_SLUG = "hiero-hackers-sandbox";
 const TRIAGE_LABEL = "status: triage";
+const READY_LABEL = "status: ready";
 /** The default timeline's one human label — later than any fixture's cause. */
 const TIMELINE_AT = "2026-08-06T23:10:51Z";
 
@@ -128,6 +129,37 @@ mappings:
   labels:
     awaitingTriage: "${TRIAGE_LABEL}"
 `;
+
+const RELEASE_CONFIG = `schemaVersion: 2
+mode: active
+capabilities:
+  triageQueue:
+    enabled: true
+    lockUntilTriaged: true
+`;
+
+function releaseFixture() {
+    const payload = capture("issues.labeled.json").json() as {
+        issue: { locked: boolean; labels: { name: string }[]; updated_at: string };
+        label: { name: string };
+        sender: { login: string; type: string };
+    };
+    payload.issue.locked = true;
+    payload.issue.labels = [{ name: READY_LABEL }];
+    payload.label.name = READY_LABEL;
+    const body: Buffer<ArrayBuffer> = Buffer.from(JSON.stringify(payload));
+    return {
+        body,
+        timeline: [
+            {
+                event: "labeled",
+                actor: payload.sender,
+                created_at: payload.issue.updated_at,
+                label: { name: READY_LABEL },
+            },
+        ],
+    };
+}
 
 /** Everything main.ts reads, cleared from the inherited environment. */
 const SHELL_VARIABLES = [
@@ -521,6 +553,8 @@ async function withPaths<T>(
 /** How one child's GitHub answers. */
 interface FakeGitHub {
     readonly config?: string;
+    readonly labels?: readonly string[];
+    readonly locked?: boolean;
     /**
      * The timeline entries the item's reads answer with. The default is one
      * human label, which is what makes an ordinary delivery report
@@ -544,6 +578,8 @@ interface FakeGitHub {
 function writeFetchPreload(path: string, logPath: string, github: FakeGitHub = {}): void {
     const {
         config = CONFIG,
+        labels = [],
+        locked = false,
         timeline = [
             { event: "labeled", actor: { type: "User", login: "human" }, created_at: TIMELINE_AT },
         ],
@@ -557,8 +593,9 @@ function writeFetchPreload(path: string, logPath: string, github: FakeGitHub = {
     writeFileSync(
         path,
         `import { appendFileSync } from "node:fs";
-const labels = new Set();
+const labels = new Set(${JSON.stringify(labels)});
 const comments = [];
+let locked = ${JSON.stringify(locked)};
 let nextCommentId = 1;
 const ITEM = ${JSON.stringify(`/issues/${String(ISSUE_NUMBER)}`)};
 const labelList = () => [...labels].map((name) => ({ name }));
@@ -594,12 +631,16 @@ globalThis.fetch = async (input, init = {}) => {
         }
         return new Response(JSON.stringify(comments), { status: 200 });
     }
+    if (url.endsWith(ITEM + "/lock") && (method === "PUT" || method === "DELETE")) {
+        locked = method === "PUT";
+        return new Response(null, { status: 204 });
+    }
     if (url.includes("/timeline")) {
         return new Response(${JSON.stringify(JSON.stringify(timeline))}, { status: 200 });
     }
     if (new URL(url).pathname.endsWith(ITEM)) {
         return new Response(
-            JSON.stringify({ state: "open", locked: false, labels: labelList() }),
+            JSON.stringify({ state: "open", locked, labels: labelList() }),
             { status: 200 },
         );
     }
@@ -1001,6 +1042,48 @@ describe("the sandbox entry point, as a process", () => {
                         expect.objectContaining({
                             authorization: "Bearer shell-test-installation-token",
                             body: JSON.stringify({ labels: [TRIAGE_LABEL] }),
+                        }),
+                    ]);
+                },
+            );
+        },
+        TEST_TIMEOUT_MS,
+    );
+
+    it(
+        "releases a locked issue after human triage",
+        async () => {
+            const fixture = releaseFixture();
+            await withLiveGitHub(
+                {
+                    config: RELEASE_CONFIG,
+                    labels: [READY_LABEL],
+                    locked: true,
+                    slug: APP_SLUG,
+                    timeline: fixture.timeline,
+                },
+                async ({ fetchLog, port, shell, storeFile }) => {
+                    expect(await listening(shell)).toMatchObject({ writes: "armed" });
+                    expect(await post(port, ACTIVE_GUID, fixture.body)).toBe(202);
+                    expect(await completed(shell, ACTIVE_GUID)).toMatchObject({ kind: "decision" });
+
+                    expect(await decisionRows(storeFile)).toContainEqual(
+                        expect.objectContaining({
+                            capability: "triageQueue",
+                            verdict: "applied",
+                            code: null,
+                            effectId: expect.any(String),
+                        }),
+                    );
+                    expect(
+                        requestsIn(fetchLog).filter(
+                            (request) =>
+                                request.method === "DELETE" &&
+                                request.url.endsWith(`/issues/${String(ISSUE_NUMBER)}/lock`),
+                        ),
+                    ).toEqual([
+                        expect.objectContaining({
+                            authorization: "Bearer shell-test-installation-token",
                         }),
                     ]);
                 },
