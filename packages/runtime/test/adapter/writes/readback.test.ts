@@ -153,14 +153,20 @@ describe("reading the item itself", () => {
 
     it("reads an issue at the issues endpoint, with no merge to report", async () => {
         const { readBack, scripted } = harness([
-            listed('{"state":"open","labels":[{"name":"status: triage"}]}'),
+            listed('{"state":"open","locked":false,"labels":[{"name":"status: triage"}]}'),
         ]);
 
         const outcome = await readBack.item(ITEM);
 
         expect(outcome).toEqual({
             ok: true,
-            value: { labels: ["status: triage"], closed: false, merged: false, draft: false },
+            value: {
+                labels: ["status: triage"],
+                closed: false,
+                merged: false,
+                draft: false,
+                locked: false,
+            },
         });
         expect(scripted.calls[0]!.url).toBe(ISSUE);
     });
@@ -168,7 +174,7 @@ describe("reading the item itself", () => {
     it("reads a pull request at the pulls endpoint, which is where `merged` and `draft` live", async () => {
         const { readBack, scripted } = harness([
             listed(
-                '{"state":"closed","labels":[{"name":"status: review"}],"merged":true,"draft":false}',
+                '{"state":"closed","locked":true,"labels":[{"name":"status: review"}],"merged":true,"draft":false}',
             ),
         ]);
 
@@ -176,39 +182,45 @@ describe("reading the item itself", () => {
 
         expect(outcome).toEqual({
             ok: true,
-            value: { labels: ["status: review"], closed: true, merged: true, draft: false },
+            value: {
+                labels: ["status: review"],
+                closed: true,
+                merged: true,
+                draft: false,
+                locked: true,
+            },
         });
         expect(scripted.calls[0]!.url).toBe(PULL);
     });
 
     it("tells a closed-unmerged pull request from a merged one", async () => {
         const { readBack } = harness([
-            listed('{"state":"closed","labels":[],"merged":false,"draft":false}'),
+            listed('{"state":"closed","locked":false,"labels":[],"merged":false,"draft":false}'),
         ]);
 
         expect(await readBack.item(PR)).toEqual({
             ok: true,
-            value: { labels: [], closed: true, merged: false, draft: false },
+            value: { labels: [], closed: true, merged: false, draft: false, locked: false },
         });
     });
 
     it("carries the draft mode a re-gate judges a draft claim by", async () => {
         const { readBack } = harness([
-            listed('{"state":"open","labels":[],"merged":false,"draft":true}'),
+            listed('{"state":"open","locked":false,"labels":[],"merged":false,"draft":true}'),
         ]);
 
         expect(await readBack.item(PR)).toEqual({
             ok: true,
-            value: { labels: [], closed: false, merged: false, draft: true },
+            value: { labels: [], closed: false, merged: false, draft: true, locked: false },
         });
     });
 
     it("reports a closed issue as closed, and in neither native mode", async () => {
-        const { readBack } = harness([listed('{"state":"closed","labels":[]}')]);
+        const { readBack } = harness([listed('{"state":"closed","locked":true,"labels":[]}')]);
 
         expect(await readBack.item(ITEM)).toEqual({
             ok: true,
-            value: { labels: [], closed: true, merged: false, draft: false },
+            value: { labels: [], closed: true, merged: false, draft: false, locked: true },
         });
     });
 
@@ -216,6 +228,8 @@ describe("reading the item itself", () => {
         ["a body that is not an object", "[]"],
         ["a body that is not JSON", "not json"],
         ["a missing state", '{"labels":[]}'],
+        ["a missing lock state", '{"state":"open","labels":[]}'],
+        ["a lock state that is not a boolean", '{"state":"open","locked":"no","labels":[]}'],
         ["a state GitHub does not use", '{"state":"draft","labels":[]}'],
         ["missing labels", '{"state":"open"}'],
         ["labels that are not an array", '{"state":"open","labels":{}}'],
@@ -230,13 +244,17 @@ describe("reading the item itself", () => {
     });
 
     it("refuses a pull request whose merge or draft fact is missing or not a boolean", async () => {
-        const noMerge = harness([listed('{"state":"closed","labels":[],"draft":false}')]);
-        const wrongMerge = harness([
-            listed('{"state":"closed","labels":[],"merged":"true","draft":false}'),
+        const noMerge = harness([
+            listed('{"state":"closed","locked":false,"labels":[],"draft":false}'),
         ]);
-        const noDraft = harness([listed('{"state":"closed","labels":[],"merged":false}')]);
+        const wrongMerge = harness([
+            listed('{"state":"closed","locked":false,"labels":[],"merged":"true","draft":false}'),
+        ]);
+        const noDraft = harness([
+            listed('{"state":"closed","locked":false,"labels":[],"merged":false}'),
+        ]);
         const wrongDraft = harness([
-            listed('{"state":"closed","labels":[],"merged":false,"draft":"no"}'),
+            listed('{"state":"closed","locked":false,"labels":[],"merged":false,"draft":"no"}'),
         ]);
 
         expect((await noMerge.readBack.item(PR)).ok).toBe(false);
@@ -255,7 +273,9 @@ describe("reading the item itself", () => {
     });
 
     it("asks once — the item read carries no presence rule and no pause", async () => {
-        const { readBack, scripted, sleeps } = harness([listed('{"state":"open","labels":[]}')]);
+        const { readBack, scripted, sleeps } = harness([
+            listed('{"state":"open","locked":false,"labels":[]}'),
+        ]);
 
         await readBack.item(ITEM);
 

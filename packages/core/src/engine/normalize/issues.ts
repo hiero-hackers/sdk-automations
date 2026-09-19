@@ -6,8 +6,8 @@
 import { UNREAD } from "../../catalogue.js";
 import type { ProducedFacts } from "../../capability/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
-import type { DeliveryFacts } from "./payload.js";
-import type { NormalizeResult } from "./verdict.js";
+import { lockedOf, type DeliveryFacts } from "./payload.js";
+import { malformed, type NormalizeResult } from "./verdict.js";
 
 /**
  * Closure from what the webhook alone can see: `completedByLinkedMerge` (D47)
@@ -22,6 +22,8 @@ export const issuesNormalizer = {
     event: "issues",
     itemKey: "issue",
     normalize(facts: DeliveryFacts): NormalizeResult {
+        const locked = lockedOf(facts.item);
+        if (locked === null) return malformed("lockedMissing", "issues: locked missing");
         return {
             kind: "facts",
             facts: {
@@ -32,6 +34,13 @@ export const issuesNormalizer = {
                 trigger: { kind: "event", event: "issues" },
                 author: facts.author,
                 actor: facts.actor,
+                locked,
+                arrival:
+                    facts.action === "opened"
+                        ? { kind: "opened" }
+                        : facts.action === "labeled"
+                          ? { kind: "label", meaning: facts.arrivedMeaning }
+                          : null,
                 alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),

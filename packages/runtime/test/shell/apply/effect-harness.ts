@@ -376,6 +376,7 @@ export interface FakeWorld {
     merged: boolean;
     /** The two native pull-request modes an apply-time claim is judged against. */
     draft: boolean;
+    locked: boolean;
     changesRequested: boolean;
     activityAt: Date | null;
 }
@@ -435,6 +436,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         closed: initial.closed ?? false,
         merged: initial.merged ?? false,
         draft: initial.draft ?? false,
+        locked: initial.locked ?? false,
         changesRequested: initial.changesRequested ?? false,
         activityAt: initial.activityAt ?? null,
     };
@@ -574,6 +576,32 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                     allowance,
                 ),
             ),
+        lockIssue: (_item, allowance) =>
+            Promise.resolve(
+                perform(
+                    "lockIssue",
+                    "",
+                    () => {
+                        if (world.locked) return { outcome: "already" };
+                        world.locked = true;
+                        return { outcome: "applied" };
+                    },
+                    allowance,
+                ),
+            ),
+        unlockIssue: (_item, allowance) =>
+            Promise.resolve(
+                perform(
+                    "unlockIssue",
+                    "",
+                    () => {
+                        if (!world.locked) return { outcome: "already" };
+                        world.locked = false;
+                        return { outcome: "applied" };
+                    },
+                    allowance,
+                ),
+            ),
     };
 
     const presenceOf = (holds: boolean): Presence =>
@@ -599,6 +627,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                               closed: world.closed,
                               merged: world.merged,
                               draft: world.draft,
+                              locked: world.locked,
                           },
                       },
             );

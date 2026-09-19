@@ -1459,56 +1459,27 @@ describe("an operation the write surface does not have", () => {
     );
 
     /**
-     * The two moderation verbs are refused the same way, and the sentence
-     * names the endpoint that is missing rather than the operation that
-     * failed — an operator reading the report has to know which row of
-     * `endpoint-permission-matrix.md` would unblock it.
-     */
-    it.each([
-        ["lockIssue", "no confirmed write endpoint locks an issue"],
-        ["unlockIssue", "no confirmed write endpoint unlocks an issue"],
-    ])(
-        "refuses a %s at the send, naming the endpoint nobody confirmed",
-        async (operation, said) => {
-            const github = fakeGitHub();
-            const effect = labelEffect();
-            const moderation = {
-                ...effect,
-                intent: { ...effect.intent, operation, desired: { reason: "triage" } },
-            } as unknown as typeof effect;
-
-            const outcome = one(await applierOver(github).applyAll([moderation], configFor()));
-
-            expect(outcome).toMatchObject({ outcome: "refused", code: "writeUnsupported" });
-            expect(outcome.detail).toContain(said);
-            expect(github.calls).toEqual([]);
-            expect(unsendable(keyOf(effect))).toBe(true);
-        },
-    );
-
-    /**
      * Recovery reads a row back before it looks at the verb, so a row naming
      * an unassign reaches the proof step — where nothing reads an assignee
      * list, so nothing can prove one. The row stays open rather than being
      * closed on a fact nobody established.
      */
-    it.each([
-        ["assign", { verb: "assign", login: "sophie" }],
-        ["lockIssue", { verb: "lockIssue", reason: "triage" }],
-        ["unlockIssue", { verb: "unlockIssue", reason: "approved" }],
-    ])("cannot prove a %s either, so its send stays open", async (name, call) => {
-        const github = fakeGitHub();
-        sent(
-            `${name}-effect`,
-            serializeCall({ capability: "intake", item: ITEM, call: call as never }),
-            { verb: (call as { verb: string }).verb },
-        );
+    it.each([["assign", { verb: "assign", login: "sophie" }]])(
+        "cannot prove a %s either, so its send stays open",
+        async (name, call) => {
+            const github = fakeGitHub();
+            sent(
+                `${name}-effect`,
+                serializeCall({ capability: "intake", item: ITEM, call: call as never }),
+                { verb: (call as { verb: string }).verb },
+            );
 
-        await applierOver(github).recover(store.ledger.open(FUTURE)[0]!, configFor());
+            await applierOver(github).recover(store.ledger.open(FUTURE)[0]!, configFor());
 
-        expect(github.calls).toEqual([]);
-        expect(store.ledger.open(FUTURE)).toHaveLength(1);
-    });
+            expect(github.calls).toEqual([]);
+            expect(store.ledger.open(FUTURE)).toHaveLength(1);
+        },
+    );
 
     it("cannot prove an unassign, so recovery leaves its send where it was", async () => {
         const github = fakeGitHub();
@@ -1527,6 +1498,41 @@ describe("an operation the write surface does not have", () => {
         expect(github.calls).toEqual([]);
         expect(store.ledger.open(FUTURE)).toHaveLength(1);
         expect(logged).toEqual([]);
+    });
+});
+
+describe("issue conversation moderation", () => {
+    it.each([
+        ["lockIssue", false, true],
+        ["unlockIssue", true, false],
+    ] as const)("sends and confirms %s", async (operation, before, after) => {
+        const github = fakeGitHub({ locked: before });
+        const effect = labelEffect();
+        const moderation = {
+            ...effect,
+            intent: { ...effect.intent, operation, desired: { reason: "triage" } },
+        } as unknown as typeof effect;
+
+        const outcome = one(await applierOver(github).applyAll([moderation], configFor()));
+
+        expect(outcome).toMatchObject({ outcome: "applied", code: null });
+        expect(github.calls).toEqual([`${operation} `]);
+        expect(github.world.locked).toBe(after);
+    });
+
+    it.each([
+        ["lockIssue", { verb: "lockIssue", reason: "triage" }, true],
+        ["unlockIssue", { verb: "unlockIssue", reason: "approved" }, false],
+    ] as const)("recovers a landed %s from the current lock state", async (name, call, locked) => {
+        const github = fakeGitHub({ locked });
+        sent(`${name}-effect`, serializeCall({ capability: "intake", item: ITEM, call }), {
+            verb: call.verb,
+        });
+
+        await applierOver(github).recover(store.ledger.open(FUTURE)[0]!, configFor());
+
+        expect(github.calls).toEqual([]);
+        expect(store.ledger.open(FUTURE)).toHaveLength(0);
     });
 });
 

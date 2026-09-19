@@ -45,7 +45,7 @@ export type WriteIdempotency = "idempotent" | "nonIdempotent";
 /** `idempotency` is what marks a request as a write at all. */
 export interface GitHubWriteRequest {
     readonly url: string;
-    readonly method: "POST" | "DELETE" | "PATCH";
+    readonly method: "POST" | "PUT" | "DELETE" | "PATCH";
     readonly body?: string;
     readonly headers?: Readonly<Record<string, string>>;
     readonly idempotency: WriteIdempotency;

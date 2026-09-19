@@ -283,10 +283,8 @@ describe("managed-comment identity is minted by the platform", () => {
     it("marks every comment the four records earn, and none of the labels", async () => {
         const comments = await approvedComments();
         /**
-         * Record order, and a capability sees every record of a kind it
-         * declared: intake and prDashboard read the sweep-shaped pair too, since
-         * a sweep reads a superset of what a webhook does (intake's `announce`
-         * is a flag, and the fullest document throws it).
+         * Record order. Event-only intake ignores sweep records even though
+         * they carry the same item kind.
          */
         expect(
             comments.map((effect) => ({
@@ -297,9 +295,8 @@ describe("managed-comment identity is minted by the platform", () => {
             })),
             "one row per managed comment the four fixture records earn, in record then registry order — a new capability that posts one adds its rows here by hand",
         ).toEqual([
-            { capability: "intake", item: 11, kind: "notice", topic: "" },
+            { capability: "intake", item: 11, kind: "notice", topic: "welcome" },
             { capability: "prDashboard", item: 12, kind: "summary", topic: "" },
-            { capability: "intake", item: 13, kind: "notice", topic: "" },
             // `inactivity` is the one design that needs the discriminator: the
             // warning is about ONE assignee's clock (D145).
             { capability: "inactivity", item: 13, kind: "warning", topic: "contributor" },
@@ -324,7 +321,7 @@ describe("managed-comment identity is minted by the platform", () => {
         const labels = (await runAll(NAMES))
             .flatMap((decision) => decision.approved)
             .filter((effect) => effect.intent.operation === "applyMappedLabel");
-        expect(labels.map((effect) => effect.managedComment)).toEqual([null, null]);
+        expect(labels.map((effect) => effect.managedComment)).toEqual([null]);
     });
 
     it("publishes each identity as the marker that identity derives", async () => {

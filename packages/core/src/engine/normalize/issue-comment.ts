@@ -10,7 +10,7 @@ import { UNREAD, type CommandFacts } from "../../catalogue.js";
 import type { ProducedFacts } from "../../capability/index.js";
 import { commandInComment } from "../../config/index.js";
 import { projectIssue, type ClosureReason } from "../../workflow/index.js";
-import { isRecord, timestamp, type DeliveryFacts } from "./payload.js";
+import { isRecord, lockedOf, timestamp, type DeliveryFacts } from "./payload.js";
 import { malformed, type NormalizeResult } from "./verdict.js";
 
 /** Issue closure, from what this payload alone can see — `issues.ts`'s reading. */
@@ -56,6 +56,8 @@ export const issueCommentNormalizer = {
         if (comment === null) {
             return malformed("commentUnreadable", "issue_comment: comment unreadable");
         }
+        const locked = lockedOf(facts.item);
+        if (locked === null) return malformed("lockedMissing", "issue_comment: locked missing");
         return {
             kind: "facts",
             facts: {
@@ -66,6 +68,8 @@ export const issueCommentNormalizer = {
                 trigger: { kind: "event", event: "issue_comment" },
                 author: facts.author,
                 actor: facts.actor,
+                locked,
+                arrival: null,
                 alerts: facts.alerts,
                 position: projectIssue({
                     closedBy: issueClosure(facts.item),

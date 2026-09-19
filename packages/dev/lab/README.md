@@ -36,6 +36,7 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [6.12](protocols/6.12-updated-at.md) | which events move an item's `updated_at` — the snapshot's key |
 | [6.13](protocols/6.13-read-path-secondary-limit.md) | the read-path secondary limit and whether a 304 costs a point |
 | [6.14](protocols/6.14-define-label.md) | defining a label the repository lacks |
+| [6.15](protocols/6.15-lock-unlock-issue.md) | locking and unlocking one issue, including read-back and repeated calls |
 | [7.1](protocols/7.1-capture.md) | capturing webhook payloads as normalizer fixtures |
 | [8.1](protocols/8.1-shell-soak.md) | the shell soak |
 | [8.2](protocols/8.2-first-effects.md) | the first effects sent for real |

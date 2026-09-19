@@ -37,6 +37,8 @@ const CALLS: { readonly [K in keyof WriteVerbs]: (verbs: WriteVerbs) => Promise<
     updateComment: (verbs) => verbs.updateComment(7788, "again"),
     closePullRequest: (verbs) => verbs.closePullRequest(PULL),
     releaseAssignment: (verbs) => verbs.releaseAssignment(ITEM, "alice"),
+    lockIssue: (verbs) => verbs.lockIssue(ITEM),
+    unlockIssue: (verbs) => verbs.unlockIssue(ITEM),
 };
 
 /** One request an operation built, and the endpoint the client matches it as. */

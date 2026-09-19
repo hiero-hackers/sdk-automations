@@ -1,4 +1,4 @@
-/** Locking an issue's conversation — refused at the send, because no confirmed write endpoint locks one. */
+/** Locking an issue's conversation: the plan, its row, and the state read that proves it. */
 
 import type { OperationHandler } from "./handler.js";
 import { text } from "./row.js";
@@ -19,13 +19,11 @@ export const lockIssue: OperationHandler<"lockIssue"> = {
         return reason === null ? null : { verb: "lockIssue", reason };
     },
 
-    /** Refused here rather than earlier, so plan, row and dispatch stay identical. */
-    send: async () => ({
-        outcome: "unsupported",
-        detail: "no confirmed write endpoint locks an issue; the adapter has four, and none of them is this",
-    }),
+    send: async (_call, pass) => await pass.writer.lockIssue(pass.item, pass.allowance),
 
-    // Unreachable: `send` refuses this verb before it is proved.
-
-    confirm: async () => "unknown",
+    async confirm(_call, pass) {
+        const seen = await pass.reader.item(pass.item);
+        if (!seen.ok) return "unknown";
+        return seen.value.locked ? "held" : "notHeld";
+    },
 };

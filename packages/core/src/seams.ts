@@ -31,6 +31,8 @@ export interface WriteVerbs {
     closePullRequest(item: ItemRef, allowance?: Allowance): Promise<WriteResult>;
     /** ONE named login off the item's assignees, never the list whole (D63). */
     releaseAssignment(item: ItemRef, login: string, allowance?: Allowance): Promise<WriteResult>;
+    lockIssue(item: ItemRef, allowance?: Allowance): Promise<WriteResult>;
+    unlockIssue(item: ItemRef, allowance?: Allowance): Promise<WriteResult>;
 }
 
 /** A read that answered, or the reason it established nothing. */
@@ -53,6 +55,7 @@ export interface ItemFacts {
     readonly closed: boolean;
     readonly merged: boolean;
     readonly draft: boolean;
+    readonly locked: boolean;
 }
 
 /** The four resources stage C reads, raw or as a presence. */

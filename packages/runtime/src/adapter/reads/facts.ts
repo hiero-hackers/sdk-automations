@@ -185,6 +185,7 @@ export interface OpenItem {
     readonly item: ItemRef;
     /** Rides on `openItems`, which the matrix confirmed, so every listed item carries one. */
     readonly author: string;
+    readonly locked: boolean;
     readonly labels: readonly string[];
     readonly assignees: readonly string[];
     readonly closedBy: ClosureReason | null;
@@ -323,6 +324,7 @@ async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
         const labels = labelNamesOf(field(entry, "labels"));
         const assignees = loginsOf(field(entry, "assignees"));
         const author = field(field(entry, "user"), "login");
+        const locked = field(entry, "locked");
         if (
             typeof number !== "number" ||
             !Number.isSafeInteger(number) ||
@@ -332,7 +334,8 @@ async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
             labels === null ||
             assignees === null ||
             typeof author !== "string" ||
-            author.length === 0
+            author.length === 0 ||
+            typeof locked !== "boolean"
         ) {
             return { ok: false, detail: "the open-item list carried an unreadable item" };
         }
@@ -342,6 +345,7 @@ async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
                 number,
             },
             author,
+            locked,
             labels,
             assignees,
             closedBy: state === "closed" ? "closedByHuman" : null,
@@ -774,6 +778,8 @@ export function createFactsReader(options: FactsReaderOptions): FactsReader {
             return {
                 kind: "issue",
                 ...observed(listed),
+                locked: listed.locked,
+                arrival: null,
                 position: projectIssue({
                     closedBy: listed.closedBy,
                     meanings: meanings(listed),

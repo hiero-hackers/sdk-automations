@@ -101,7 +101,7 @@ function admitGraphql(request: GitHubGraphqlRequest, url: URL): AdmittedRequest 
 
 /**
  * A write against the per-endpoint allowlist.
- * The body rule is per endpoint, not per method: the label removal carries none, and the assignee release is a DELETE that must.
+ * The body rule is per endpoint, not per method: label removal and lock changes carry none, while assignment release is a DELETE that must.
  */
 function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
     const write = writeEndpointOf(request.method, url);
@@ -112,7 +112,11 @@ function admitWrite(request: GitHubWriteRequest, url: URL): AdmittedRequest {
         return refused("invalidBody");
     }
     const body = bodyOf(request);
-    if (write.endpoint === "removeLabel") {
+    if (
+        write.endpoint === "removeLabel" ||
+        write.endpoint === "lockIssue" ||
+        write.endpoint === "unlockIssue"
+    ) {
         if (body !== undefined) return refused("invalidBody");
     } else {
         if (body === undefined || jsonRecordOf(body) === null) return refused("invalidBody");

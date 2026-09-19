@@ -106,6 +106,8 @@ function itemFactsOf(body: string, kind: ItemRef["kind"]): ItemFacts | null {
     if (record === null) return null;
     const state = field(record, "state");
     if (state !== "open" && state !== "closed") return null;
+    const locked = field(record, "locked");
+    if (typeof locked !== "boolean") return null;
     const entries = field(record, "labels");
     if (!Array.isArray(entries)) return null;
     const labels: string[] = [];
@@ -115,11 +117,11 @@ function itemFactsOf(body: string, kind: ItemRef["kind"]): ItemFacts | null {
         labels.push(name);
     }
     const closed = state === "closed";
-    if (kind === "issue") return { labels, closed, merged: false, draft: false };
+    if (kind === "issue") return { labels, closed, merged: false, draft: false, locked };
     const merged = field(record, "merged");
     const draft = field(record, "draft");
     return typeof merged === "boolean" && typeof draft === "boolean"
-        ? { labels, closed, merged, draft }
+        ? { labels, closed, merged, draft, locked }
         : null;
 }
 

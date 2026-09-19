@@ -45,6 +45,26 @@
                                             "type": "boolean",
                                             "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
                                             "default": false
+                                        },
+                                        "unlockWhen": {
+                                            "type": "array",
+                                            "items": {
+                                                "enum": [
+                                                    "awaitingTriage",
+                                                    "ready",
+                                                    "inProgress",
+                                                    "needsReview",
+                                                    "needsRevision",
+                                                    "readyToMerge",
+                                                    "blocked"
+                                                ]
+                                            },
+                                            "description": "Lock a new issue until a human adds one of these mapped workflow meanings."
+                                        },
+                                        "confirmUnlock": {
+                                            "type": "boolean",
+                                            "description": "Comment when an approval meaning unlocks an issue.",
+                                            "default": false
                                         }
                                     }
                                 }
@@ -750,6 +770,26 @@
                                 "announce": {
                                     "type": "boolean",
                                     "description": "Comment on a new issue to say it is waiting for triage, rather than only labelling it.",
+                                    "default": false
+                                },
+                                "unlockWhen": {
+                                    "type": "array",
+                                    "items": {
+                                        "enum": [
+                                            "awaitingTriage",
+                                            "ready",
+                                            "inProgress",
+                                            "needsReview",
+                                            "needsRevision",
+                                            "readyToMerge",
+                                            "blocked"
+                                        ]
+                                    },
+                                    "description": "Lock a new issue until a human adds one of these mapped workflow meanings."
+                                },
+                                "confirmUnlock": {
+                                    "type": "boolean",
+                                    "description": "Comment when an approval meaning unlocks an issue.",
                                     "default": false
                                 }
                             }

@@ -9,11 +9,13 @@ import type { Facts } from "../../catalogue.js";
 export const NORMALIZE_MALFORMED_CODES = [
     "payloadNotObject",
     "repositoryUnreadable",
+    "actionUnreadable",
     "itemMissing",
     "numberMissing",
     "labelsUnreadable",
     "timestampUnreadable",
     "authorUnreadable",
+    "lockedMissing",
     "mergedMissing",
     "draftMissing",
     "commentUnreadable",

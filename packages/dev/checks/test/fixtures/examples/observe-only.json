@@ -6,7 +6,9 @@
         "intake": {
             "enabled": true,
             "settings": {
-                "announce": false
+                "announce": false,
+                "unlockWhen": [],
+                "confirmUnlock": false
             }
         }
     },

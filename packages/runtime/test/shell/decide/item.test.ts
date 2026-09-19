@@ -60,6 +60,8 @@ const RECORD: Facts = {
     trigger: { kind: "sweep" },
     author: "opener",
     actor: null,
+    locked: false,
+    arrival: null,
     position: {
         kind: "position",
         state: { meaning: null, blocked: false, closedBy: null },
@@ -129,11 +131,14 @@ describe("what one item comes back as", () => {
         });
     });
 
-    it("answers a fact record the same way, with no delivery anywhere in it (D173)", async () => {
+    it("does not run an event-only capability for a swept fact record", async () => {
         const decided = await decider()(swept, configIn("dry-run"), AT);
 
-        expect(decided).toMatchObject({ kind: "decided", outcomes: [] });
-        expect(decided.kind === "decided" && decided.report.findings.length).toBeGreaterThan(0);
+        expect(decided).toMatchObject({
+            kind: "decided",
+            report: { findings: [] },
+            outcomes: [],
+        });
     });
 
     /**
@@ -299,17 +304,10 @@ describe("the decision rows one pass writes", () => {
         });
     });
 
-    it("names the sweep and the schedule row the firing claimed", async () => {
+    it("writes no row when a sweep does not match the capability trigger", async () => {
         await decider()(swept, configIn("dry-run"), AT);
 
-        expect(rows()).toContainEqual(
-            expect.objectContaining({
-                passId: SCHEDULE,
-                source: "sweep",
-                sourceId: SCHEDULE,
-                capability: "intake",
-            }),
-        );
+        expect(rows()).toEqual([]);
     });
 
     it("carries the effect id on the row an outcome writes", async () => {

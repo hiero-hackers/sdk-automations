@@ -124,6 +124,7 @@ const ROUTES: Readonly<Record<string, ResponseStep>> = {
         {
             number: 12,
             state: "open",
+            locked: false,
             updated_at: "2026-09-01T09:00:00Z",
             labels: [],
             user: { login: "ada" },
@@ -132,6 +133,7 @@ const ROUTES: Readonly<Record<string, ResponseStep>> = {
         {
             number: 34,
             state: "open",
+            locked: false,
             updated_at: "2026-09-02T09:00:00Z",
             labels: [],
             user: { login: "grace" },

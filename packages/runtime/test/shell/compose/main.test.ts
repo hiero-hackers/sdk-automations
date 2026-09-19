@@ -599,7 +599,7 @@ globalThis.fetch = async (input, init = {}) => {
     }
     if (new URL(url).pathname.endsWith(ITEM)) {
         return new Response(
-            JSON.stringify({ state: "open", labels: labelList() }),
+            JSON.stringify({ state: "open", locked: false, labels: labelList() }),
             { status: 200 },
         );
     }

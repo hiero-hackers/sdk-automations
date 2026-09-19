@@ -7,7 +7,7 @@
 import type { PermissionGrant } from "@hiero-hackers/automation-core";
 import { GITHUB_API_ORIGIN } from "./contract.js";
 
-/** The seven write operations the endpoint matrix confirmed, by path shape. */
+/** The write operations the endpoint matrix confirmed, by path shape. */
 export type WriteEndpoint =
     | "createLabel"
     | "addLabel"
@@ -15,7 +15,9 @@ export type WriteEndpoint =
     | "createComment"
     | "updateComment"
     | "closePullRequest"
-    | "releaseAssignment";
+    | "releaseAssignment"
+    | "lockIssue"
+    | "unlockIssue";
 
 /** Non-empty, and unchanged by a decode-then-encode round trip. */
 export function isEncodedSegment(segment: string | undefined): boolean {
@@ -149,6 +151,24 @@ const RELEASE_ASSIGNMENT: EndpointShape = {
     invalidates: itemViewsStaledBy,
 };
 
+const LOCK_ISSUE: EndpointShape = {
+    endpoint: "lockIssue",
+    resource: "issues",
+    grant: "issues:write",
+    matches: (method, rest) =>
+        method === "PUT" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "lock",
+    invalidates: itemViewsStaledBy,
+};
+
+const UNLOCK_ISSUE: EndpointShape = {
+    endpoint: "unlockIssue",
+    resource: "issues",
+    grant: "issues:write",
+    matches: (method, rest) =>
+        method === "DELETE" && rest.length === 2 && isNumberSegment(rest[0]) && rest[1] === "lock",
+    invalidates: itemViewsStaledBy,
+};
+
 /** One shape per confirmed operation, and the only place one is declared. */
 export const CONFIRMED_WRITE_ENDPOINTS: { readonly [K in WriteEndpoint]: EndpointShape } = {
     createLabel: CREATE_LABEL,
@@ -158,6 +178,8 @@ export const CONFIRMED_WRITE_ENDPOINTS: { readonly [K in WriteEndpoint]: Endpoin
     updateComment: UPDATE_COMMENT,
     closePullRequest: CLOSE_PULL_REQUEST,
     releaseAssignment: RELEASE_ASSIGNMENT,
+    lockIssue: LOCK_ISSUE,
+    unlockIssue: UNLOCK_ISSUE,
 };
 
 /** What admitting one write endpoint establishes: its name, its grant, and its staling. */

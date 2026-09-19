@@ -263,6 +263,8 @@ describe("configReport", () => {
                 "",
                 "- intake — on",
                 "  - announce: true",
+                "  - unlockWhen: none",
+                "  - confirmUnlock: false",
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 // `enabled: true` and nothing else, so every check is parked.
@@ -355,7 +357,7 @@ capabilities:
         const errors = body.split("\n").filter((row) => row.startsWith("- line "));
 
         expect(errors).toEqual([
-            '- line 7 — capabilities.intake.annouce: capability "intake": unknown setting "annouce" \\(it declares: announce\\)',
+            '- line 7 — capabilities.intake.annouce: capability "intake": unknown setting "annouce" \\(it declares: announce, confirmUnlock, unlockWhen\\)',
             '- line 10 — capabilities.inactivity.remindAfter: must be a duration: a whole number of hours or days, written "4h" or "14d"',
         ]);
         expect(body).toContain("the App would read no configuration from it at all");

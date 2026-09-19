@@ -65,6 +65,7 @@ describe("issues, through the real payloads", () => {
          * from a fact, and `inactivity` would judge a clock from it.
          */
         expect(o.trigger).toEqual({ kind: "event", event: "issues" });
+        expect(o).toMatchObject({ locked: false, arrival: { kind: "opened" } });
         expect({ assignees: o.assignees, links: o.links }).toEqual({
             assignees: "unread",
             links: "unread",
@@ -76,6 +77,10 @@ describe("issues, through the real payloads", () => {
         expect(o.position).toMatchObject({
             kind: "position",
             state: { meaning: "awaitingTriage" },
+        });
+        expect(o).toMatchObject({
+            locked: false,
+            arrival: { kind: "label", meaning: "awaitingTriage" },
         });
     });
 

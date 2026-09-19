@@ -64,7 +64,7 @@ describe("declared shape", () => {
      * list is what makes enabling intake without `awaitingTriage` a file
      * error instead of a runtime silence.
      */
-    it("intake declares the actor lookup, two intents from one record, and one required meaning", () => {
+    it("intake declares its actor lookup, writes, and required meaning", () => {
         expect(intake.declaration).toEqual({
             name: "intake",
             triggers: [{ kind: "event", event: "issues" }],
@@ -74,7 +74,7 @@ describe("declared shape", () => {
             facts: ["issue"],
             needs: [],
             resolvers: ["isAutomationActor"],
-            intents: ["applyMappedLabel", "postManagedComment"],
+            intents: ["applyMappedLabel", "postManagedComment", "lockIssue", "unlockIssue"],
         });
     });
 
@@ -168,7 +168,11 @@ describe("configuration isolation (contract.md §2)", () => {
 
     it("projects the capability's own settings, as the parser resolved them", () => {
         const view = projectCapabilityView(intake.declaration, config);
-        expect(view.settings).toEqual({ announce: true });
+        expect(view.settings).toEqual({
+            announce: true,
+            unlockWhen: [],
+            confirmUnlock: false,
+        });
     });
 
     /**

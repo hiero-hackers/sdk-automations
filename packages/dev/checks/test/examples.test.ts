@@ -58,7 +58,11 @@ describe("the shipped examples", () => {
      */
     it("reads each capability's declared settings keys and required mappings", () => {
         const intake = KNOWN.find(({ name }) => name === "intake");
-        expect(Object.keys(intake?.settings ?? {})).toEqual(["announce"]);
+        expect(Object.keys(intake?.settings ?? {})).toEqual([
+            "announce",
+            "unlockWhen",
+            "confirmUnlock",
+        ]);
         expect(intake?.requiredMappings).toEqual({ labels: ["awaitingTriage"] });
     });
 

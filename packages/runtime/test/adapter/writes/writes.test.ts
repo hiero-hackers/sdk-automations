@@ -1,5 +1,5 @@
 /**
- * The four verbs and the word each GitHub answer becomes.
+ * The verbs and the word each GitHub answer becomes.
  *
  * The mapping is the whole surface a capability sees, so every class gets a
  * row here — including the two ambiguous ones, which answer differently for an
@@ -124,6 +124,25 @@ describe("the verbs name their endpoints", () => {
         expect(scripted.calls[0]!.url).toBe(`${ISSUE}/assignees`);
         expect(scripted.calls[0]!.init.method).toBe("DELETE");
         expect(scripted.calls[0]!.init.body).toBe('{"assignees":["alice"]}');
+    });
+
+    it("locks an issue without inventing a GitHub lock reason", async () => {
+        const { verbs, scripted } = harness([new Response(null, { status: 204 })]);
+
+        expect(await verbs.lockIssue(ITEM)).toEqual({ outcome: "applied" });
+        expect(scripted.calls[0]!.url).toBe(`${ISSUE}/lock`);
+        expect(scripted.calls[0]!.init.method).toBe("PUT");
+        expect("body" in scripted.calls[0]!.init).toBe(false);
+        expect(new Headers(scripted.calls[0]!.init.headers).get("content-length")).toBe("0");
+    });
+
+    it("unlocks an issue", async () => {
+        const { verbs, scripted } = harness([new Response(null, { status: 204 })]);
+
+        expect(await verbs.unlockIssue(ITEM)).toEqual({ outcome: "applied" });
+        expect(scripted.calls[0]!.url).toBe(`${ISSUE}/lock`);
+        expect(scripted.calls[0]!.init.method).toBe("DELETE");
+        expect("body" in scripted.calls[0]!.init).toBe(false);
     });
 
     /**
@@ -397,6 +416,8 @@ describe("an ambiguous outcome answers by idempotency", () => {
         const update = harness([step()]);
         const release = harness([step()]);
         const close = harness([step()], bothSurfaces);
+        const lock = harness([step()]);
+        const unlock = harness([step()]);
 
         expect((await add.verbs.addLabel(ITEM, "x")).outcome).toBe("retryLater");
         expect((await remove.verbs.removeLabel(ITEM, "x")).outcome).toBe("retryLater");
@@ -405,5 +426,7 @@ describe("an ambiguous outcome answers by idempotency", () => {
         // a re-sent close or release cannot take a second thing away.
         expect((await release.verbs.releaseAssignment(ITEM, "a")).outcome).toBe("retryLater");
         expect((await close.verbs.closePullRequest(PULL)).outcome).toBe("retryLater");
+        expect((await lock.verbs.lockIssue(ITEM)).outcome).toBe("retryLater");
+        expect((await unlock.verbs.unlockIssue(ITEM)).outcome).toBe("retryLater");
     });
 });

@@ -81,6 +81,7 @@ const refuses =
 const ISSUE_ROW = {
     number: 12,
     state: "open",
+    locked: false,
     updated_at: "2026-09-01T09:00:00Z",
     labels: [{ name: TRIAGE_LABEL }],
     user: { login: "ada" },
@@ -90,6 +91,7 @@ const ISSUE_ROW = {
 const PULL_ROW = {
     number: 34,
     state: "open",
+    locked: false,
     updated_at: "2026-09-02T09:00:00Z",
     labels: [],
     user: { login: "grace" },
@@ -287,6 +289,7 @@ describe("the open-item list", () => {
                 labels: [TRIAGE_LABEL],
                 assignees: ["ada"],
                 closedBy: null,
+                locked: false,
                 updatedAt: new Date(ISSUE_ROW.updated_at),
             },
             {
@@ -295,6 +298,7 @@ describe("the open-item list", () => {
                 labels: [],
                 assignees: ["grace"],
                 closedBy: null,
+                locked: false,
                 updatedAt: new Date(PULL_ROW.updated_at),
             },
         ]);

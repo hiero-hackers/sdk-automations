@@ -1823,6 +1823,16 @@ const closePullRequest: GitHubRequest = {
     body: JSON.stringify({ state: "closed" }),
     idempotency: "idempotent",
 };
+const lockIssue: GitHubRequest = {
+    url: `${ISSUE}/lock`,
+    method: "PUT",
+    idempotency: "idempotent",
+};
+const unlockIssue: GitHubRequest = {
+    url: `${ISSUE}/lock`,
+    method: "DELETE",
+    idempotency: "idempotent",
+};
 
 /** The installation that holds both write surfaces — the close is on neither one alone. */
 const bothSurfaces = {
@@ -1852,6 +1862,8 @@ describe("the write gate", () => {
         ["create comment", createComment, "POST", `${ISSUE}/comments`],
         ["update comment", updateComment, "PATCH", `${REPO}/issues/comments/7788`],
         ["release assignment", releaseAssignment, "DELETE", `${ISSUE}/assignees`],
+        ["lock issue", lockIssue, "PUT", `${ISSUE}/lock`],
+        ["unlock issue", unlockIssue, "DELETE", `${ISSUE}/lock`],
     ])("admits %s with its exact method, url and body", async (_label, write, method, url) => {
         const { client, scripted } = harness([success("{}")]);
 
@@ -1866,8 +1878,8 @@ describe("the write gate", () => {
     });
 
     /**
-     * The body rule is per endpoint, not per method: the label removal must
-     * carry none and the assignee release must carry one, and both are DELETEs.
+     * The body rule is per endpoint, not per method: label removal and unlock
+     * carry none while assignment release carries one, and all three are DELETEs.
      */
     it("admits a DELETE that carries a body, and sends the body", async () => {
         const { client, scripted } = harness([success("{}")]);
@@ -2006,6 +2018,8 @@ describe("the write gate", () => {
 
     it.each([
         ["a body where none belongs", { ...removeLabel, body: "{}" }],
+        ["a lock body", { ...lockIssue, body: "{}" }],
+        ["an unlock body", { ...unlockIssue, body: "{}" }],
         ["a missing body", { url: `${ISSUE}/labels`, method: "POST", idempotency: "idempotent" }],
         ["a body that is not JSON", { ...addLabel, body: "not json" }],
         ["a body that is a JSON array", { ...addLabel, body: "[1]" }],
@@ -2232,6 +2246,26 @@ describe("cache hygiene around a write", () => {
 
         expect(new Headers(scripted.calls[2]!.init.headers).get("if-none-match")).toBeNull();
     });
+
+    it.each([
+        ["lock", lockIssue],
+        ["unlock", unlockIssue],
+    ] as const)(
+        "drops both item views and the timeline when an issue %s lands",
+        async (_label, write) => {
+            for (const url of [ISSUE, `${ISSUE}/timeline`, `${PULL}/132`]) {
+                const { client, scripted } = harness([listed(), success("{}"), conditional]);
+                await client.request({ url, method: "GET" });
+
+                await client.request(write);
+                await client.request({ url, method: "GET" });
+
+                expect(
+                    new Headers(scripted.calls[2]!.init.headers).get("if-none-match"),
+                ).toBeNull();
+            }
+        },
+    );
 
     it("leaves a resource the write did not touch alone", async () => {
         const other = `${REPO}/issues/999/comments?per_page=100&page=1`;

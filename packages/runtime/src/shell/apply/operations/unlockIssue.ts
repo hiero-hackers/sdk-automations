@@ -1,4 +1,4 @@
-/** Unlocking an issue's conversation — refused at the send, for the same reason its mirror is. */
+/** Unlocking an issue's conversation: the plan, its row, and the state read that proves it. */
 
 import type { OperationHandler } from "./handler.js";
 import { text } from "./row.js";
@@ -18,12 +18,11 @@ export const unlockIssue: OperationHandler<"unlockIssue"> = {
         return reason === null ? null : { verb: "unlockIssue", reason };
     },
 
-    send: async () => ({
-        outcome: "unsupported",
-        detail: "no confirmed write endpoint unlocks an issue; the adapter has four, and none of them is this",
-    }),
+    send: async (_call, pass) => await pass.writer.unlockIssue(pass.item, pass.allowance),
 
-    // Unreachable: `send` refuses this verb before it is proved.
-
-    confirm: async () => "unknown",
+    async confirm(_call, pass) {
+        const seen = await pass.reader.item(pass.item);
+        if (!seen.ok) return "unknown";
+        return seen.value.locked ? "notHeld" : "held";
+    },
 };

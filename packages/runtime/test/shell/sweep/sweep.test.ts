@@ -145,6 +145,7 @@ const sweeping =
 const listedItem = (item: ItemRef): SweptItem => ({
     item,
     author: "opener",
+    locked: false,
     labels: [],
     assignees: ["ada"],
     closedBy: null,
@@ -189,6 +190,8 @@ function scriptedReader(script: Script = {}): ScriptedReader {
                 trigger: { kind: "sweep" },
                 author: listed.author,
                 actor: null,
+                locked: listed.locked,
+                arrival: null,
                 position: POSITION,
                 alerts: { carried: [], arrived: [] },
                 assignees: CLOCK,
@@ -597,6 +600,8 @@ describe("the claim", () => {
                             trigger: { kind: "sweep" },
                             author: listed.author,
                             actor: null,
+                            locked: listed.locked,
+                            arrival: null,
                             position: POSITION,
                             alerts: { carried: [], arrived: [] },
                             assignees: CLOCK,
@@ -1234,6 +1239,8 @@ describe("the mutation lane shared by repositories", () => {
                             trigger: { kind: "sweep" },
                             author: listed.author,
                             actor: null,
+                            locked: listed.locked,
+                            arrival: null,
                             position: POSITION,
                             alerts: { carried: [], arrived: [] },
                             assignees: CLOCK,
@@ -1684,6 +1691,7 @@ const RECORDED = {
         {
             number: 12,
             state: "open",
+            locked: false,
             updated_at: "2026-08-01T00:00:00Z",
             labels: [],
             user: { login: "ada" },
@@ -1692,6 +1700,7 @@ const RECORDED = {
         {
             number: 34,
             state: "open",
+            locked: false,
             updated_at: "2026-08-02T00:00:00Z",
             labels: [],
             user: { login: "ada" },
@@ -1980,6 +1989,7 @@ describe("an item the platform released within the minute", () => {
             {
                 number: ISSUE.number,
                 state: "open",
+                locked: false,
                 updated_at: "2026-08-01T00:00:00Z",
                 labels: [],
                 user: { login: "ada" },
