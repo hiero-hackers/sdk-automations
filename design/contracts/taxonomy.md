@@ -41,6 +41,42 @@ never instead of it. See §5.1. Modelling them as meanings would make them mappa
 request that still carries `status: needs review` would read as two positions and therefore as a
 conflict, which would silence observation on exactly the items most worth reporting on.
 
+### 2.1 Current capability interactions
+
+Positions are shared workflow facts, not private capability state. This is the current ownership:
+
+| Meaning | Writer | Used by |
+|---|---|---|
+| `awaitingTriage` | `triageQueue` | `triageQueue` |
+| `ready` | A person | `triageQueue` |
+| `inProgress` | None | None |
+| `needsReview` | `prDashboard` | `prDashboard`, `inactivity` |
+| `needsRevision` | `prDashboard` | `prDashboard`, `inactivity` |
+| `readyToMerge` | `prDashboard` | `prDashboard` |
+| `blocked` | A person | Core safety, `inactivity` |
+
+`prDashboard` writes positions only when `applyLabels` includes them. Phase 3 may give `triageQueue`
+the `awaitingTriage → ready` edge. A future assignment capability must own both assignment and any
+move into or out of `inProgress`.
+
+`configReport` has no position dependency. `inactivity` can release an assignment or close a pull request,
+but it does not rewrite a workflow-position label. Closing preserves the existing position as §5.1 describes.
+
+### 2.2 Rules for adding a capability
+
+Before a capability reads or writes a position, its design must add itself to the table above and answer:
+
+1. Which entity carries the position?
+2. Is the capability producing it, consuming it, or merely refusing to act there?
+3. Which exact edge and cause authorize a write?
+4. Does another capability already own that edge?
+5. What happens for a conflicting position, a human `blocked` label, and a newer human change?
+
+One automatic edge has one owner. A second capability may consume the result, but it must not silently
+produce the same transition. Cross-capability handoffs use positions already present in the observation;
+capabilities do not call one another. More than one mapped position remains a conflict that no capability
+repairs automatically.
+
 ## 3. Example Hiero mappings
 
 The following mappings preserve the current C++ spelling and are useful defaults for repositories that want
