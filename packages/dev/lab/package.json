@@ -14,8 +14,8 @@
         "lab:probe": "tsx src/probes/run.ts"
     },
     "devDependencies": {
-        "@types/node": "^24.13.4",
-        "tsx": "^4.23.13",
+        "@types/node": "^24.13.6",
+        "tsx": "^4.23.15",
         "typescript": "^5.6.0",
         "vitest": "^4.1.11"
     },
