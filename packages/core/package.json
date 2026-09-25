@@ -33,7 +33,7 @@
         "@types/node": "^24.13.6",
         "fast-check": "^4.10.2",
         "typescript": "^5.6.0",
-        "vitest": "^4.1.11"
+        "vitest": "^5.0.1"
     },
     "dependencies": {
         "yaml": "^2.9.1"
