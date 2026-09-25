@@ -65,7 +65,11 @@ export const issueCommentNormalizer = {
                 repository: facts.repository,
                 item: { kind: "issue", number: facts.number },
                 observedAt: facts.observedAt,
-                trigger: { kind: "event", event: "issue_comment" },
+                trigger: {
+                    kind: "event",
+                    event: "issue_comment",
+                    ...(facts.deliveryId === undefined ? {} : { deliveryId: facts.deliveryId }),
+                },
                 author: facts.author,
                 actor: facts.actor,
                 locked,

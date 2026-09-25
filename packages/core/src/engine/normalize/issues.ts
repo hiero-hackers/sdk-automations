@@ -31,7 +31,11 @@ export const issuesNormalizer = {
                 repository: facts.repository,
                 item: { kind: "issue", number: facts.number },
                 observedAt: facts.observedAt,
-                trigger: { kind: "event", event: "issues" },
+                trigger: {
+                    kind: "event",
+                    event: "issues",
+                    ...(facts.deliveryId === undefined ? {} : { deliveryId: facts.deliveryId }),
+                },
                 author: facts.author,
                 actor: facts.actor,
                 locked,

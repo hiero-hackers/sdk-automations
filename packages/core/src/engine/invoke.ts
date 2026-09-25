@@ -459,6 +459,7 @@ export function readIntent(value: unknown): AnyIntent | null {
         const cause = own(value, "cause");
         const causeName = own(cause, "cause");
         const observedAt = own(cause, "observedAt");
+        const deliveryId = own(cause, "deliveryId");
         const explanation = own(value, "explanation");
         const explanationCapability = own(explanation, "capability");
         const summary = own(explanation, "summary");
@@ -484,6 +485,7 @@ export function readIntent(value: unknown): AnyIntent | null {
             (mode !== undefined && !PULL_REQUEST_MODES.includes(mode as never)) ||
             typeof causeName !== "string" ||
             !(observedAt instanceof Date) ||
+            (deliveryId !== undefined && typeof deliveryId !== "string") ||
             typeof explanationCapability !== "string" ||
             typeof summary !== "string" ||
             detail === null ||
@@ -506,7 +508,11 @@ export function readIntent(value: unknown): AnyIntent | null {
                 ...(mode === undefined ? {} : { pullRequestMode: mode as PullRequestMode }),
             },
             desired,
-            cause: { cause: causeName, observedAt: new Date(observedAt.getTime()) },
+            cause: {
+                cause: causeName,
+                observedAt: new Date(observedAt.getTime()),
+                ...(deliveryId === undefined ? {} : { deliveryId }),
+            },
             explanation: { capability: explanationCapability, summary, detail },
             idempotencyKey,
             grace,

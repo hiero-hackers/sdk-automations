@@ -71,7 +71,13 @@ export type DecideItem = (
 /** What core is asked about: a raw delivery held to this repository, or the record itself. */
 const askedOf = (input: ItemInput, repository: RepositoryRef): DecideInput =>
     input.kind === "delivery"
-        ? { kind: "delivery", repository, event: input.event, payload: input.payload }
+        ? {
+              kind: "delivery",
+              repository,
+              event: input.event,
+              payload: input.payload,
+              deliveryId: input.deliveryId,
+          }
         : { kind: "facts", facts: input.facts };
 
 /** What the rows name as the cause: the delivery, or the schedule row that fired (D173). */

@@ -77,6 +77,13 @@ describe("deriveIdempotencyKey", () => {
         expect(deriveIdempotencyKey(base)).toBe(deriveIdempotencyKey(base));
     });
 
+    it("distinguishes events in the same second but keeps redelivery stable", () => {
+        const first = { ...base, cause: { ...base.cause, deliveryId: "first" } };
+        const second = { ...base, cause: { ...base.cause, deliveryId: "second" } };
+        expect(deriveIdempotencyKey(first)).not.toBe(deriveIdempotencyKey(second));
+        expect(deriveIdempotencyKey(first)).toBe(deriveIdempotencyKey(first));
+    });
+
     it("distinguishes every identifying field", () => {
         const variants = [
             { ...base, capability: "other" },

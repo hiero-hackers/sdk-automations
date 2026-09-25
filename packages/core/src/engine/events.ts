@@ -60,6 +60,7 @@ export function normalizeDelivery(
     event: string,
     payload: unknown,
     config: RepositoryConfig,
+    deliveryId?: string,
 ): NormalizeResult {
     if (!isWebhookProducer(event)) {
         return { kind: "ignored", event };
@@ -126,6 +127,7 @@ export function normalizeDelivery(
         alerts: { carried, arrived },
         actor: senderOf(payload),
         observedAt,
+        ...(deliveryId === undefined ? {} : { deliveryId }),
         action,
         payload,
         config,

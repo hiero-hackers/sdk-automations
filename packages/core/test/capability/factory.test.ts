@@ -63,6 +63,19 @@ describe("what the factory stamps", () => {
         expect(intent.idempotencyKey).toBe(deriveIdempotencyKey(intent));
     });
 
+    it("binds the webhook delivery to the effect occasion", () => {
+        const first = intentFactory("triage", { ...occasion, deliveryId: "first" });
+        const second = intentFactory("triage", { ...occasion, deliveryId: "second" });
+        const spec = {
+            operation: "applyMappedLabel" as const,
+            desired: { meaning: "awaitingTriage" as const, cause: "intakeObserved" as const },
+            cause: "issueWithoutPosition",
+            explain: { summary: "New issue placed in triage." },
+        };
+        expect(first(spec).idempotencyKey).not.toBe(second(spec).idempotencyKey);
+        expect(first(spec).idempotencyKey).toBe(first(spec).idempotencyKey);
+    });
+
     it("the key identifies the occasion, not the payload — a reworded comment is one effect", () => {
         const a = make({
             operation: "postManagedComment",

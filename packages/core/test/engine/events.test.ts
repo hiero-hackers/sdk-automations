@@ -45,6 +45,15 @@ describe("every captured fixture normalizes", () => {
             expect(result.kind).toBe("facts");
         },
     );
+
+    it("carries a delivery identity into event facts", () => {
+        const subject = WEBHOOK_CAPTURES[0]!;
+        const result = normalizeDelivery(subject.event, subject.json(), config, "delivery-one");
+        expect(result.kind).toBe("facts");
+        if (result.kind === "facts") {
+            expect(result.facts.trigger).toMatchObject({ deliveryId: "delivery-one" });
+        }
+    });
 });
 
 describe("what the normalizer refuses, and how", () => {

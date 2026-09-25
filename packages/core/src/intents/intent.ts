@@ -65,7 +65,7 @@ export function deriveIdempotencyKey(intent: {
     readonly cause: DatedCause;
 }): string {
     // JSON, not a join: a join collides "a b"+"c" with "a"+"b c" (D65, D74).
-    return JSON.stringify([
+    const parts = [
         intent.capability,
         intent.repository.owner,
         intent.repository.repo,
@@ -74,7 +74,9 @@ export function deriveIdempotencyKey(intent: {
         intent.operation,
         intent.cause.cause,
         intent.cause.observedAt.toISOString(),
-    ]);
+    ];
+    if (intent.cause.deliveryId !== undefined) parts.push(intent.cause.deliveryId);
+    return JSON.stringify(parts);
 }
 
 // ─── The screen's verdict ────────────────────────────────────────────

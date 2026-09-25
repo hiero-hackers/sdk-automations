@@ -35,13 +35,15 @@ export interface StructuredExplanation {
 export interface DatedCause {
     readonly cause: string;
     readonly observedAt: Date;
+    readonly deliveryId?: string;
 }
 
 // ─── The facts a capability reads ────────────────────────────────────
 
 /** What woke the platform. Metadata a capability may log, never branch on (facts.md §6). */
 export type Trigger =
-    { readonly kind: "event"; readonly event: string } | { readonly kind: "sweep" };
+    | { readonly kind: "event"; readonly event: string; readonly deliveryId?: string }
+    | { readonly kind: "sweep" };
 
 /** A group the producer did not read; the engine records `factsUnread` and skips. */
 export type Unread = "unread";

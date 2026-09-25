@@ -40,7 +40,11 @@ export const pullRequestNormalizer = {
                 repository: facts.repository,
                 item: { kind: "pullRequest", number: facts.number },
                 observedAt: facts.observedAt,
-                trigger: { kind: "event", event: "pull_request" },
+                trigger: {
+                    kind: "event",
+                    event: "pull_request",
+                    ...(facts.deliveryId === undefined ? {} : { deliveryId: facts.deliveryId }),
+                },
                 author: facts.author,
                 actor: facts.actor,
                 alerts: facts.alerts,

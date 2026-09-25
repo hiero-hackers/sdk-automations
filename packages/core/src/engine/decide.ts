@@ -84,6 +84,7 @@ export type DecideInput =
           readonly kind: "delivery";
           readonly repository: RepositoryRef;
           readonly event: string;
+          readonly deliveryId?: string;
           readonly payload: unknown;
       }
     | { readonly kind: "facts"; readonly facts: Facts };
@@ -438,7 +439,7 @@ function readInput(
     if (input.kind === "facts") {
         return { repository: input.facts.repository, facts: input.facts, findings: [] };
     }
-    const normalized = normalizeDelivery(input.event, input.payload, config);
+    const normalized = normalizeDelivery(input.event, input.payload, config, input.deliveryId);
     if (normalized.kind === "facts") {
         return {
             repository: normalized.facts.repository,

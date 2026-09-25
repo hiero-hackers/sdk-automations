@@ -106,6 +106,7 @@ export interface DeliveryFacts {
     /** The delivery's sender, or `null` — see `senderOf`. */
     readonly actor: Actor | null;
     readonly observedAt: Date;
+    readonly deliveryId?: string;
     readonly action: string;
     /** The delivery body, proved a record — for the item's sibling keys. */
     readonly payload: Record<string, unknown>;

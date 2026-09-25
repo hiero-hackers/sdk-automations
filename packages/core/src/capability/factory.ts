@@ -18,6 +18,7 @@ export interface IntentOccasion {
     readonly repository: RepositoryRef;
     readonly item: ItemRef;
     readonly observedAt: Date;
+    readonly deliveryId?: string;
 }
 
 /** What a capability says; the factory supplies the rest of the intent. */
@@ -74,7 +75,11 @@ export function intentFactory(capability: string, occasion: IntentOccasion): Int
                     : { pullRequestMode: spec.claims.pullRequestMode }),
             },
             desired: spec.desired,
-            cause: { cause: spec.cause, observedAt: occasion.observedAt },
+            cause: {
+                cause: spec.cause,
+                observedAt: occasion.observedAt,
+                ...(occasion.deliveryId === undefined ? {} : { deliveryId: occasion.deliveryId }),
+            },
             explanation: {
                 capability,
                 summary: spec.explain.summary,
@@ -137,6 +142,9 @@ export function buildIntent<K extends IntentOperation>(
         repository: facts.repository,
         item: facts.item,
         observedAt: request.occasion ?? facts.observedAt,
+        ...(facts.trigger.kind === "event" && facts.trigger.deliveryId !== undefined
+            ? { deliveryId: facts.trigger.deliveryId }
+            : {}),
     })({
         operation: request.operation,
         desired,

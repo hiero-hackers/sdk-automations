@@ -241,6 +241,17 @@ describe("the write path", () => {
         });
     });
 
+    it("keeps two deliveries with the same item timestamp distinct", async () => {
+        const wired = recordingApplier();
+        const decide = decider({ applier: wired.applier });
+        const config = configIn("active");
+        await decide(delivered, config, AT);
+        await decide({ ...delivered, deliveryId: "another-delivery" }, config, AT);
+        expect(wired.passes[0]!.effects[0]!.intent.idempotencyKey).not.toBe(
+            wired.passes[1]!.effects[0]!.intent.idempotencyKey,
+        );
+    });
+
     it.each(["dry-run", "observe"])("applies nothing in %s, and calls no applier", async (mode) => {
         const wired = recordingApplier();
 
