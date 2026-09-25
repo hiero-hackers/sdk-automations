@@ -1,8 +1,9 @@
 # Quickstart
 
-> The App is in development and not yet installable. These pages describe the configuration it ships with.
+> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
 
-Set up in two minutes: one file, one merge, no per-repository installation.
+Once an operator installs and starts the App for your repository, configure it with one file and
+one merge.
 
 ## Add the file
 
@@ -28,7 +29,7 @@ list here are ever touched; the [common setups](#common-setups) below map more a
 credentials the shell reads that branch. Credential-free development and CI may point `CONFIG_FILE`
 at a local copy.
 
-That is the whole setup.
+That is the repository configuration. Installing and running the App is a separate operator step.
 
 **For autocomplete**, put
 `# yaml-language-server: $schema=https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json`
@@ -44,8 +45,10 @@ per delivery naming every decision and why. Anything the App would close or rele
 first, and the warning is honoured. [Capabilities](capabilities.md) says what each automation does
 and what it may write.
 
-**Today the App reports and does not write.** Whoever runs it turns writes on; until then `active`
-is rejected before any decision is made, and the other three modes behave exactly as below.
+The App can write only when its operator arms the write path and the repository selects `active`.
+It is not hosted for general use yet. Use `observe` or `dry-run` until the operator has approved
+and rehearsed the writes in a sandbox. Without an armed write path, `active` is rejected before
+any decision is made.
 
 ## Choosing a mode
 
@@ -54,7 +57,7 @@ is rejected before any decision is made, and the other three modes behave exactl
 | `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
 | `observe` | You want a non-writing decision record; today it includes record-only requested effects |
 | `dry-run` | You want the same non-writing record, plus a `wouldApply` line naming each change the App would make |
-| `active` | You want writes — not yet, see above |
+| `active` | You want the armed App to apply approved changes after a sandbox rehearsal |
 
 `dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
 be is named.

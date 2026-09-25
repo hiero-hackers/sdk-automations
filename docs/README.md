@@ -1,6 +1,6 @@
 # Hiero SDK automations
 
-> The App is in development and not yet installable. These pages describe the configuration it ships with.
+> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
 
 - **[Quickstart](quickstart.md)** — set up in two minutes: one file, one merge
 - **[Capabilities](capabilities.md)** — what each automation does, what it needs mapped, what it may write

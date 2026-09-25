@@ -1,6 +1,6 @@
 # Running the shell
 
-> The App is in development and not yet installable. These pages describe the configuration it ships with.
+> The App runs in a personal development sandbox. It is not hosted for general use yet. These pages describe its current configuration and how to operate it.
 
 For whoever runs the endpoint: what it reads from the environment, what arms each lane, the two
 switches, and the commands that ask it what happened.
