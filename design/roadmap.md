@@ -2,51 +2,45 @@
 
 ## Outcome
 
-One installation can run the current capabilities on a real repository with bounded GitHub use,
-and an operator can understand and recover every action.
+One installation observes a real repository with bounded GitHub use. An operator can explain its
+decisions, restart it, and recover its store. Active writes require separate approval and proof.
 
-This page records the agreed direction. The milestone and its issues should be created after the
-maintainers confirm the split and ownership.
+[Milestone #2](https://github.com/hiero-hackers/sdk-automations/milestone/2) tracks the remaining
+pilot work. The adapter, write path, PR dashboard, and initial triage queue are built. A hosted
+pilot, complete triage outcomes, and assignment are not complete.
 
-## Work in order
+## Next gates
 
-### 1. Bound GitHub use
+1. Finish the disposable-repository triage rehearsal in
+   [#189](https://github.com/hiero-hackers/sdk-automations/issues/189). Keep `lockUntilTriaged` off
+   by default until clean ready-label unlock and template-labelled entry pass live. Record the
+   decisions and effects, not just the visible result.
+2. Choose the temporary App owner, pilot host, and operator in
+   [#191](https://github.com/hiero-hackers/sdk-automations/issues/191). Prove direct webhook
+   delivery, health, restart, backup, restore, and rollback with a durable store.
+3. Run [#190](https://github.com/hiero-hackers/sdk-automations/issues/190) in `observe` on one
+   approved repository. Sophie conditionally approved Analytics after the prior tests pass and
+   the App is installable. Its owner must install and configure it. Dry-run and active writes need
+   their own approval and evidence.
+4. Use pilot findings to finish triage outcomes, then build the smallest useful assignment flow.
+   Keep one owner for each automatic state transition. Do not add automatic triage or
+   cross-capability state repair without a demonstrated need and a clear ownership rule.
 
-1. Give one reconciliation tick a shared request cap and write cap across every due repository.
-2. Make progress fair when more repositories are due than one tick can serve.
-3. Carry a secondary-rate-limit pause across separate requests when the current client proves
-   insufficient.
-4. Record request use per installation and verify the design with a many-repository harness.
-   One repository is measured (protocol 8.4, 2026-09-15); the harness stays open.
+## Independent work before wider rollout
 
-The sweep's allowance is a share of the installation's own limit per pool, in GitHub's units,
-over GitHub's reset window (D192). Search is never used and the secondary limits are the client's.
+[#192](https://github.com/hiero-hackers/sdk-automations/issues/192) measures per-capability costs
+and onboarding bursts. This can proceed while the live pilot awaits credentials and hosting.
+The credential-free [cost rehearsal](../packages/runtime/test/shell/compose/cost.test.ts) covers
+inactivity first enabled on an existing repository and 100 repositories sharing the sweep's pool
+across reset windows. It uses the composed client, fact reader, engine, and store. The
+[sweep guide](guides/sweep.md#3-cost) records its scope and costs. Webhook-capability costs, live
+write costs, mixed-lane bursts, and secondary-limit behavior at fleet scale remain open.
 
-### 2. Prove current main
-
-Run a focused sandbox pilot after the budget work. Measure real request use and verify status,
-explanation, restart, expired-token, and transient-GitHub failure paths. Keep the completed adapter
-and destructive rehearsals as evidence instead of repeating them from the beginning.
-
-### 3. Finish one capability
-
-Complete `prDashboard` phase 1 as small, independent changes: mergeability, commit attestations, and
-linked-issue assignment. Keep label behavior separate. Confirm ownership before starting another
-capability so work does not overlap. `prDashboard` is complete (2026-09-16, D198–D200).
-
-### 4. Improve capability authoring from evidence
-
-Use the next completed capability to identify repeated author work. Remove only repetition that the
-real build demonstrates. Do not infer triggers or effects from settings when they express different
-facts.
-
-### 5. Prepare launch
-
-Choose the App owner and hosting shape, then add the observability, backup, health, and operator
-runbook work that deployment requires. Store versioning remains at version 1 until the first real
-installation.
+[#194](https://github.com/hiero-hackers/sdk-automations/issues/194) tracks the Vitest 5 update.
+Retry only after the upstream Stryker runner fix is released. Keep mutation thresholds unchanged.
 
 ## Working rule
 
-Each pull request should be reviewable in under an hour, remove more debt than it creates, and avoid
-leaving a correctness or safety problem for a later cleanup.
+Keep each change independently reviewable. Prefer one process, one durable store, and existing
+capability seams until real use shows a missing abstraction. Unknown facts prevent unsafe writes;
+retries must not duplicate effects; every effect must be explainable from the store.

@@ -82,6 +82,19 @@ Measured (protocol 8.4, 2026-09-15, the sandbox's 171 open items): a cold firing
 core requests and one GraphQL point in 141 seconds; the warm firing two minutes later charged
 nothing on either pool, answered every item from the store, and took under two seconds.
 
+The credential-free [cost rehearsal](../../packages/runtime/test/shell/compose/cost.test.ts)
+adds a smaller, reproducible fixture: one assigned issue, one assigned pull request, one page per
+endpoint, and a mapped `working` command. With inactivity disabled, a scheduled pass reads only
+config (one core unit). First enabling it costs nine core units and one GraphQL point, including
+config. An unchanged warm pass sends two conditional GETs, for config and the list, costing zero
+primary units. Token minting is outside those counts.
+
+The same fixture across 100 repositories uses a deliberately small 8% sweep share of a 5,000-unit
+pool. No window spends more than 400 units of either pool; a second tick cannot reopen the spent
+window, and all repositories finish within three windows. The webhook allowance remains untouched.
+These are scripted request counts, not live fleet performance. They do not prove paging, write
+costs, GraphQL exhaustion or variable query costs, mixed-lane bursts, or secondary-rate-limit behavior.
+
 ## 4. What is still open
 
 - Nothing on the read side. Protocol 6.9 cited `changesRequested`, `reapableSince` and
