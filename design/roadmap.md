@@ -33,8 +33,9 @@ and onboarding bursts. This can proceed while the live pilot awaits credentials 
 The credential-free [cost rehearsal](../packages/runtime/test/shell/compose/cost.test.ts) covers
 inactivity first enabled on an existing repository and 100 repositories sharing the sweep's pool
 across reset windows. It uses the composed client, fact reader, engine, and store. The
-[sweep guide](guides/sweep.md#3-cost) records its scope and costs. Webhook-capability costs, live
-write costs, mixed-lane bursts, and secondary-limit behavior at fleet scale remain open.
+[sweep guide](guides/sweep.md#3-cost) records its scope and costs, including the three webhook
+capabilities and two deliveries beside an exhausted sweep. Live write costs, large webhook bursts,
+variable GraphQL costs, and secondary-limit behavior at fleet scale remain open.
 
 [#194](https://github.com/hiero-hackers/sdk-automations/issues/194) tracks the Vitest 5 update.
 Retry only after the upstream Stryker runner fix is released. Keep mutation thresholds unchanged.

@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
-import { parseConfigDocument } from "@hiero-hackers/automation-core";
-import { useTempDir } from "@hiero-hackers/automation-testkit";
+import { asDeliveryGuid, type RepositoryRef, type Allowance } from "@hiero-hackers/automation-core";
+import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import { liveGitHub } from "../../../src/shell/compose/live.js";
 import type { ShellOptions } from "../../../src/shell/compose/shell.js";
 import { createItemDecider } from "../../../src/shell/decide/item.js";
+import { createDeliveries } from "../../../src/shell/inbound/deliveries.js";
 import { SWEEP_EFFECT, sweepScheduleId } from "../../../src/shell/decide/schedule.js";
 import type { ShellEvent } from "../../../src/shell/log.js";
 import { createSweep } from "../../../src/shell/sweep/sweep.js";
@@ -16,11 +17,23 @@ const HOUR = 3_600_000;
 const POOL_LIMIT = 5_000;
 const START = new Date("2026-09-15T10:00:00.000Z");
 const UPDATED = "2026-09-14T10:00:00.000Z";
+const DASHBOARD_CHECKS = `    checks:
+      dcoSignoff:
+        enabled: true
+      gpgSignature:
+        enabled: true
+      mergeConflicts:
+        enabled: true
+      linkedIssues:
+        enabled: true
+        assignedIssues:
+          enabled: true
+`;
 const temp = useTempDir("shell-cost-");
 
 afterEach(() => vi.unstubAllGlobals());
 
-function scriptedGitHub(state: { now: Date; enabled: boolean }) {
+function scriptedGitHub(state: { now: Date; enabled: boolean; deliveryCapabilities: string }) {
     const calls: Array<{ path: string; status: number; pool: "core" | "graphql"; window: number }> =
         [];
     const items = [12, 34].map((number) => ({
@@ -46,10 +59,38 @@ function scriptedGitHub(state: { now: Date; enabled: boolean }) {
         "/pulls/34": { draft: false, created_at: UPDATED },
         "/pulls/34/reviews": [],
         "/pulls/34/commits": [{ commit: { committer: { date: UPDATED } } }],
+        "/issues/164": { assignees: [{ login: "scrubbed-1" }] },
+        "/issues/164/timeline": [],
+        "/issues/165/timeline": [],
+        "/pulls/165": { number: 165, mergeable: true, head: { sha: "a".repeat(40) } },
+        "/pulls/165/files": [{ filename: "automations.yml", status: "modified" }],
+        "/pulls/165/commits": [
+            {
+                sha: "a".repeat(40),
+                parents: [],
+                commit: {
+                    message: "Change\n\nSigned-off-by: ada",
+                    verification: { verified: true },
+                },
+            },
+        ],
         "/graphql": {
             data: {
                 rateLimit: { cost: 1 },
                 repository: {
+                    nameWithOwner: "scrubbed-1/scrubbed-2",
+                    pullRequest: {
+                        number: 165,
+                        closingIssuesReferences: {
+                            nodes: [
+                                {
+                                    number: 164,
+                                    repository: { nameWithOwner: "scrubbed-1/scrubbed-2" },
+                                },
+                            ],
+                            pageInfo: { hasNextPage: false, endCursor: null },
+                        },
+                    },
                     p0: {
                         number: 34,
                         closingIssuesReferences: {
@@ -85,7 +126,10 @@ capabilities:
       enabled: true
     pullRequests:
       enabled: true
+${state.deliveryCapabilities}
 mappings:
+  labels:
+    awaitingTriage: "status: triage"
   commands:
     working: /working
 `;
@@ -99,7 +143,7 @@ mappings:
               }
             : routes[route];
         const pool = route === "/graphql" ? "graphql" : "core";
-        const etag = `"${config ? String(state.enabled) : "unchanged"}"`;
+        const etag = `"${config ? `${String(state.enabled)}-${Buffer.from(state.deliveryCapabilities).toString("base64")}` : "unchanged"}"`;
         const status = new Headers(init.headers).get("if-none-match") === etag ? 304 : 200;
         calls.push({ path, status, pool, window: state.now.getTime() });
         const headers = {
@@ -136,7 +180,7 @@ mappings:
 }
 
 function rehearsal(repositoryCount: number, share = 0.4) {
-    const state = { now: START, enabled: false };
+    const state = { now: START, enabled: false, deliveryCapabilities: "" };
     const github = scriptedGitHub(state);
     const events: ShellEvent[] = [];
     const repositories = Array.from({ length: repositoryCount }, (_, index) => ({
@@ -166,30 +210,36 @@ function rehearsal(repositoryCount: number, share = 0.4) {
         log: (event) => events.push(event),
     });
     const seamsFor: ShellOptions["seams"] = built.seamsFor;
+    const servingFor = (repository: RepositoryRef, allowance?: Allowance) => {
+        const seams = seamsFor(repository, allowance);
+        return {
+            ...seams,
+            decideItem: createItemDecider({
+                store,
+                repository,
+                capabilities: CAPABILITIES,
+                externals: seams.externals,
+                clock,
+            }),
+        };
+    };
+    const deliveries = createDeliveries({
+        store,
+        capabilities: CAPABILITIES,
+        lane: servingFor,
+        allowance: built.deliveryAllowance,
+        worker: "cost-rehearsal",
+        clock,
+        log: (event) => events.push(event),
+    });
     const sweep = createSweep({
         store,
         capabilities: CAPABILITIES,
         processorFor: (repository, allowance) => {
-            const seams = seamsFor(repository, allowance);
+            const serving = servingFor(repository, allowance);
             return {
-                facts: seams.facts,
-                configuration: async () => {
-                    const loaded = await seams.configSource.load();
-                    if (!loaded.ok) throw new Error(loaded.detail);
-                    const parsed = parseConfigDocument(loaded.document.text, {
-                        revision: loaded.document.revision,
-                        knownCapabilities: CAPABILITIES.map(({ declaration }) => declaration),
-                    });
-                    if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
-                    return parsed.config;
-                },
-                decideItem: createItemDecider({
-                    store,
-                    repository,
-                    capabilities: CAPABILITIES,
-                    externals: seams.externals,
-                    clock,
-                }),
+                ...serving,
+                configuration: () => deliveries.configuration(repository, serving.configSource),
             };
         },
         clock,
@@ -206,12 +256,140 @@ function rehearsal(repositoryCount: number, share = 0.4) {
         store,
         sweep,
         built,
+        deliveries,
         events,
         ...github,
     };
 }
 
 describe("installation cost through the composed client and reader", () => {
+    it.each([
+        {
+            name: "triageQueue",
+            event: "issues",
+            fixture: "issues.opened.json",
+            settings: "",
+            paths: ["/contents/automations.yml", "/issues/164/timeline"],
+        },
+        {
+            name: "prDashboard",
+            event: "pull_request",
+            fixture: "pull_request.opened.json",
+            settings: DASHBOARD_CHECKS,
+            paths: [
+                "/contents/automations.yml",
+                "/pulls/165/commits",
+                "/pulls/165",
+                "/graphql",
+                "/issues/164",
+                "/issues/165/timeline",
+            ],
+        },
+        {
+            name: "configReport",
+            event: "pull_request",
+            fixture: "pull_request.opened.json",
+            settings: "",
+            paths: [
+                "/contents/automations.yml",
+                "/pulls/165/files",
+                "/pulls/165",
+                "/contents/automations.yml",
+                "/issues/165/timeline",
+            ],
+        },
+    ])(
+        "measures $name on a captured webhook without charging the sweep",
+        async ({ name, event, fixture, settings, paths }) => {
+            const run = rehearsal(0);
+            run.state.deliveryCapabilities = `  ${name}:\n    enabled: true\n${settings}`;
+            const deliveryId = asDeliveryGuid("00000000-0000-4000-8000-000000000001")!;
+            try {
+                run.store.inbox.acceptDelivery({
+                    deliveryId,
+                    eventName: event,
+                    payload: capture(fixture).bytes(),
+                    receivedAt: START.toISOString(),
+                });
+                await run.deliveries.drain();
+                expect(
+                    run.events.filter(({ event }) => event === "deliveryCompleted"),
+                ).toMatchObject([{ deliveryId, kind: "decision" }]);
+                expect(
+                    run.calls.map(({ path }) => path.replace(/^\/repos\/[^/]+\/[^/]+/, "")),
+                ).toEqual(paths);
+                const graphql = paths.filter((path) => path === "/graphql").length;
+                const core = paths.length - graphql;
+                expect(run.cost()).toEqual({ requests: core + graphql, core, graphql });
+                expect(run.built.deliveryAllowance.spent()).toEqual({
+                    core,
+                    graphql,
+                    mutations: 0,
+                });
+                expect(run.built.sweepAllowance.spent()).toEqual({
+                    core: 0,
+                    graphql: 0,
+                    mutations: 0,
+                });
+                expect(
+                    run.store.ledger
+                        .decisionsOn(
+                            { owner: "scrubbed-1", repo: "scrubbed-2" },
+                            {
+                                kind: event === "issues" ? "issue" : "pullRequest",
+                                number: event === "issues" ? 164 : 165,
+                            },
+                        )
+                        .some(({ code }) => code === "wouldApply"),
+                ).toBe(true);
+            } finally {
+                run.store.close();
+            }
+        },
+    );
+
+    it("keeps webhook decisions running beside an exhausted sweep", async () => {
+        const run = rehearsal(20, 0.008);
+        run.state.enabled = true;
+        run.state.deliveryCapabilities = `  prDashboard:\n    enabled: true\n${DASHBOARD_CHECKS}`;
+        const payload = capture("pull_request.opened.json").bytes();
+        try {
+            for (const id of [
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+            ]) {
+                run.store.inbox.acceptDelivery({
+                    deliveryId: asDeliveryGuid(id)!,
+                    eventName: "pull_request",
+                    payload,
+                    receivedAt: START.toISOString(),
+                });
+                await Promise.all([run.sweep.runDue(), run.deliveries.drain()]);
+                expect(run.built.sweepAllowance.spent().core).toBe(40);
+                expect(run.built.sweepAllowance.exhausted()).toBe("core");
+            }
+            expect(run.events.filter(({ event }) => event === "deliveryCompleted")).toMatchObject([
+                { kind: "decision" },
+                { kind: "decision" },
+            ]);
+            expect(run.built.deliveryAllowance.spent()).toEqual({
+                core: 5,
+                graphql: 2,
+                mutations: 0,
+            });
+            expect(run.cost().core).toBe(45);
+            expect(run.cost().graphql).toBe(run.built.sweepAllowance.spent().graphql + 2);
+            expect(run.built.sweepAllowance.spent().mutations).toBe(0);
+            expect(
+                run.events.some(
+                    ({ event }) => event === "sweepFailed" || event === "deliveryAttemptFailed",
+                ),
+            ).toBe(false);
+        } finally {
+            run.store.close();
+        }
+    }, 30_000);
+
     it("measures disabled, newly enabled and warm inactivity on an existing repository", async () => {
         const run = rehearsal(1);
         try {

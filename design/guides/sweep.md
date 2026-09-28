@@ -92,8 +92,24 @@ primary units. Token minting is outside those counts.
 The same fixture across 100 repositories uses a deliberately small 8% sweep share of a 5,000-unit
 pool. No window spends more than 400 units of either pool; a second tick cannot reopen the spent
 window, and all repositories finish within three windows. The webhook allowance remains untouched.
+
+The rehearsal also runs captured issue and pull-request webhooks through the delivery worker with
+synthetic, successful GitHub responses. Each cold delivery below includes its config read and the
+ordering timeline read. Mode is `dry-run`; no writes are sent, and the sweep allowance is untouched.
+
+| Capability | Case | Core units | GraphQL points |
+| --- | --- | --- | --- |
+| triageQueue | New issue, welcome on, locking off | 2 | 0 |
+| prDashboard | All checks on, one signed commit and one assigned linked issue | 5 | 1 |
+| configReport | PR changes automations.yml, proposed config is valid | 5 | 0 |
+
+The two dashboard commit checks share one commits read. A mixed-lane case runs two dashboard
+deliveries alongside 20 due repositories with a 40-unit sweep cap. The sweep stops at 40 while
+both deliveries finish using the webhook allowance. Together the deliveries spend five core units
+and two GraphQL points: the repeated REST reads return 304, but the GraphQL query is charged again.
+
 These are scripted request counts, not live fleet performance. They do not prove paging, write
-costs, GraphQL exhaustion or variable query costs, mixed-lane bursts, or secondary-rate-limit behavior.
+costs, GraphQL exhaustion or variable query costs, large webhook bursts, or secondary-rate-limit behavior.
 
 ## 4. What is still open
 
