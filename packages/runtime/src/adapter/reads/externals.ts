@@ -195,6 +195,7 @@ function newestIn(
     landed: readonly LandedWrite[],
     cause?: CauseFingerprint,
 ): HumanChangeOrdering {
+    // Stryker disable next-line ArrayDeclaration: a seeded junk entry matches no timeline entry.
     const pending = [...(cause?.createdWith ?? [])];
     let newest: Date | null = null;
     for (const entry of events) {

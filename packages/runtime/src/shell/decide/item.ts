@@ -140,6 +140,7 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
                       decision.approved,
                       config,
                       allowance,
+                      // Stryker disable next-line ConditionalExpression: a swept record has no payload to pass.
                       input.kind === "delivery" ? input.payload : undefined,
                   )
                 : [];

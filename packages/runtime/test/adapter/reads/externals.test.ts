@@ -729,6 +729,7 @@ describe("the creation-time entries of an opened item", () => {
         ["another opener", { ...OPENED.issue, user: { login: "someone-else" } }],
         ["a missing created_at", { ...OPENED.issue, created_at: undefined }],
         ["an unreadable created_at", { ...OPENED.issue, created_at: "soon" }],
+        ["a numeric created_at", { ...OPENED.issue, created_at: 0 }],
         ["unreadable labels", { ...OPENED.issue, labels: "triage" }],
         ["unreadable assignees", { ...OPENED.issue, assignees: undefined }],
         ["a label without a name", { ...OPENED.issue, labels: [{}] }],
