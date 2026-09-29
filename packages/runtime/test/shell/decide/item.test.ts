@@ -176,10 +176,11 @@ describe("the write path", () => {
             effects: readonly Effect[];
             revision: string;
             allowance: Allowance | undefined;
+            payload: unknown;
         }[] = [];
         const applier: Applier = {
-            applyAll: (effects, config, allowance) => {
-                passes.push({ effects, revision: config.revision, allowance });
+            applyAll: (effects, config, allowance, payload) => {
+                passes.push({ effects, revision: config.revision, allowance, payload });
                 return Promise.resolve(
                     effects.map((effect) => ({
                         effectId: effect.intent.idempotencyKey,
@@ -268,6 +269,16 @@ describe("the write path", () => {
         await decider({ applier: wired.applier })(delivered, config, AT);
 
         expect(wired.passes.map((pass) => pass.allowance)).toEqual([allowance, undefined]);
+    });
+
+    it("hands the applier a delivery's payload, and a swept record none", async () => {
+        const wired = recordingApplier();
+        const config = configIn("active");
+
+        await decider({ applier: wired.applier })(delivered, config, AT);
+        await decider({ applier: wired.applier })(swept, config, AT);
+
+        expect(wired.passes.map((pass) => pass.payload)).toEqual([PAYLOAD, undefined]);
     });
 });
 

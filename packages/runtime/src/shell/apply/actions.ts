@@ -25,6 +25,8 @@ export interface Pass {
     readonly records: WarningToRecord | null;
     /** What this pass's calls are charged to; a webhook pass carries none (D192). */
     readonly allowance: Allowance | undefined;
+    /** The delivery that caused this effect; none on a recovery pass. */
+    readonly payload: unknown;
     /** A gate has passed; every remaining call of this pass is sent without one. */
     gated: boolean;
     /** Something landed this pass: `applied` rather than `already` at the end. */

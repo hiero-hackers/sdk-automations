@@ -12,6 +12,7 @@ import type {
     RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import {
+    causeFingerprintOf,
     createAllowance,
     createFactsReader,
     createGitHubHttpClient,
@@ -117,17 +118,15 @@ export function liveGitHub({
         const charged = { allowance };
         const landed = ownWrites(repository);
 
-        /**
-         * The applier's externals, built FRESH on every call (`EffectExternalsSource`).
-         * No cause fingerprint is excluded — a known over-refusal, since the seam carries no cause: refusing a write it could have made beats writing over a human's edit.
-         */
-        const effectExternals = async (): Promise<Externals> => {
+        /** The applier's externals, built FRESH on every call, excluding the delivery's own cause. */
+        const effectExternals = async (payload?: unknown): Promise<Externals> => {
             const grants = await installationGrants(tokenSource);
             if (!grants.ok) {
                 throw new Error(
                     `the installation's grants could not be read: ${grants.failure.kind}`,
                 );
             }
+            const cause = causeFingerprintOf(payload);
             return {
                 killSwitchActive,
                 installationGrants: grants.grants,
@@ -136,6 +135,7 @@ export function liveGitHub({
                     repository,
                     ownWrites: landed,
                     ...charged,
+                    ...(cause === undefined ? {} : { cause }),
                 }),
             };
         };

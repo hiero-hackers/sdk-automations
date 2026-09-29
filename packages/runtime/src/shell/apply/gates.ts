@@ -40,7 +40,7 @@ import { traitsOf } from "./operations/index.js";
  * A FRESH externals set, built per apply pass.
  * Never the delivery's own: its memo would answer the apply-time gate with the instant the DECISION read, which is the one thing a re-gate must not believe.
  */
-export type EffectExternalsSource = () => Externals | Promise<Externals>;
+export type EffectExternalsSource = (payload?: unknown) => Externals | Promise<Externals>;
 
 /** A gate passed, or the result its refusal produces. */
 export type GateVerdict =
@@ -139,9 +139,9 @@ export function createGates(options: GateOptions): Gates {
     };
 
     /** The externals for this pass, with the seam CONTAINED. */
-    const freshExternals = async (): Promise<ReadBackOutcome<Externals>> => {
+    const freshExternals = async (payload: unknown): Promise<ReadBackOutcome<Externals>> => {
         try {
-            return { ok: true, value: await externals() };
+            return { ok: true, value: await externals(payload) };
         } catch (error) {
             return { ok: false, detail: detailOf(error) };
         }
@@ -227,7 +227,7 @@ export function createGates(options: GateOptions): Gates {
                     },
                 };
             }
-            const facts = await freshExternals();
+            const facts = await freshExternals(pass.payload);
             if (!facts.ok) {
                 return {
                     ok: false,
@@ -292,7 +292,7 @@ export function createGates(options: GateOptions): Gates {
 
         /** The standing gate, over externals read fresh for this pass. */
         async resume(pass, operation) {
-            const facts = await freshExternals();
+            const facts = await freshExternals(pass.payload);
             return facts.ok
                 ? standingGate(pass, operation, facts.value)
                 : {

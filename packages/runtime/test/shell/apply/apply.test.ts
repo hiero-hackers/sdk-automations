@@ -985,6 +985,26 @@ describe("re-gating at apply time", () => {
         }
     });
 
+    it.each([{ action: "opened" }, undefined])(
+        "asks its externals with the delivery's payload: %o",
+        async (payload) => {
+            const asked: unknown[] = [];
+            const externals: EffectExternalsSource = (given) => {
+                asked.push(given);
+                return stubbedExternals();
+            };
+
+            await applierOver(fakeGitHub(), { externals }).applyAll(
+                [labelEffect({ meaning: "ready" })],
+                configFor(),
+                undefined,
+                payload,
+            );
+
+            expect(asked).toEqual([payload]);
+        },
+    );
+
     /**
      * D159. GitHub names the ASSIGNEE as the actor of an `unassigned` event even
      * when the App made the release, so the only record that the platform itself

@@ -357,7 +357,7 @@ async function readOpenItems(context: ReadContext): Promise<OpenItemsOutcome> {
 }
 
 /** The label names on a listed item, or `null` when the shape is not GitHub's. */
-function labelNamesOf(labels: unknown): readonly string[] | null {
+export function labelNamesOf(labels: unknown): readonly string[] | null {
     if (!Array.isArray(labels)) return null;
     const names: string[] = [];
     for (const label of labels) {
@@ -369,7 +369,7 @@ function labelNamesOf(labels: unknown): readonly string[] | null {
 }
 
 /** The logins in an `assignees` array, or `null` when the shape is not GitHub's. */
-function loginsOf(assignees: unknown): readonly string[] | null {
+export function loginsOf(assignees: unknown): readonly string[] | null {
     if (!Array.isArray(assignees)) return null;
     const logins: string[] = [];
     for (const assignee of assignees) {

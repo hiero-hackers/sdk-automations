@@ -682,6 +682,172 @@ describe("the cause fingerprint", () => {
     });
 });
 
+/**
+ * An item opened with labels or assignees: GitHub records each as its own timeline entry by the
+ * creator, dated up to a second after the item (protocol 8.6, #195: `updated_at` 18:46:19, label
+ * 18:46:20). Those entries are the opening, not a later human change.
+ */
+describe("the creation-time entries of an opened item", () => {
+    const CREATED = "2026-08-20T10:00:00Z";
+    const OPENED = {
+        action: "opened",
+        sender: { login: "author" },
+        issue: {
+            number: 7,
+            created_at: CREATED,
+            updated_at: CREATED,
+            user: { login: "author" },
+            labels: [{ name: "triage" }],
+            assignees: [{ login: "author" }],
+        },
+    };
+    const OPENED_CAUSE: CauseFingerprint = {
+        actorLogin: "author",
+        observedAt: new Date(CREATED),
+        itemNumber: 7,
+        action: "opened",
+        target: null,
+        createdWith: [
+            { action: "labeled", target: "triage" },
+            { action: "assigned", target: "author" },
+        ],
+    };
+    const after = (seconds: number): string =>
+        new Date(new Date(CREATED).getTime() + seconds * 1000).toISOString();
+
+    it("reads the labels and assignees an issue was opened with", () => {
+        expect(causeFingerprintOf(OPENED)).toEqual(OPENED_CAUSE);
+    });
+
+    it("reads them from a pull request the same way", () => {
+        const { issue, ...rest } = OPENED;
+        expect(causeFingerprintOf({ ...rest, pull_request: issue })).toEqual(OPENED_CAUSE);
+    });
+
+    it.each([
+        ["nothing attached", { ...OPENED.issue, labels: [], assignees: [] }],
+        ["another opener", { ...OPENED.issue, user: { login: "someone-else" } }],
+        ["a missing created_at", { ...OPENED.issue, created_at: undefined }],
+        ["an unreadable created_at", { ...OPENED.issue, created_at: "soon" }],
+        ["unreadable labels", { ...OPENED.issue, labels: "triage" }],
+        ["unreadable assignees", { ...OPENED.issue, assignees: undefined }],
+        ["a label without a name", { ...OPENED.issue, labels: [{}] }],
+        ["an assignee without a login", { ...OPENED.issue, assignees: [{ login: 7 }] }],
+    ])("answers nothing to exclude for %s", (_label, issue) => {
+        expect(causeFingerprintOf({ ...OPENED, issue })).toBeUndefined();
+    });
+
+    it("excludes the creator's creation-time label and assignment", async () => {
+        const { lookup } = source(
+            [
+                page([
+                    entry("labeled", "author", after(1)),
+                    entry("assigned", "author", CREATED, "User", "author"),
+                ]),
+            ],
+            OPENED_CAUSE,
+        );
+        expect(await lookup(ITEM)).toBeNull();
+    });
+
+    it.each([0, 1, 10])("excludes an entry %i seconds after creation", async (seconds) => {
+        const { lookup } = source(
+            [page([entry("labeled", "author", after(seconds))])],
+            OPENED_CAUSE,
+        );
+        expect(await lookup(ITEM)).toBeNull();
+    });
+
+    it.each([
+        ["one dated before the item", entry("labeled", "author", after(-1))],
+        ["one dated past the window", entry("labeled", "author", after(11))],
+        ["another actor's", entry("labeled", "maintainer", after(1))],
+        [
+            "a label the item was not opened with",
+            entry("labeled", "author", after(1), "User", "other"),
+        ],
+        ["an unlabel of a creation label", entry("unlabeled", "author", after(1))],
+        ["an assignment past the window", entry("assigned", "author", after(11), "User", "author")],
+        [
+            "an assignee the item was not opened with",
+            entry("assigned", "author", after(1), "User", "other"),
+        ],
+    ])("counts %s", async (_name, other) => {
+        const { lookup } = source([page([other])], OPENED_CAUSE);
+        expect(await lookup(ITEM)).toEqual(new Date(other["created_at"] as string));
+    });
+
+    it("excludes each creation label once, so a relabel still counts", async () => {
+        const { lookup } = source(
+            [page([entry("labeled", "author", after(1)), entry("labeled", "author", after(2))])],
+            OPENED_CAUSE,
+        );
+        expect(await lookup(ITEM)).toEqual(new Date(after(2)));
+    });
+
+    it("excludes the opening, but not a maintainer's label right after it", async () => {
+        const { lookup } = source(
+            [
+                page([
+                    entry("labeled", "author", after(1)),
+                    entry("labeled", "maintainer", after(2)),
+                ]),
+            ],
+            OPENED_CAUSE,
+        );
+        expect(await lookup(ITEM)).toEqual(new Date(after(2)));
+    });
+
+    it("excludes nothing on another item", async () => {
+        const { lookup } = source([page([entry("labeled", "author", after(1))])], OPENED_CAUSE);
+        expect(await lookup({ kind: "issue", number: 8 })).toEqual(new Date(after(1)));
+    });
+
+    it("counts a human relabel after triage", async () => {
+        const { lookup } = source(
+            [
+                page([
+                    entry("labeled", "author", after(1)),
+                    entry("unlabeled", "maintainer", after(300)),
+                    entry("labeled", "maintainer", after(301)),
+                ]),
+            ],
+            OPENED_CAUSE,
+        );
+        expect(await lookup(ITEM)).toEqual(new Date(after(301)));
+    });
+
+    /** Protocol 8.6's #195: opened at 18:46:19, its label dated 18:46:20. */
+    it("lets the 8.6 opening through, but not a maintainer's label in the same second", async () => {
+        const opened = {
+            ...OPENED,
+            issue: {
+                ...OPENED.issue,
+                created_at: "2026-09-19T18:46:19Z",
+                updated_at: "2026-09-19T18:46:19Z",
+            },
+        };
+        const newestAfter = async (labeller: string) => {
+            const built = harness([page([entry("labeled", labeller, "2026-09-19T18:46:20Z")])]);
+            const outcome = await liveExternalsForDelivery(
+                {
+                    tokenSource: tokenSource([{ ok: true, token: token("t") }]).source,
+                    http: built.client,
+                    repository: REPOSITORY,
+                    config: NO_CONFIG,
+                    knownCapabilities: [],
+                    ownWrites: () => [],
+                },
+                opened,
+            );
+            return outcome.ok ? outcome.facts.latestHumanChangeAt(ITEM) : outcome;
+        };
+
+        expect(await newestAfter("author")).toBeNull();
+        expect(await newestAfter("maintainer")).toEqual(new Date("2026-09-19T18:46:20Z"));
+    });
+});
+
 describe("live externals for one delivery", () => {
     it("propagates a grants failure instead of deciding without them", async () => {
         const tokens = tokenSource([{ ok: false, failure: { kind: "transient" } }]);

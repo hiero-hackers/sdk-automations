@@ -68,7 +68,7 @@ function scriptedGitHub(): { readonly reads: () => number } {
 }
 
 /** The live fill over a real private key, with the sweep holding `share` of each pool. */
-function live(share: number) {
+function live(share: number, writes: LiveOptions["writes"] = null) {
     const privateKeyPath = temp.file("app.pem");
     writeFileSync(
         privateKeyPath,
@@ -80,7 +80,7 @@ function live(share: number) {
     );
     const options: LiveOptions = {
         credentials: { appId: "123456", installationId: "789", privateKeyPath },
-        writes: null,
+        writes,
         killSwitchActive: false,
         clock: () => new Date("2026-09-15T10:00:00.000Z"),
         share,
@@ -144,5 +144,76 @@ describe("the two allowances one process holds", () => {
         expect(built.sweepAllowance.spent()).toMatchObject({ core: 4 });
         expect(built.deliveryAllowance.spent()).toMatchObject({ core: 0 });
         expect(built.deliveryAllowance.exhausted()).toBeNull();
+    });
+});
+
+describe("the apply-time externals", () => {
+    const CREATED = "2026-09-15T09:00:00Z";
+    const LABELED = "2026-09-15T09:00:01Z";
+    const OPENED = {
+        action: "opened",
+        sender: { login: "author" },
+        issue: {
+            number: 7,
+            created_at: CREATED,
+            updated_at: CREATED,
+            user: { login: "author" },
+            labels: [{ name: "triage" }],
+            assignees: [],
+        },
+    };
+
+    /** A GitHub whose only timeline entry is the label the issue was opened with. */
+    function openedWithLabel(): void {
+        vi.stubGlobal("fetch", (input: string | URL) => {
+            const url = String(input);
+            const body = url.includes("/access_tokens")
+                ? {
+                      token: "installation-token",
+                      expires_at: "2099-01-01T00:00:00Z",
+                      permissions: { issues: "write", metadata: "read" },
+                  }
+                : [
+                      {
+                          event: "labeled",
+                          actor: { login: "author", type: "User" },
+                          created_at: LABELED,
+                          label: { name: "triage" },
+                      },
+                  ];
+            return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+        });
+    }
+
+    it("excludes the opening's own label when given the delivery, and nothing without it", async () => {
+        openedWithLabel();
+        const writePath = live(0.4, { appSlug: "lab" }).seamsFor(REPOSITORY).writePath!;
+        const item = { kind: "issue", number: 7 } as const;
+
+        const withCause = await writePath.externals(OPENED);
+        const without = await writePath.externals();
+
+        expect(await withCause.latestHumanChangeAt(item)).toBeNull();
+        expect(await without.latestHumanChangeAt(item)).toEqual(new Date(LABELED));
+    });
+
+    it("excludes a label delivery's own label, so it cannot veto the release it asks for", async () => {
+        openedWithLabel();
+        const writePath = live(0.4, { appSlug: "lab" }).seamsFor(REPOSITORY).writePath!;
+        const labeled = {
+            action: "labeled",
+            label: { name: "triage" },
+            sender: { login: "author" },
+            issue: { number: 7, updated_at: LABELED },
+        };
+        const byAnother = { ...labeled, sender: { login: "maintainer" } };
+
+        const own = await writePath.externals(labeled);
+        const other = await writePath.externals(byAnother);
+
+        expect(await own.latestHumanChangeAt({ kind: "issue", number: 7 })).toBeNull();
+        expect(await other.latestHumanChangeAt({ kind: "issue", number: 7 })).toEqual(
+            new Date(LABELED),
+        );
     });
 });

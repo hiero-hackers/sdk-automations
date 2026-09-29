@@ -141,7 +141,8 @@ handles the first and knows nothing of the others. Limits until phase 3, for who
   information, or in an area label asks for nothing — and for the author who was asked for more
   information, the lock is exactly what stops them answering.
 - An issue opened already carrying the triage label — a template applied it — is welcomed and
-  locked without writing the label again. This path also needs confirmation in the fresh live run.
+  locked without writing the label again. Its own creation-time label no longer refuses the
+  welcome and lock (D213). This path also needs confirmation in the fresh live run.
 - Closure needs nothing: a closed issue never reaches the capability, and a closed thread that
   stays locked is the ordinary GitHub outcome.
 - A locked issue that carries `blocked` cannot be unlocked by the App at all: the platform pauses

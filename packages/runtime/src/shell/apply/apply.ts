@@ -63,6 +63,7 @@ export interface Applier {
         effects: readonly Effect[],
         config: RepositoryConfig,
         allowance?: Allowance,
+        payload?: unknown,
     ): Promise<readonly EffectOutcome[]>;
     /** One open send, resolved against GitHub — the sweep's unit of work. */
     recover(open: OpenSend, config: RepositoryConfig): Promise<void>;
@@ -239,6 +240,7 @@ export function createApplier(options: ApplierOptions): Applier {
         effect: Effect,
         config: RepositoryConfig,
         allowance: Allowance | undefined,
+        payload: unknown,
     ): Promise<EffectOutcome> => {
         const { intent } = effect;
         const pass: Pass = {
@@ -249,6 +251,7 @@ export function createApplier(options: ApplierOptions): Applier {
             config,
             records: effect.records,
             allowance,
+            payload,
             gated: false,
             changed: false,
             sent: false,
@@ -280,13 +283,13 @@ export function createApplier(options: ApplierOptions): Applier {
     };
 
     return {
-        async applyAll(effects, config, allowance) {
+        async applyAll(effects, config, allowance, payload) {
             const outcomes: EffectOutcome[] = [];
             for (const effect of effects) {
                 const spent = allowance?.exhausted() ?? null;
                 outcomes.push(
                     spent === null
-                        ? await apply(effect, config, allowance)
+                        ? await apply(effect, config, allowance, payload)
                         : heldBack(effect, spent),
                 );
             }
@@ -330,6 +333,7 @@ export function createApplier(options: ApplierOptions): Applier {
                 config,
                 records: null,
                 allowance: undefined,
+                payload: undefined,
                 gated: false,
                 changed: false,
                 sent: false,

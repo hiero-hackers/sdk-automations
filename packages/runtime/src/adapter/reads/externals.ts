@@ -22,6 +22,7 @@ import {
     type GitHubOutcome,
 } from "../client/contract.js";
 import type { Allowance } from "../client/allowance.js";
+import { labelNamesOf, loginsOf } from "./facts.js";
 import { createResolverSource } from "./resolvers.js";
 import type { TokenSource } from "../client/token.js";
 import { field, jsonArrayOf } from "../client/untrusted.js";
@@ -64,6 +65,15 @@ const TIMELINE_PAGE_SIZE = 100;
 /** How long before a landed write's instant its own timeline event may be dated. */
 const OWN_WRITE_WINDOW_MS = 60_000;
 
+/** GitHub dated creation-time labels a second late in protocol 8.6. Shorter over-refuses; longer is more room to hide an author's quick relabel. */
+const CREATION_LAG_SECONDS = 10;
+
+/** A label or assignee an item was opened with; GitHub records each as its own timeline entry. */
+export interface CreatedWith {
+    readonly action: "labeled" | "assigned";
+    readonly target: string;
+}
+
 /** The delivery's causing human action, so it cannot conflict with itself. */
 export interface CauseFingerprint {
     readonly actorLogin: string;
@@ -71,6 +81,7 @@ export interface CauseFingerprint {
     readonly itemNumber: number;
     readonly action: string;
     readonly target: string | null;
+    readonly createdWith?: readonly CreatedWith[];
 }
 
 /**
@@ -156,17 +167,41 @@ function humanChangeAt(entry: unknown, landed: readonly LandedWrite[]): Date | n
     return at;
 }
 
-/** Exclude at most one matching cause. Every other change still counts, including ties. */
+const secondOf = (date: Date): number => Math.floor(date.getTime() / 1000);
+
+/** Was this entry recorded by the opening itself? Each match is used up, so a relabel still counts. */
+function takeCreationEntry(
+    entry: unknown,
+    at: Date,
+    cause: CauseFingerprint,
+    pending: CreatedWith[],
+): boolean {
+    const lag = secondOf(at) - secondOf(cause.observedAt);
+    if (lag < 0 || lag > CREATION_LAG_SECONDS) return false;
+    if (field(field(entry, "actor"), "login") !== cause.actorLogin) return false;
+    const action = field(entry, "event");
+    const index = pending.findIndex(
+        (created) =>
+            created.action === action && changeTarget(entry, created.action) === created.target,
+    );
+    if (index === -1) return false;
+    pending.splice(index, 1);
+    return true;
+}
+
+/** Exclude at most one matching cause, or an opening's own entries. Every other change still counts, including ties. */
 function newestIn(
     events: readonly unknown[],
     landed: readonly LandedWrite[],
     cause?: CauseFingerprint,
 ): HumanChangeOrdering {
+    const pending = [...(cause?.createdWith ?? [])];
     let newest: Date | null = null;
     for (const entry of events) {
         const at = humanChangeAt(entry, landed);
         if (at === "unparsable") return "unknown";
         if (at === null) continue;
+        if (cause !== undefined && takeCreationEntry(entry, at, cause, pending)) continue;
         if (
             cause !== undefined &&
             field(entry, "event") === cause.action &&
@@ -271,6 +306,32 @@ async function readOrdering(
         : unknown(`the timeline is longer than ${String(TIMELINE_READ_CAP)} reads may cover`);
 }
 
+/** An author's opening, with the labels and assignees it was created with. */
+function openingOf(item: unknown, login: string, itemNumber: number): CauseFingerprint | undefined {
+    const createdAt = field(item, "created_at");
+    if (field(field(item, "user"), "login") !== login || typeof createdAt !== "string")
+        return undefined;
+    const observedAt = new Date(createdAt);
+    if (!Number.isFinite(observedAt.getTime())) return undefined;
+    const labels = labelNamesOf(field(item, "labels"));
+    const assignees = loginsOf(field(item, "assignees"));
+    if (labels === null || assignees === null) return undefined;
+    const createdWith: CreatedWith[] = [
+        ...labels.map((target) => ({ action: "labeled" as const, target })),
+        ...assignees.map((target) => ({ action: "assigned" as const, target })),
+    ];
+    return createdWith.length === 0
+        ? undefined
+        : {
+              actorLogin: login,
+              observedAt,
+              itemNumber,
+              action: "opened",
+              target: null,
+              createdWith,
+          };
+}
+
 /** The webhook matched to its timeline action; a missing field excludes nothing. */
 export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefined {
     const login = field(field(payload, "sender"), "login");
@@ -282,6 +343,7 @@ export function causeFingerprintOf(payload: unknown): CauseFingerprint | undefin
     // Stryker disable next-line ConditionalExpression: isSafeInteger answers false for any non-number; the typeof arm is for readers.
     if (typeof itemNumber !== "number" || !Number.isSafeInteger(itemNumber) || itemNumber < 1)
         return undefined;
+    if (action === "opened") return openingOf(item, login, itemNumber);
     // Stryker disable next-line ConditionalExpression: Set.has answers false for any non-string; the typeof arm is for readers.
     if (typeof action !== "string" || !HUMAN_CHANGE_EVENTS.has(action)) return undefined;
     const target = changeTarget(payload, action);

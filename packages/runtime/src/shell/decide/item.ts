@@ -136,7 +136,12 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
 
         const outcomes =
             active && applier !== undefined
-                ? await applier.applyAll(decision.approved, config, allowance)
+                ? await applier.applyAll(
+                      decision.approved,
+                      config,
+                      allowance,
+                      input.kind === "delivery" ? input.payload : undefined,
+                  )
                 : [];
         const rows = decisionsOf({
             ...pass,
