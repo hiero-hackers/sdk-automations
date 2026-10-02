@@ -19,7 +19,8 @@
         "test:watch": "vitest",
         "start": "tsx src/shell/compose/main.ts",
         "explain": "tsx src/shell/observe/explain-cli.ts",
-        "status": "tsx src/shell/observe/status-cli.ts"
+        "status": "tsx src/shell/observe/status-cli.ts",
+        "backup": "tsx src/shell/observe/backup-cli.ts"
     },
     "dependencies": {
         "@hiero-hackers/automation-capabilities": "workspace:*",

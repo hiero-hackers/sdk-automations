@@ -91,6 +91,8 @@ export interface ShellOptions {
     };
     /** The installation switch (D171): deliveries are accepted and recorded, and nothing is read, decided or sent. */
     readonly suspended?: boolean;
+    /** Answers the readiness probe; absent means always ready. */
+    readonly ready?: () => boolean;
     /** Optional here and required of every component: the root defaults to the production log. */
     readonly log?: Log;
 }
@@ -194,6 +196,7 @@ export function createShell(options: ShellOptions): Shell {
     const handler = createReceiver({
         secret: options.secret,
         log,
+        ...(options.ready === undefined ? {} : { ready: options.ready }),
         accept: ({ deliveryId, eventName, payload }) =>
             options.store.inbox.acceptDelivery({
                 deliveryId,

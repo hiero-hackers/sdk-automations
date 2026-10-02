@@ -13,12 +13,25 @@ pnpm start
 ```
 
 It drains the deliveries already in the store before it listens. `GET /healthz` answers `200 ok` for
-a liveness probe; every other GET is 405. After that, everything the process does is one JSON line
-per event — `at`, `event` from a closed vocabulary, and that event's own fields, with `deliveryId` on
-every line about one delivery, so `grep` on a GUID returns its whole passage. Lines an operator
-should notice go to stderr and the rest to stdout. A refusal to boot is the exception and stays a
+a liveness probe. `GET /readyz` answers `200 ready` once the start-up drain has finished and the
+socket listens, and `503 draining` from the first shutdown signal. Every other GET is 405. After
+that, everything the process does is one JSON line per event — `at`, `event` from a closed
+vocabulary, and that event's own fields, with `deliveryId` on every line about one delivery, so
+`grep` on a GUID returns its whole passage. Lines an operator should notice go to stderr and the
+rest to stdout. A refusal to boot is the exception and stays a
 human sentence: it precedes the process being alive, and has no delivery to name. Node prints an
 `ExperimentalWarning` for its SQLite module; it is not an error.
+
+## Run it in a container
+
+```bash
+docker build -t sdk-automations .
+docker run -d -p 8790:8790 -v sdk-state:/state -e WEBHOOK_SECRET=… -e REPO_OWNER=… -e REPO_NAME=… sdk-automations
+```
+
+The image binds `0.0.0.0` and keeps its store under `/state`, so mount a volume there or a redeploy
+takes the decision rows with it. Wait on `GET /readyz`, not on the port: it answers `200` only after
+the start-up drain. CI builds the image and delivers one signed webhook to it on every pull request.
 
 ## The environment
 
@@ -120,6 +133,16 @@ does. It is deliberately outside the package: in a container `packages/runtime/d
 layer, and a redeploy would take the decision rows with it. That directory is never tracked, and an
 operator who points `STORE_PATH` back at it is still writing raw payloads and real repository names.
 
+## Back it up
+
+```bash
+pnpm shell:backup /backups/shell-$(date -u +%Y%m%dT%H%M%SZ).sqlite
+```
+
+A consistent copy of the store the environment names, taken while the process runs. To restore:
+stop the process, put the copy at `STORE_PATH`, start it; work the copy holds as pending is claimed
+by the next start, and effects sent after the copy was taken are read back from GitHub, not resent.
+
 ## Ask it what happened
 
 ```bash
@@ -135,9 +158,10 @@ cold for one sweep; see [troubleshooting.md](troubleshooting.md).
 
 `shell:status` prints what the store can say about the platform now, one line per question — the
 deliveries, the open sends, the standing warnings, the schedule rows, the stored reads each repository
-holds with the oldest of them, the comments landed in the last hour, and the decisions of the last
-day. The allowance is the running process's and no store holds it, so that line says so; the `limits`
-and `sweepFinished` lines are where an operator reads what a window has spent.
+holds with the oldest of them, the comments landed in the last hour, the decisions of the last
+day, and the deliveries refused as unreadable in the last day. The allowance is the running
+process's and no store holds it, so that line says so; the `limits` and `sweepFinished` lines are
+where an operator reads what a window has spent.
 `shell:explain` prints one effect's facts and where it stands, or one item's effects and decisions.
 Both only read, and exit 1 when no store answered. Every code either prints is in
 [troubleshooting.md](troubleshooting.md).

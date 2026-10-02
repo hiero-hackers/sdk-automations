@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+.git
+.claude
+**/coverage
+**/.stryker-tmp
+**/reports
+packages/dev/lab/evidence
+packages/dev/lab/harness
+packages/runtime/data
+**/*.sqlite

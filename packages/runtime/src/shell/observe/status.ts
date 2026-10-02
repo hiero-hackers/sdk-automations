@@ -14,7 +14,7 @@ import {
     type StandingWarnings,
     type VerdictTally,
 } from "../../store/index.js";
-import type { Allowance } from "@hiero-hackers/automation-core";
+import { NORMALIZE_MALFORMED_CODES, type Allowance } from "@hiero-hackers/automation-core";
 import { storeFile } from "../paths.js";
 
 /** What the store answered: the lines to print, and whether a store was there. */
@@ -133,6 +133,12 @@ const decisions = (tallies: readonly VerdictTally[]): string =>
         }`,
     ]);
 
+/** The deliveries the normaliser refused as unreadable — a changed payload shows here first. */
+const unreadable = (refused: number): string =>
+    line("unreadable", [
+        `last ${String(DECISION_WINDOW_HOURS)} h: ${count(refused)} deliveries refused as unreadable`,
+    ]);
+
 /** Every question the store can answer about itself, one read each (D168). */
 export function status(
     store: Store,
@@ -151,6 +157,9 @@ export function status(
         creations(store.ledger.commentsSince(since(CREATION_WINDOW_HOURS))),
         spending(allowance),
         decisions(store.ledger.verdictsSince(since(DECISION_WINDOW_HOURS))),
+        unreadable(
+            store.ledger.unreadableSince(since(DECISION_WINDOW_HOURS), NORMALIZE_MALFORMED_CODES),
+        ),
     ];
 }
 

@@ -1,10 +1,12 @@
 /**
- * The era-3 lock: `packages/dev/lab/probe-results.json` names every confirmed read, carries
- * no drift, and is not stale. A read confirmed in code but never probed is a failing check,
- * which is how a new resolver is forced into the probe table. One invariant per `it` (D89).
+ * The era-3 lock: `packages/dev/lab/probe-results.json` names every confirmed read and every
+ * captured webhook, carries no drift, and is not stale. A read confirmed in code but never
+ * probed is a failing check, which is how a new resolver is forced into the probe table; a
+ * capture with no webhook result forces the events pass the same way. One invariant per `it`.
  */
 
 import { describe, expect, it } from "vitest";
+import { WEBHOOK_CAPTURES } from "@hiero-hackers/automation-testkit";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { repoRoot } from "./repository.js";
@@ -37,6 +39,7 @@ interface ResultFile {
     readonly probedAt?: unknown;
     readonly sandbox?: unknown;
     readonly results?: unknown;
+    readonly webhooks?: unknown;
 }
 
 function read(path: string): string {
@@ -72,6 +75,20 @@ function resultsOf(file: ResultFile): ProbeResult[] {
     return Array.isArray(file.results) ? (file.results as ProbeResult[]) : [];
 }
 
+function webhooksOf(file: ResultFile): ProbeResult[] {
+    return Array.isArray(file.webhooks) ? (file.webhooks as ProbeResult[]) : [];
+}
+
+/** The captured webhooks the file has no result for; a capture is named `<event>.<action>`. */
+function unprobedWebhooks(file: ResultFile, captures: readonly string[]): string[] {
+    const named = new Set(
+        webhooksOf(file)
+            .map((result) => result.name)
+            .filter((name): name is string => typeof name === "string"),
+    );
+    return captures.filter((name) => !named.has(name));
+}
+
 function namesIn(file: ResultFile): Set<string> {
     return new Set(
         resultsOf(file)
@@ -88,7 +105,7 @@ function unprobedReads(file: ResultFile, confirmed: readonly string[]): string[]
 
 /** Every result carrying a drift or an unreadable request, as one line each. */
 function failures(file: ResultFile): string[] {
-    return resultsOf(file).flatMap((result) => {
+    return [...resultsOf(file), ...webhooksOf(file)].flatMap((result) => {
         const name = typeof result.name === "string" ? result.name : "(unnamed)";
         const drift = Array.isArray(result.drift) ? (result.drift as unknown[]) : [];
         const unreadable = typeof result.unreadable === "string" ? [result.unreadable] : [];
@@ -105,8 +122,8 @@ function freshness(file: ResultFile, now: Date): string {
     return days > FRESHNESS_DAYS ? `stale by ${days.toFixed(0)} days` : "fresh";
 }
 
-const stamped = (results: string): string =>
-    `{ "probedAt": "${new Date().toISOString()}", "sandbox": "o/r", "results": [${results}] }`;
+const stamped = (results: string, webhooks = ""): string =>
+    `{ "probedAt": "${new Date().toISOString()}", "sandbox": "o/r", "results": [${results}], "webhooks": [${webhooks}] }`;
 
 const CONTROLS = {
     drift: stamped(
@@ -114,7 +131,15 @@ const CONTROLS = {
     ),
     stale: `{ "probedAt": "${new Date(Date.now() - 60 * MS_PER_DAY).toISOString()}", "sandbox": "o/r", "results": [] }`,
     missing: stamped('{ "name": "openItems", "ok": true }'),
+    webhookDrift: stamped(
+        "",
+        '{ "name": "issues.opened", "ok": false, "drift": ["field issue.locked: missing"] }',
+    ),
+    missingWebhook: stamped("", '{ "name": "issues.opened", "ok": true }'),
 };
+
+/** `issues.opened.json` is the capture the result `issues.opened` answers for. */
+const CAPTURES = WEBHOOK_CAPTURES.map((capture) => capture.name.replace(/\.json$/, ""));
 
 describe("the conformance probe's result file holds its invariants", () => {
     const text = read(RESULTS);
@@ -134,6 +159,11 @@ describe("the conformance probe's result file holds its invariants", () => {
 
     it("has a result for every confirmed read", () => {
         expect(unprobedReads(file ?? {}, confirmed), `unprobed reads: ${ADVICE}`).toEqual([]);
+    });
+
+    it("has a result for every captured webhook", () => {
+        expect(CAPTURES.length).toBeGreaterThanOrEqual(5);
+        expect(unprobedWebhooks(file ?? {}, CAPTURES), `unprobed webhooks: ${ADVICE}`).toEqual([]);
     });
 
     it("carries no drift and no unreadable request", () => {
@@ -157,6 +187,19 @@ describe("the conformance probe's result file holds its invariants", () => {
     it("fails on a stale stamp", () => {
         expect(freshness(parseResults(CONTROLS.stale) ?? {}, new Date())).toMatch(/^stale by/);
         expect(freshness({}, new Date())).toBe("never probed");
+    });
+
+    it("fails on a webhook carrying a drift", () => {
+        expect(failures(parseResults(CONTROLS.webhookDrift) ?? {})).toEqual([
+            "issues.opened: field issue.locked: missing",
+        ]);
+    });
+
+    it("fails on a missing webhook", () => {
+        expect(unprobedWebhooks(parseResults(CONTROLS.missingWebhook) ?? {}, CAPTURES)).toEqual(
+            CAPTURES.filter((name) => name !== "issues.opened"),
+        );
+        expect(unprobedWebhooks({}, CAPTURES)).toEqual(CAPTURES);
     });
 
     it("fails on a missing read", () => {

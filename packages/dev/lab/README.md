@@ -39,6 +39,7 @@ error; the protocols themselves carry no secrets, credentials, tunnel URLs or pe
 | [6.14](protocols/6.14-define-label.md) | defining a label the repository lacks |
 | [6.15](protocols/6.15-lock-unlock-issue.md) | locking and unlocking one issue, including read-back and repeated calls |
 | [7.1](protocols/7.1-capture.md) | capturing webhook payloads as normalizer fixtures |
+| [7.2](protocols/7.2-webhook-conformance.md) | re-provoking every captured webhook and holding its delivery to the normalizer's reads |
 | [8.1](protocols/8.1-shell-soak.md) | the shell soak |
 | [8.2](protocols/8.2-first-effects.md) | the first effects sent for real |
 | [8.3](protocols/8.3-close-on-a-mode-claim.md) | closing a pull request on a mode claim |

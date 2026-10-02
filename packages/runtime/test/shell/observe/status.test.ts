@@ -115,7 +115,11 @@ const warned = (effectId: string, earliestActionAt: string): Fact => {
     });
 };
 
-const decision = (verdict: string, at = "2026-09-12T14:00:00.000Z"): Decision => ({
+const decision = (
+    verdict: string,
+    at = "2026-09-12T14:00:00.000Z",
+    code: string | null = null,
+): Decision => ({
     passId: "pass-1",
     source: "webhook",
     sourceId: "00000000-0000-0000-0000-000000000001",
@@ -124,7 +128,7 @@ const decision = (verdict: string, at = "2026-09-12T14:00:00.000Z"): Decision =>
     item: ITEM,
     capability: "inactivity",
     verdict,
-    code: null,
+    code,
     detail: null,
     effectId: null,
 });
@@ -184,6 +188,7 @@ describe("the questions a store holding work answers", () => {
             "creations    last 1 h: 1 comments landed",
             "allowance    held by the running process, not by the store",
             "decisions    last 24 h: 2 info, 1 notice, 1 problem, 1 refused",
+            "unreadable   last 24 h: 0 deliveries refused as unreadable",
         ]);
     });
 
@@ -212,8 +217,20 @@ describe("the questions a store holding work answers", () => {
     it("counts only the decisions inside the window", () => {
         store.ledger.decide(decision("info", "2026-09-11T08:00:00.000Z"));
 
-        expect(status(store, NOW).at(-1)).toBe(
+        expect(status(store, NOW).at(-2)).toBe(
             "decisions    last 24 h: 2 info, 1 notice, 1 problem, 1 refused",
+        );
+    });
+
+    /** A refusal older than the window is a row the store still holds and this line does not count. */
+    it("counts the unreadable deliveries inside the window", () => {
+        store.ledger.decide(decision("refused", "2026-09-12T14:30:00.000Z", "itemMissing"));
+        store.ledger.decide(decision("refused", "2026-09-12T14:40:00.000Z", "authorUnreadable"));
+        store.ledger.decide(decision("refused", "2026-09-11T08:00:00.000Z", "itemMissing"));
+        store.ledger.decide(decision("refused", "2026-09-12T14:50:00.000Z", "closedByHuman"));
+
+        expect(status(store, NOW).at(-1)).toBe(
+            "unreadable   last 24 h: 2 deliveries refused as unreadable",
         );
     });
 
@@ -238,6 +255,7 @@ describe("the questions a store holding nothing answers", () => {
             "creations    last 1 h: 0 comments landed",
             "allowance    held by the running process, not by the store",
             "decisions    last 24 h: —",
+            "unreadable   last 24 h: 0 deliveries refused as unreadable",
         ]);
     });
 });

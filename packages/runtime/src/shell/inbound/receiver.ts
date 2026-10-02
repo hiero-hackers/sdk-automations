@@ -19,6 +19,9 @@ const MAX_BODY_BYTES = 25 * 1024 * 1024;
 /** Liveness only, so a hosting platform can probe without a secret. */
 const HEALTH_PATH = "/healthz";
 
+/** Whether the process wants traffic: 200 while ready, 503 once draining. */
+const READY_PATH = "/readyz";
+
 export interface AcceptedDelivery {
     readonly deliveryId: DeliveryGuid;
     readonly eventName: string;
@@ -36,6 +39,8 @@ export interface ReceiverOptions {
     readonly log: Log;
     /** Fire-and-forget processing pump, called after an acknowledgement. */
     readonly onAccepted?: () => void;
+    /** Answers the readiness probe; absent means always ready. */
+    readonly ready?: () => boolean;
 }
 
 export type RequestHandler = (request: IncomingMessage, response: ServerResponse) => Promise<void>;
@@ -56,8 +61,15 @@ async function handle(
     response: ServerResponse,
     options: ReceiverOptions,
 ): Promise<void> {
-    if (isHealthProbe(request)) {
+    if (isGetAt(request, HEALTH_PATH)) {
         response.writeHead(200, { "content-type": "text/plain" }).end("ok\n");
+        return;
+    }
+    if (isGetAt(request, READY_PATH)) {
+        const ready = options.ready?.() ?? true;
+        response
+            .writeHead(ready ? 200 : 503, { "content-type": "text/plain" })
+            .end(ready ? "ready\n" : "draining\n");
         return;
     }
     if (request.method !== "POST") {
@@ -84,12 +96,12 @@ async function handle(
     acceptThenAck({ ...identity, payload: body }, response, options);
 }
 
-/** A GET at exactly the health path; the query string is ignored, and the answer is a constant. */
-function isHealthProbe(request: IncomingMessage): boolean {
+/** A GET at exactly `path`; the query string is ignored. */
+function isGetAt(request: IncomingMessage, path: string): boolean {
     if (request.method !== "GET") return false;
     // Stryker disable next-line all: a server request always carries a url, so the fallback is a type obligation with no behaviour.
     const url = request.url ?? "";
-    return url.split("?")[0] === HEALTH_PATH;
+    return url.split("?")[0] === path;
 }
 
 /**

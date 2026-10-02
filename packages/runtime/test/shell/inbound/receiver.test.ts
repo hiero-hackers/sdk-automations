@@ -657,6 +657,58 @@ describe("the liveness probe", () => {
     });
 });
 
+describe("the readiness probe", () => {
+    const receiver = (ready?: () => boolean) =>
+        createReceiver({
+            secret: SECRET,
+            log: silent,
+            accept: () => "accepted",
+            ...(ready === undefined ? {} : { ready }),
+        });
+
+    it("answers 200 ready while ready() holds", async () => {
+        expect(
+            await probe(
+                receiver(() => true),
+                "/readyz",
+            ),
+        ).toEqual({
+            status: 200,
+            body: "ready\n",
+            contentType: "text/plain",
+        });
+    });
+
+    it("answers 503 draining once ready() does not", async () => {
+        expect(
+            await probe(
+                receiver(() => false),
+                "/readyz",
+            ),
+        ).toEqual({
+            status: 503,
+            body: "draining\n",
+            contentType: "text/plain",
+        });
+    });
+
+    it("is always ready when no readiness is supplied", async () => {
+        expect(await probe(receiver(), "/readyz")).toMatchObject({ status: 200, body: "ready\n" });
+    });
+
+    it("ignores the query string a prober appends", async () => {
+        expect(
+            await probe(
+                receiver(() => false),
+                "/readyz?x=1",
+            ),
+        ).toMatchObject({
+            status: 503,
+            body: "draining\n",
+        });
+    });
+});
+
 describe("malformed requests get truthful statuses", () => {
     /**
      * Each row is one malformed request and the status it earns. Reaching

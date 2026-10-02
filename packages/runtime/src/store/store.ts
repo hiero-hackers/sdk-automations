@@ -4,7 +4,7 @@
  * modules that write to it (D164); no state transition is its own.
  */
 
-import { DatabaseSync } from "node:sqlite";
+import { backup, DatabaseSync } from "node:sqlite";
 import { Inbox, type DeliveryFaultPoint } from "./inbox.js";
 import { Ledger } from "./ledger.js";
 import {
@@ -55,6 +55,11 @@ export class Store {
         }
         this.inbox = new Inbox(this.db, injectFault);
         this.ledger = new Ledger(this.db);
+    }
+
+    /** Copy the open file to `path`, consistent as of the call; the copy opens as a Store. */
+    async backup(path: string): Promise<void> {
+        await backup(this.db, path);
     }
 
     close(): void {

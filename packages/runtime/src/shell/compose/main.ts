@@ -87,6 +87,9 @@ const sweep =
               snapshotMaxAgeMs: sweepRecord.snapshotMaxAgeMs,
           };
 
+/** Ready once the start-up drain has settled and the socket listens; draining from the first signal. */
+let state: "starting" | "ready" | "draining" = "starting";
+
 const shell = createShell({
     secret: endpoint.secret,
     store,
@@ -98,13 +101,14 @@ const shell = createShell({
     clock,
     tickMs,
     suspended: switches.suspended,
+    ready: () => state === "ready",
     ...(sweep === undefined ? {} : { sweep }),
     log,
 });
 
 // Start recovering anything a previous run left pending before listening.
 
-void shell.drain().catch((error: unknown) => {
+const drained = shell.drain().catch((error: unknown) => {
     log({ event: "drainFailed", phase: "startup", detail: detailOf(error) });
 });
 
@@ -138,6 +142,9 @@ shell.server.listen(endpoint.port, endpoint.host, () => {
 
         suspended: switches.suspended,
     });
+    void drained.then(() => {
+        if (state === "starting") state = "ready";
+    });
 });
 
 /** The order that loses nothing lives in `jobs/shutdown.ts`; this is its wiring. */
@@ -150,5 +157,9 @@ const shutdown = createShutdown({
     out: process.stdout,
     exit: () => process.exit(0),
 });
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+const stop = (signal: NodeJS.Signals): void => {
+    state = "draining";
+    shutdown(signal);
+};
+process.on("SIGTERM", () => stop("SIGTERM"));
+process.on("SIGINT", () => stop("SIGINT"));

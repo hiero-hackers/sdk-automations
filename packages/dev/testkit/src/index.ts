@@ -31,10 +31,9 @@ export interface WebhookCapture {
     json(): unknown;
 }
 
-const CAPTURED_AT = "2026-08-07";
 const PROTOCOL = "7.1";
 
-function makeCapture(name: string): WebhookCapture {
+function makeCapture(name: string, capturedAt: string): WebhookCapture {
     // The naming scheme IS the header: `<event>.<action>.json`.
     const event = name.split(".")[0]!;
     const bytes = (): Buffer<ArrayBuffer> =>
@@ -42,7 +41,7 @@ function makeCapture(name: string): WebhookCapture {
     return {
         name,
         event,
-        capturedAt: CAPTURED_AT,
+        capturedAt,
         protocol: PROTOCOL,
         synthetic: false,
         bytes,
@@ -55,12 +54,13 @@ function makeCapture(name: string): WebhookCapture {
  * quietly empty.
  */
 export const WEBHOOK_CAPTURES: readonly WebhookCapture[] = [
-    "issues.opened.json",
-    "issues.labeled.json",
-    "issues.closed.json",
-    "pull_request.opened.json",
-    "pull_request.closed.json",
-].map(makeCapture);
+    { name: "issues.opened.json", capturedAt: "2026-08-07" },
+    { name: "issues.labeled.json", capturedAt: "2026-08-07" },
+    { name: "issues.closed.json", capturedAt: "2026-08-07" },
+    { name: "pull_request.opened.json", capturedAt: "2026-08-07" },
+    { name: "pull_request.closed.json", capturedAt: "2026-08-07" },
+    { name: "issue_comment.created.json", capturedAt: "2026-10-02" },
+].map(({ name, capturedAt }) => makeCapture(name, capturedAt));
 
 /** One capture by filename. A typo names the alternatives rather than throwing ENOENT. */
 export function capture(name: string): WebhookCapture {

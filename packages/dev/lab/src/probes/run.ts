@@ -7,11 +7,13 @@
  *   tsx src/probes/run.ts          the run, with the four environment values set
  */
 
-import { permissionAccepted } from "./compare.js";
 import { createSign } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { drifted, driftOf, objectOf, outgrewOnePage, parsed, type Sent, weather } from "./drift.js";
 import { EvidenceLog, safeHeaders } from "./evidence.js";
+import { EVENT_SHAPES } from "./events.js";
+import { probeWebhooks, type WebhookResult } from "./webhooks.js";
 import {
     describeFixture,
     FIXTURE_NAMES,
@@ -22,9 +24,7 @@ import {
 import {
     SHAPE_RECORDS,
     type Conditional,
-    type Pagination,
     type RequestTemplate,
-    type Shape,
     type ShapeRecord,
     type WireRead,
 } from "./reads.js";
@@ -63,6 +63,7 @@ interface ResultFile {
     readonly probedAt: string | null;
     readonly sandbox: string | null;
     readonly results: readonly ProbeResult[];
+    readonly webhooks: readonly WebhookResult[];
 }
 
 // ─── The environment ─────────────────────────────────────────────────
@@ -73,6 +74,8 @@ interface Environment {
     readonly installationId: string;
     readonly owner: string;
     readonly repo: string;
+    /** The standing pull request the events pass closes and reopens; absent leaves those shapes unreadable. */
+    readonly eventsPullRequest: number | null;
 }
 
 function value(name: string): string | undefined {
@@ -88,7 +91,9 @@ function environmentOf(): Environment | null {
     const [owner, repo] = (value("SANDBOX_REPO") ?? "").split("/");
     if (appId === undefined || keyPath === undefined || installationId === undefined) return null;
     if (owner === undefined || owner === "" || repo === undefined || repo === "") return null;
-    return { appId, keyPath, installationId, owner, repo };
+    const pinned = Number(value("SANDBOX_EVENTS_PR"));
+    const eventsPullRequest = Number.isInteger(pinned) && pinned > 0 ? pinned : null;
+    return { appId, keyPath, installationId, owner, repo, eventsPullRequest };
 }
 
 /** Presence, never value. The key file is reported by its path and never opened. */
@@ -97,6 +102,7 @@ function environmentLines(): readonly string[] {
     const presence = (name: string): string => (value(name) === undefined ? "(unset)" : "set");
     return [
         `SANDBOX_REPO      ${value("SANDBOX_REPO") ?? "(unset)"}`,
+        `SANDBOX_EVENTS_PR ${value("SANDBOX_EVENTS_PR") ?? "(unset)"}`,
         `APP_ID            ${presence("APP_ID")}`,
         `INSTALLATION_ID   ${presence("INSTALLATION_ID")}`,
         `PRIVATE_KEY_PATH  ${
@@ -136,16 +142,18 @@ function printPlan(): void {
         );
         console.log(`    fields    ${record.shape.fields.join(", ")}`);
     }
+    console.log(
+        `\n## webhooks — ${String(EVENT_SHAPES.length)}, each provoked once on the sandbox\n`,
+    );
+    for (const held of EVENT_SHAPES) {
+        console.log(`  ${held.name}`);
+        console.log(`    provoke   ${held.provoke} → ${held.event}.${held.action}`);
+        console.log(`    fields    ${held.fields.join(", ")}`);
+    }
     console.log("\nplan only: no request was made.");
 }
 
 // ─── Sending ─────────────────────────────────────────────────────────
-
-interface Sent {
-    readonly status: number;
-    readonly headers: Readonly<Record<string, string>>;
-    readonly body: string;
-}
 
 type SendOutcome =
     { readonly ok: true; readonly sent: Sent } | { readonly ok: false; readonly detail: string };
@@ -179,8 +187,12 @@ async function send(
     step: string,
     token: string,
     url: string,
-    method: "GET" | "POST",
-    options: { readonly body?: string; readonly extra?: Readonly<Record<string, string>> } = {},
+    method: "GET" | "POST" | "PATCH",
+    options: {
+        readonly body?: string;
+        readonly extra?: Readonly<Record<string, string>>;
+        readonly auth?: "token" | "bearer";
+    } = {},
 ): Promise<SendOutcome> {
     await pace();
     let response: Response;
@@ -189,7 +201,7 @@ async function send(
             method,
             headers: {
                 accept: "application/vnd.github+json",
-                authorization: `token ${token}`,
+                authorization: `${options.auth === "bearer" ? "Bearer" : "token"} ${token}`,
                 "user-agent": USER_AGENT,
                 "x-github-api-version": API_VERSION,
                 ...(options.extra ?? {}),
@@ -215,51 +227,6 @@ async function send(
         body,
     });
     return { ok: true, sent: { status: response.status, headers, body } };
-}
-
-// ─── Reading a body ──────────────────────────────────────────────────
-
-/** GitHub's body, or `null` when what came back was not JSON. */
-function parsed(body: string): unknown {
-    try {
-        return JSON.parse(body) as unknown;
-    } catch {
-        return null;
-    }
-}
-
-function objectOf(held: unknown): Readonly<Record<string, unknown>> | null {
-    return typeof held === "object" && held !== null && !Array.isArray(held)
-        ? (held as Record<string, unknown>)
-        : null;
-}
-
-/** Does this path resolve anywhere in the body? An empty array resolves every path under it. */
-function resolves(held: unknown, segments: readonly string[]): boolean {
-    const [head, ...rest] = segments;
-    if (head === undefined) return true;
-    if (head === "[]") {
-        if (!Array.isArray(held)) return false;
-        return held.length === 0 || held.some((entry) => resolves(entry, rest));
-    }
-    const inner = objectOf(held);
-    return inner !== null && Object.hasOwn(inner, head) && resolves(inner[head], rest);
-}
-
-function segmentsOf(path: string): readonly string[] {
-    return path
-        .replace(/\[\]/g, ".[].")
-        .split(".")
-        .filter((segment) => segment !== "");
-}
-
-/** The recorded fields the body does not carry; a `?` path is recorded and never drift. */
-function missingFields(body: string, fields: readonly string[]): readonly string[] {
-    const held = parsed(body);
-    const root = Array.isArray(held) ? ["[]"] : [];
-    return fields
-        .filter((path) => !path.endsWith("?"))
-        .filter((path) => !resolves(held, [...root, ...segmentsOf(path)]));
 }
 
 // ─── The token ───────────────────────────────────────────────────────
@@ -321,52 +288,6 @@ async function mintToken(environment: Environment): Promise<MintOutcome> {
 }
 
 // ─── Comparing ───────────────────────────────────────────────────────
-
-const advertises = (link: string | undefined, rel: string): boolean =>
-    link !== undefined && link.includes(`rel="${rel}"`);
-
-/** A link header that contradicts the recorded advertisement, as one drift line. */
-function paginationDrift(recorded: Pagination, link: string | undefined): string | null {
-    const next = advertises(link, "next");
-    const last = advertises(link, "last");
-    if (recorded === "next-only" && last) return "pagination: next-only → last-named";
-    if (recorded === "last-named" && next && !last) return "pagination: last-named → next-only";
-    return null;
-}
-
-/** A fixture that no longer answers in one page is unreadable, not drifted. */
-function outgrewOnePage(recorded: Pagination, link: string | undefined): boolean {
-    return recorded === "none" && (advertises(link, "next") || advertises(link, "last"));
-}
-
-/** A failure of GitHub's rather than a change of GitHub's. */
-function weather(status: number): boolean {
-    return status >= 500 || status === 429;
-}
-
-const drifted = (property: string, recorded: string, seen: string): string =>
-    `${property}: ${recorded} → ${seen}`;
-
-/** Every property of the record the response contradicts, one line each. */
-function driftOf(shape: Shape, sent: Sent): readonly string[] {
-    const lines: string[] = [];
-    if (sent.status !== shape.status) {
-        lines.push(drifted("status", String(shape.status), String(sent.status)));
-    }
-    const accepted = sent.headers["x-accepted-github-permissions"];
-    if (accepted !== undefined && !permissionAccepted(shape.permission, accepted)) {
-        lines.push(drifted("permission", shape.permission, accepted));
-    }
-    for (const name of shape.headers) {
-        if (sent.headers[name] === undefined) lines.push(drifted("headers", name, "absent"));
-    }
-    const pagination = paginationDrift(shape.pagination, sent.headers["link"]);
-    if (pagination !== null) lines.push(pagination);
-    for (const field of missingFields(sent.body, shape.fields)) {
-        lines.push(drifted("fields", field, "absent"));
-    }
-    return lines;
-}
 
 /** The conditional replay's verdict: one drift line, or none. */
 async function conditionalDrift(
@@ -600,5 +521,26 @@ for (const held of SHAPE_RECORDS) {
             : { name: held.name, ok: true },
     );
 }
-write({ probedAt: new Date().toISOString(), sandbox, results });
-process.exit(report(results));
+
+/** Signed now, not with the mint: the deliveries read comes last and the assertion is short-lived. */
+const asApp = assertion(environment);
+const webhooks: readonly WebhookResult[] = asApp.ok
+    ? await probeWebhooks({
+          owner: environment.owner,
+          repo: environment.repo,
+          eventsPullRequest: environment.eventsPullRequest,
+          asInstallation: (step, path, method, body) =>
+              send(
+                  step,
+                  minted.token,
+                  `${API_ORIGIN}${path}`,
+                  method,
+                  body === undefined ? {} : { body },
+              ),
+          asApp: (step, path, method) =>
+              send(step, asApp.token, `${API_ORIGIN}${path}`, method, { auth: "bearer" }),
+          wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      })
+    : EVENT_SHAPES.map(({ name }) => ({ name, ok: false, unreadable: asApp.detail }));
+write({ probedAt: new Date().toISOString(), sandbox, results, webhooks });
+process.exit(report([...results, ...webhooks]));

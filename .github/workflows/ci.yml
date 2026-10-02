@@ -23,7 +23,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A push to main must complete: the mutation job's `--force` run saves its
+  # seed. Only pull requests are cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Two test jobs, deliberately: `test` answers "is the code broken", and
 # `repository` answers "did a document, table or artifact drift". Mixing them
@@ -144,6 +146,9 @@ jobs:
   audit:
     name: dependency audit
     runs-on: ubuntu-latest
+    # A new advisory reads as "main is red", not "this PR is bad";
+    # `dependency-review` answers the PR question.
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -248,3 +253,56 @@ jobs:
         with:
           path: packages/${{ matrix.package }}/reports/stryker-incremental.json
           key: mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+
+  container:
+    name: container smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Boots the image as an operator would: readiness, one signed delivery,
+      # then a SIGTERM that must exit 0. The secret is a throwaway; the
+      # fixture's repository is the one the shell is told to serve.
+      - name: boot, deliver, stop
+        run: |
+          set -euo pipefail
+          mkdir smoke
+          cat > smoke/automations.yml <<'YAML'
+          schemaVersion: 2
+          mode: dry-run
+          capabilities:
+            triageQueue:
+              enabled: true
+          mappings:
+            labels:
+              awaitingTriage: "status: triage"
+          YAML
+          docker build -t sdk-automations:smoke .
+          docker run -d --name shell -p 8790:8790 \
+            -e WEBHOOK_SECRET=smoke-secret -e REPO_OWNER=scrubbed-1 -e REPO_NAME=scrubbed-2 \
+            -e CONFIG_FILE=/config/automations.yml -v "$PWD/smoke:/config:ro" sdk-automations:smoke
+          fail() { echo "$1"; docker logs shell; exit 1; }
+          ready=0
+          for _ in $(seq 60); do
+            if curl -fsS http://127.0.0.1:8790/readyz; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || fail "readyz never answered 200"
+          FIXTURE=packages/dev/testkit/fixtures/issues.opened.json
+          SIG="sha256=$(openssl dgst -sha256 -hmac smoke-secret -binary < "$FIXTURE" | xxd -p -c 256)"
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8790/ \
+            -H "x-hub-signature-256: $SIG" \
+            -H "x-github-delivery: 83e4273f-dd89-22f4-92bc-5da478ed1a69" \
+            -H "x-github-event: issues" --data-binary "@$FIXTURE")
+          [ "$STATUS" = 202 ] || fail "delivery answered $STATUS, not 202"
+          for _ in $(seq 30); do
+            docker logs shell 2>&1 | grep -q '"event":"deliveryCompleted"' && break
+            sleep 1
+          done
+          docker stop -t 30 shell
+          CODE=$(docker wait shell)
+          [ "$CODE" = 0 ] || fail "shell exited $CODE, not 0"
+          LOGS=$(docker logs shell 2>&1)
+          grep -q '"event":"startup"' <<<"$LOGS" || fail "no startup event"
+          grep -q '"event":"deliveryCompleted"' <<<"$LOGS" || fail "no deliveryCompleted event"

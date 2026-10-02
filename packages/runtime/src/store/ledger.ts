@@ -387,6 +387,21 @@ export class Ledger {
         return rows.map((row) => ({ verdict: row.verdict, count: row.taken }));
     }
 
+    /** How many decisions after `since` carry one of `codes`. */
+    unreadableSince(since: string, codes: readonly string[]): number {
+        assertUtcInstant(since, "since");
+        if (codes.length === 0) return 0;
+        const row = this.db
+            .prepare(
+                `
+                SELECT COUNT(*) AS refused FROM decision
+                WHERE at > ? AND code IN (${codes.map(() => "?").join(", ")})
+            `,
+            )
+            .get(since, ...codes) as unknown as { refused: number };
+        return row.refused;
+    }
+
     /** Managed comments landed after `since`; the client's own ceiling counts attempts (D193). */
     commentsSince(since: string): number {
         assertUtcInstant(since, "since");

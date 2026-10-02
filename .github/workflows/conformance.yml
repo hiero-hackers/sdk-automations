@@ -69,6 +69,9 @@ jobs:
           APP_ID: ${{ secrets.SANDBOX_APP_ID }}
           INSTALLATION_ID: ${{ secrets.SANDBOX_INSTALLATION_ID }}
           SANDBOX_REPO: ${{ secrets.SANDBOX_REPO }}
+          # The standing pull request the events pass closes and reopens; a
+          # repository variable, not a secret, and unset leaves those shapes unreadable.
+          SANDBOX_EVENTS_PR: ${{ vars.SANDBOX_EVENTS_PR }}
         run: pnpm lab:probe
       # The verdict crosses as this job's own output: one boolean, not the
       # file. A credentialed run always writes a fresh `probedAt` — the diff

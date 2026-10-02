@@ -231,6 +231,7 @@ describe("an instant that is not one is refused, naming the argument", () => {
     it.each([
         ["now", (store: Store) => store.ledger.standingWarnings("2026-09-12")],
         ["since", (store: Store) => store.ledger.commentsSince("yesterday")],
+        ["since", (store: Store) => store.ledger.unreadableSince("yesterday", ["itemMissing"])],
         [
             "updatedAt",
             (store: Store) =>
@@ -444,6 +445,42 @@ describe("the decisions a pass records", () => {
         expect(store.ledger.decisionsOn(ELSEWHERE, ITEM)).toEqual([
             decision({ passId: "pass-elsewhere", repository: ELSEWHERE }),
         ]);
+        store.close();
+    });
+});
+
+describe("the deliveries refused as unreadable", () => {
+    const SINCE = "2026-09-12T10:00:00.000Z";
+    const refused = (over: Partial<Decision> = {}): Decision =>
+        decision({
+            verdict: "refused",
+            code: "itemMissing",
+            effectId: null,
+            at: "2026-09-12T11:00:00.000Z",
+            ...over,
+        });
+
+    it("counts only the rows whose code is listed and whose instant is after `since`", () => {
+        const store = new Store(path);
+
+        store.ledger.decide(refused());
+        store.ledger.decide(refused({ code: "numberMissing" }));
+        store.ledger.decide(refused({ at: SINCE }));
+        store.ledger.decide(refused({ at: "2026-09-12T09:00:00.000Z" }));
+        store.ledger.decide(refused({ code: "closedByHuman" }));
+        store.ledger.decide(refused({ code: null }));
+
+        expect(store.ledger.unreadableSince(SINCE, ["itemMissing", "numberMissing"])).toBe(2);
+        expect(store.ledger.unreadableSince(SINCE, ["numberMissing"])).toBe(1);
+        store.close();
+    });
+
+    it("answers 0 for an empty list of codes", () => {
+        const store = new Store(path);
+
+        store.ledger.decide(refused());
+
+        expect(store.ledger.unreadableSince(SINCE, [])).toBe(0);
         store.close();
     });
 });

@@ -70,6 +70,7 @@ interface WorkflowDocument {
     readonly on?: unknown;
     readonly env?: Readonly<Record<string, unknown>>;
     readonly permissions?: PermissionBlock;
+    readonly concurrency?: Readonly<Record<string, unknown>>;
     readonly jobs?: Readonly<Record<string, WorkflowJob | null>>;
 }
 
@@ -151,6 +152,20 @@ function permissionWrites(path: string, text: string): string[] {
     ];
 }
 
+const CANCEL_PULL_REQUESTS_ONLY = "${{ github.event_name == 'pull_request' }}";
+
+/** True only when ci.yml cancels in-flight runs for pull requests alone. */
+function cancelsOnlyPullRequests(ci: unknown): boolean {
+    const document = ci as WorkflowDocument | null;
+    return document?.concurrency?.["cancel-in-progress"] === CANCEL_PULL_REQUESTS_ONLY;
+}
+
+/** True only when ci.yml's audit job runs on a push alone. */
+function auditsOnPushOnly(ci: unknown): boolean {
+    const document = ci as WorkflowDocument | null;
+    return document?.jobs?.["audit"]?.if === "github.event_name == 'push'";
+}
+
 describe("workflow hygiene stays a checked invariant", () => {
     it("reads every workflow file", () => {
         expect(workflows.length).toBeGreaterThan(0);
@@ -217,6 +232,31 @@ describe("workflow hygiene stays a checked invariant", () => {
         const pin = (ref: string): boolean => /^[0-9a-f]{40}$/.test(ref);
         expect(pin("v4")).toBe(false);
         expect(pin("3d3c42e5aac5ba805825da76410c181273ba90b1")).toBe(true);
+    });
+
+    it("never cancels a push to main in flight", () => {
+        expect(cancelsOnlyPullRequests(parse(workflowText(".github/workflows/ci.yml")))).toBe(true);
+    });
+
+    it("audits dependencies on a push only", () => {
+        expect(auditsOnPushOnly(parse(workflowText(".github/workflows/ci.yml")))).toBe(true);
+    });
+
+    it("proves the cancellation and audit checks can fail", () => {
+        const cancel = (value: unknown): unknown => ({
+            concurrency: { "cancel-in-progress": value },
+        });
+        expect(cancelsOnlyPullRequests(cancel(true))).toBe(false);
+        expect(cancelsOnlyPullRequests({ concurrency: {} })).toBe(false);
+        expect(cancelsOnlyPullRequests(cancel("${{ github.event_name == 'pull_requests' }}"))).toBe(
+            false,
+        );
+        expect(cancelsOnlyPullRequests(cancel(CANCEL_PULL_REQUESTS_ONLY))).toBe(true);
+        const audit = (value: unknown): unknown => ({ jobs: { audit: { if: value } } });
+        expect(auditsOnPushOnly(audit(true))).toBe(false);
+        expect(auditsOnPushOnly({ jobs: { audit: {} } })).toBe(false);
+        expect(auditsOnPushOnly(audit("github.event_name == 'pushes'"))).toBe(false);
+        expect(auditsOnPushOnly(audit("github.event_name == 'push'"))).toBe(true);
     });
 
     const CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";

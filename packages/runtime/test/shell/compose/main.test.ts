@@ -495,6 +495,22 @@ async function post(
     return response.status;
 }
 
+/** The status `/readyz` settles on: readiness follows the start-up drain, so it is polled. */
+async function readyStatus(port: number): Promise<number> {
+    let status = 0;
+    for (let attempt = 0; attempt < 20 && status !== 200; attempt++) {
+        if (attempt > 0) {
+            await new Promise<void>((resolve) => {
+                setTimeout(resolve, 50);
+            });
+        }
+        const response = await fetch(`http://${LOOPBACK}:${String(port)}/readyz`);
+        await response.arrayBuffer();
+        status = response.status;
+    }
+    return status;
+}
+
 /** A locked database is the child mid-commit — the answer is "not yet". */
 function ifUnlocked<T>(read: () => T): T | undefined {
     try {
@@ -906,6 +922,7 @@ describe("the sandbox entry point, as a process", () => {
                             // And it is awake: this one decides what arrives.
                             suspended: false,
                         });
+                        expect(await readyStatus(port)).toBe(200);
 
                         expect(await post(port, GUID, FIXTURE)).toBe(202);
                         // The delivery's whole passage, under its own id.
