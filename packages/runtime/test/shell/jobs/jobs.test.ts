@@ -79,7 +79,7 @@ let logged: ShellEvent[];
 const log: Log = (event) => logged.push(event);
 
 beforeEach(() => {
-    configFile = temp.file("automations.yml");
+    configFile = temp.file("sdk-automations.yml");
     writeFileSync(configFile, CONFIG);
     store = new Store(temp.file("store.sqlite"));
     running = [];

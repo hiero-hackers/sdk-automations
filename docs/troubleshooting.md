@@ -46,7 +46,7 @@ your file has to move.
 | `sweepWriteCap` | This tick had spent the writes one sweep may send, so the act was held back; the next tick decides it again |
 | `rowUnreadable` | The ledger's bytes for this call could not be read, so the call is closed and nothing was resent |
 | `ledgerInconsistent` | The ledger holds a history the App cannot read as one effect; `pnpm shell:explain` prints it, and clearing it is a person's job |
-| `configurationChanged` | Your `automations.yml` changed after this effect started, so nothing more was sent under the file it began under |
+| `configurationChanged` | Your `sdk-automations.yml` changed after this effect started, so nothing more was sent under the file it began under |
 | `identityMissing` | The approved effect carried no managed-comment identity to post under — a defect; please open an issue with the code |
 | `labelUnmapped` | Your file maps no label to the position this capability wants, or to the one being displaced; the App never guesses a label name |
 | `itemUnreadable` | The item could not be read at apply time, so the live re-check could not run; re-tried each sweep |
@@ -78,7 +78,7 @@ or the delivery, not the work.
 
 | Kind | In plain terms |
 |---|---|
-| `configRejected` | Your `automations.yml` did not parse or did not validate; the errors are named in [Every way the file can be wrong](configuration.md#every-way-the-file-can-be-wrong), and redelivering the same event cannot repair a file |
+| `configRejected` | Your `sdk-automations.yml` did not parse or did not validate; the errors are named in [Every way the file can be wrong](configuration.md#every-way-the-file-can-be-wrong), and redelivering the same event cannot repair a file |
 | `installationSuspended` | The endpoint serving you was started with `SUSPENDED=1`, so it verified and accepted your delivery and then finished it without deciding: no configuration was read, no capability ran, and nothing was sent. The delivery is complete and will not be reconsidered when the suspension lifts, so ask your operator to restart the endpoint without `SUSPENDED=1` — the next event on the item is decided normally |
 | `modeUnsupported` | Your file says `mode: active`, and the endpoint serving it was started as a composition that wires no write path — so it is rejected before a decision rather than acted on. That is still the shipped default: writes are armed only when the endpoint is given the App's identity as well as its credentials (`APP_SLUG`, see [Running the shell](running.md)). Until then, choose `observe` or `dry-run` |
 | `repositoryMismatch` | The delivery came from a different repository than the one this endpoint was started for, so nothing about it was read — point the webhook at the right endpoint, or start the endpoint for the right repository (`REPO_OWNER`/`REPO_NAME`) |

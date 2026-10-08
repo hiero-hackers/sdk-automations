@@ -2,7 +2,7 @@
  * `configAtHead` — the read behind the pull-request configuration report.
  *
  * Three confirmed endpoints in one answer, and the economy is part of the
- * contract: a pull request that leaves `automations.yml` alone costs the files
+ * contract: a pull request that leaves `sdk-automations.yml` alone costs the files
  * list and nothing else. The other subject running through the file is what the
  * arm refuses to guess. A file list it could not walk to the end of, a head
  * commit it could not read, and a 404 the list did not explain are all
@@ -70,7 +70,7 @@ const ask = (resolve: ResolverSource): Promise<ResolverAnswer<ConfigAtHead>> =>
     resolve("configAtHead", { item: PULL });
 
 const fileEntry = (over: Record<string, unknown> = {}) => ({
-    filename: "automations.yml",
+    filename: "sdk-automations.yml",
     status: "modified",
     ...over,
 });
@@ -203,7 +203,7 @@ describe("configAtHead", () => {
     it.each([
         ["a body that is not a list", "{}"],
         ["an entry with no filename", JSON.stringify([{ status: "added" }])],
-        ["an entry with no status", JSON.stringify([{ filename: "automations.yml" }])],
+        ["an entry with no status", JSON.stringify([{ filename: "sdk-automations.yml" }])],
     ])("refuses %s", async (_what, body) => {
         const { resolve } = source([success(body)]);
 
@@ -232,7 +232,7 @@ describe("configAtHead", () => {
                 ? answer.value.result.config.capabilities["triageQueue"]
                 : null,
         ).toEqual({ enabled: true, settings: { announce: true } });
-        expect(urls()[2]).toBe(`${REPO_URL}/contents/automations.yml?ref=${HEAD}`);
+        expect(urls()[2]).toBe(`${REPO_URL}/contents/sdk-automations.yml?ref=${HEAD}`);
     });
 
     it("carries a rejection back as the parser's own errors, not as a failure", async () => {
@@ -256,7 +256,11 @@ describe("configAtHead", () => {
         ["a deletion", fileEntry({ status: "removed" })],
         [
             "a rename away from the path",
-            { filename: "renamed.yml", status: "renamed", previous_filename: "automations.yml" },
+            {
+                filename: "renamed.yml",
+                status: "renamed",
+                previous_filename: "sdk-automations.yml",
+            },
         ],
     ])("reads %s as the parser's no-file result, and reads no file", async (_what, entry) => {
         const { resolve, urls } = source([success(JSON.stringify([entry]))]);

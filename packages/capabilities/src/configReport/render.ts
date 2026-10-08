@@ -1,5 +1,5 @@
 /**
- * The comment's two bodies: what a parsed `automations.yml` would mean, and
+ * The comment's two bodies: what a parsed `sdk-automations.yml` would mean, and
  * why a rejected one was rejected. Pure functions over a `ConfigResult`.
  *
  * Every string that came out of the file is rendered through `inert()`, and
@@ -21,7 +21,7 @@ const indent = (depth: number): string => "  ".repeat(depth);
 const bullet = (depth: number, text: string): string => `${indent(depth)}- ${text}`;
 
 /** The heading and the closing line, so the two bodies are recognisably one report. */
-const TITLE = "### `automations.yml` — what this pull request would mean";
+const TITLE = "### `sdk-automations.yml` — what this pull request would mean";
 const FOOTER = "Read on the default branch, this changes nothing until it merges.";
 const MAX_COMMENT_CHARS = 12_000;
 const MAX_REPORTED_ERRORS = 100;

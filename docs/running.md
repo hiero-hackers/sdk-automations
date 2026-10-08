@@ -47,7 +47,7 @@ INSTALLATION_ID=…
 APP_SLUG=…                  # optional; the App's URL slug. Arms the write path
 PORT=8790                   # optional
 HOST=127.0.0.1              # optional; omit to use Node's default bind host
-CONFIG_FILE=…               # credential-free fallback; default <state home>/automations.yml
+CONFIG_FILE=…               # credential-free fallback; default <state home>/sdk-automations.yml
 STORE_PATH=…                # optional; default <state home>/shell.sqlite
 TICK_SECONDS=60             # optional; the reconciliation tick: requeue, recover, drain, fire
 SWEEP_CADENCE_HOURS=1       # optional; arms the fact sweep and sets how often a repository is read
@@ -130,7 +130,7 @@ a `limits` line reports GitHub's own `limit`, `remaining` and `resetAt` once per
 
 The state home is `$XDG_STATE_HOME/sdk-automations`, or `~/.local/state/sdk-automations` when that
 variable is unset or relative. The store is `shell.sqlite` there unless `STORE_PATH` names another
-file, and the credential-free configuration copy is `automations.yml` beside it unless `CONFIG_FILE`
+file, and the credential-free configuration copy is `sdk-automations.yml` beside it unless `CONFIG_FILE`
 does. It is deliberately outside the package: in a container `packages/runtime/data/` is an image
 layer, and a redeploy would take the decision rows with it. That directory is never tracked, and an
 operator who points `STORE_PATH` back at it is still writing raw payloads and real repository names.

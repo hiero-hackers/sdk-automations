@@ -360,7 +360,7 @@ async function openAssignments(
 // ─── The configuration a pull request proposes ───────────────────────
 
 /**
- * Whether this pull request touches `automations.yml`, and how.
+ * Whether this pull request touches `sdk-automations.yml`, and how.
  * `status` is GitHub's own word and `null` is the file untouched; it is only ever compared.
  */
 type ConfigFileChange = { readonly ok: true; readonly status: string | null } | ResolverFailure;
@@ -432,7 +432,7 @@ async function headShaOf(
 }
 
 /**
- * What `automations.yml` would mean if this pull request were merged — a report input only.
+ * What `sdk-automations.yml` would mean if this pull request were merged — a report input only.
  * A 404 is absence only where the pull request's own file list said so (D51, D122).
  */
 async function configAtHead(

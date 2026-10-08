@@ -31,7 +31,7 @@ let store: Store;
 
 beforeEach(() => {
     sourcePath = temp.file("source.sqlite");
-    configPath = temp.file("automations.yml");
+    configPath = temp.file("sdk-automations.yml");
     store = new Store(sourcePath);
     writeFileSync(
         configPath,

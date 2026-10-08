@@ -142,7 +142,7 @@ describe("installation cost through the composed client and reader", () => {
             event: "issues",
             fixture: "issues.opened.json",
             settings: "",
-            paths: ["/contents/automations.yml", "/issues/164/timeline"],
+            paths: ["/contents/sdk-automations.yml", "/issues/164/timeline"],
         },
         {
             name: "prDashboard",
@@ -150,7 +150,7 @@ describe("installation cost through the composed client and reader", () => {
             fixture: "pull_request.opened.json",
             settings: DASHBOARD_CHECKS,
             paths: [
-                "/contents/automations.yml",
+                "/contents/sdk-automations.yml",
                 "/pulls/165/commits",
                 "/pulls/165",
                 "/graphql",
@@ -164,10 +164,10 @@ describe("installation cost through the composed client and reader", () => {
             fixture: "pull_request.opened.json",
             settings: "",
             paths: [
-                "/contents/automations.yml",
+                "/contents/sdk-automations.yml",
                 "/pulls/165/files",
                 "/pulls/165",
-                "/contents/automations.yml",
+                "/contents/sdk-automations.yml",
                 "/issues/165/timeline",
             ],
         },

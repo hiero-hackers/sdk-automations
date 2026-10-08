@@ -1,5 +1,5 @@
 /**
- * The live configuration read: `automations.yml` at the repository's default branch.
+ * The live configuration read: `sdk-automations.yml` at the repository's default branch.
  * Absence is re-corroborated on every load, deliberately unmemoized (D51, D122).
  */
 

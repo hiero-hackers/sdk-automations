@@ -96,7 +96,7 @@ const ROUTING: Record<
             host: null,
             repository: "owner/repo",
             configSource: "local",
-            configPath: "automations.yml",
+            configPath: "sdk-automations.yml",
             storePath: "shell.sqlite",
             writes: "absent",
             sweep: "absent",

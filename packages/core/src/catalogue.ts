@@ -177,7 +177,7 @@ export interface CommitAttestation {
     readonly merge: boolean;
 }
 
-/** What a pull request does to `automations.yml`: the PARSED result, never the text. */
+/** What a pull request does to `sdk-automations.yml`: the PARSED result, never the text. */
 export type ConfigAtHead =
     | { readonly touched: false }
     | { readonly touched: true; readonly revision: string; readonly result: ConfigResult };
@@ -215,7 +215,7 @@ export interface ResolverCatalogue extends Record<ResolverName, unknown> {
             readonly meanings: readonly MappableMeaning[];
         }[];
     };
-    /** Did this pull request change `automations.yml`, and what does it parse to at head? */
+    /** Did this pull request change `sdk-automations.yml`, and what does it parse to at head? */
     readonly configAtHead: {
         readonly input: { readonly item: ItemRef };
         readonly output: ConfigAtHead;

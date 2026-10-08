@@ -149,7 +149,7 @@ capabilities:
 `;
 
 describe("configReport", () => {
-    it("says nothing about a pull request that leaves automations.yml alone", async () => {
+    it("says nothing about a pull request that leaves sdk-automations.yml alone", async () => {
         const { facts, handle, platform } = probe(
             answering({ ok: true, value: { touched: false } }),
         );
@@ -228,7 +228,7 @@ describe("configReport", () => {
                 cause: { cause: "pullRequestChangesConfiguration", observedAt: OBSERVED_AT },
                 explanation: {
                     capability: "configReport",
-                    summary: "Reported what this pull request's automations.yml would mean.",
+                    summary: "Reported what this pull request's sdk-automations.yml would mean.",
                     detail: [`proposed configuration read at revision ${REVISION}`],
                 },
                 grace: null,
@@ -245,7 +245,7 @@ describe("configReport", () => {
 
         expect(intents[0]?.explanation).toEqual({
             capability: "configReport",
-            summary: "Reported what this pull request's automations.yml would mean.",
+            summary: "Reported what this pull request's sdk-automations.yml would mean.",
             detail: [`proposed configuration read at revision ${REVISION}`],
         });
     });
@@ -253,7 +253,7 @@ describe("configReport", () => {
     it("renders a clean file as its mode, every enabled capability's settings, and the mappings", async () => {
         expect(await bodyFor(CLEAN)).toBe(
             [
-                "### `automations.yml` — what this pull request would mean",
+                "### `sdk-automations.yml` — what this pull request would mean",
                 "",
                 `The file at \`${REVISION}\` parses. This is what the App would read from it.`,
                 "",
@@ -311,7 +311,7 @@ describe("configReport", () => {
     it("renders a keyless capability as on with no settings, and skips the empty sections", async () => {
         expect(await bodyFor(SPARSE)).toBe(
             [
-                "### `automations.yml` — what this pull request would mean",
+                "### `sdk-automations.yml` — what this pull request would mean",
                 "",
                 `The file at \`${REVISION}\` parses. This is what the App would read from it.`,
                 "",
@@ -546,7 +546,7 @@ mappings:
 
         expect(body).toBe(
             [
-                "### `automations.yml` — what this pull request would mean",
+                "### `sdk-automations.yml` — what this pull request would mean",
                 "",
                 "The file at `sha256:one` is rejected, so the App would read no configuration " +
                     "from it at all — one error anywhere rejects the whole document.",

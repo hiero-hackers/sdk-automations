@@ -45,7 +45,7 @@ export function scriptedGitHub(script: {
         "/issues/164/timeline": [],
         "/issues/165/timeline": [],
         "/pulls/165": { number: 165, mergeable: true, head: { sha: "a".repeat(40) } },
-        "/pulls/165/files": [{ filename: "automations.yml", status: "modified" }],
+        "/pulls/165/files": [{ filename: "sdk-automations.yml", status: "modified" }],
         "/pulls/165/commits": [
             {
                 sha: "a".repeat(40),
@@ -100,7 +100,7 @@ export function scriptedGitHub(script: {
         }
         const route = path.replace(/^\/repos\/[^/]+\/[^/]+/, "");
         const text = script.config();
-        const config = route === "/contents/automations.yml";
+        const config = route === "/contents/sdk-automations.yml";
         const body = config
             ? {
                   type: "file",

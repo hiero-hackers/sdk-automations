@@ -7,7 +7,7 @@ one merge.
 
 ## Add the file
 
-**1.** Create `automations.yml` in your repository root:
+**1.** Create `sdk-automations.yml` in your repository root:
 
 ```yaml
 schemaVersion: 2
@@ -33,7 +33,7 @@ That is the repository configuration. Installing and running the App is a separa
 
 **For autocomplete**, put
 `# yaml-language-server: $schema=https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json`
-on the first line of `automations.yml`. Any editor with a YAML language server then completes every
+on the first line of `sdk-automations.yml`. Any editor with a YAML language server then completes every
 key, shows the sentence beside it, and underlines a misspelt one as you type. It checks shape and
 spelling; the App's parser is still the authority on the rest.
 

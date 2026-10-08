@@ -196,7 +196,7 @@ export function parseComposition(env: Environment): Parsed {
                 suspended: env["SUSPENDED"] === "1",
             },
             paths: {
-                configFile: env["CONFIG_FILE"] ?? join(defaultDataDir(env), "automations.yml"),
+                configFile: env["CONFIG_FILE"] ?? join(defaultDataDir(env), "sdk-automations.yml"),
                 storeFile: storeFile(env),
             },
             tickMs: typeof tickSeconds === "number" ? tickSeconds * 1000 : DEFAULT_TICK_MS,

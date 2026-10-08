@@ -7,14 +7,14 @@
 One GitHub App. Repository-owned configuration. Durable, explainable decisions.
 
 Hiero SDK repositories repeat the same contributor-facing work: intake, triage, workflow labels,
-pull-request checks, status reporting. This is one App that does it from a reviewed `automations.yml`
+pull-request checks, status reporting. This is one App that does it from a reviewed `sdk-automations.yml`
 on each repository's default branch, decides one issue or pull request at a time, and writes down
 what it decided and why. It is not a hosted service: it runs against a personal sandbox App, and
 everything below is the tree as it stands.
 
 ## Who it is for
 
-- **The maintainer** who writes `automations.yml` — [`docs/`](docs/README.md).
+- **The maintainer** who writes `sdk-automations.yml` — [`docs/`](docs/README.md).
 - **The operator** who runs the endpoint — [`docs/running.md`](docs/running.md).
 - **The contributor** who changes the platform — [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -22,7 +22,7 @@ everything below is the tree as it stands.
 
 1. **Verify** — GitHub POSTs; the receiver checks the HMAC over the exact bytes received.
 2. **Accept** — those bytes become a durable row before the 202, so a crash after it loses nothing.
-3. **Read** — a worker claims the row and reads `automations.yml` at the default branch, never at a
+3. **Read** — a worker claims the row and reads `sdk-automations.yml` at the default branch, never at a
    pull request's head.
 4. **Decide** — each enabled capability judges one item and asks for outcomes; the safety ladder
    gates every one of them, and a refusal carries a code an operator can look up.

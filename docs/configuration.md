@@ -1,6 +1,6 @@
 # Configuration reference
 
-The App is controlled by `automations.yml` in your repository root. With App credentials, the shell
+The App is controlled by `sdk-automations.yml` in your repository root. With App credentials, the shell
 reads the file from the repository's default branch. Credential-free development and CI can use an
 operator-maintained local copy through `CONFIG_FILE`. This page defines every shared key the parser
 accepts today.

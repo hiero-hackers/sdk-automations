@@ -8,7 +8,7 @@ and a line. This package imports core and nothing else, and does no I/O.
 The four that ship, one line each: `triageQueue` puts a new issue in the triage queue and holds it until triaged;
 `prDashboard` posts one dashboard comment telling a contributor what stops their pull request
 being ready to review; `inactivity` reminds about stalled work and then releases it; `configReport`
-comments on a pull request that changes `automations.yml`, saying what the App would read from it.
+comments on a pull request that changes `sdk-automations.yml`, saying what the App would read from it.
 What each triggers on, maps, reads and may write is the generated table in
 [`docs/capabilities.md`](../../docs/capabilities.md) — read that when this page and it disagree.
 

@@ -269,7 +269,7 @@ describe("an environment the composition accepts", () => {
             contentCreationHourly: null,
             switches: { killSwitch: false, suspended: false },
             paths: {
-                configFile: join(DATA_DIR, "automations.yml"),
+                configFile: join(DATA_DIR, "sdk-automations.yml"),
                 storeFile: join(DATA_DIR, "shell.sqlite"),
             },
             tickMs: DEFAULT_TICK_MS,
@@ -283,7 +283,7 @@ describe("an environment the composition accepts", () => {
                 APP_SLUG: "hiero-hackers-sandbox",
                 PORT: "9000",
                 HOST: "127.0.0.1",
-                CONFIG_FILE: "/etc/automations.yml",
+                CONFIG_FILE: "/etc/sdk-automations.yml",
                 STORE_PATH: "/var/shell.sqlite",
                 TICK_SECONDS: "5",
                 SWEEP_CADENCE_HOURS: "6",
@@ -311,7 +311,7 @@ describe("an environment the composition accepts", () => {
             },
             contentCreationHourly: 120,
             switches: { killSwitch: true, suspended: true },
-            paths: { configFile: "/etc/automations.yml", storeFile: "/var/shell.sqlite" },
+            paths: { configFile: "/etc/sdk-automations.yml", storeFile: "/var/shell.sqlite" },
             tickMs: 5_000,
         });
     });
@@ -349,12 +349,12 @@ describe("an environment the composition accepts", () => {
 
     /** Two names for two files: overriding one leaves the other under the state home. */
     it("keeps CONFIG_FILE and STORE_PATH independent of each other", () => {
-        expect(composed({ CONFIG_FILE: "/etc/automations.yml" }).paths).toEqual({
-            configFile: "/etc/automations.yml",
+        expect(composed({ CONFIG_FILE: "/etc/sdk-automations.yml" }).paths).toEqual({
+            configFile: "/etc/sdk-automations.yml",
             storeFile: join(DATA_DIR, "shell.sqlite"),
         });
         expect(composed({ STORE_PATH: "/var/shell.sqlite" }).paths).toEqual({
-            configFile: join(DATA_DIR, "automations.yml"),
+            configFile: join(DATA_DIR, "sdk-automations.yml"),
             storeFile: "/var/shell.sqlite",
         });
     });

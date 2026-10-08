@@ -1,6 +1,6 @@
 /**
  * Where a repository's configuration lives, and how the shell obtains it.
- * `automations.yml` at the repository ROOT is the decided path (D93).
+ * `sdk-automations.yml` at the repository ROOT is the decided path (D93).
  */
 
 import { readFile } from "node:fs/promises";

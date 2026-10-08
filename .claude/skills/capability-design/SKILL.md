@@ -25,7 +25,7 @@ banners. Then exactly four sections, in this order.
    configured address prints as text rather than as a link. Voice: greet by name, name the reason,
    the fix and the date; never scold. No markdown links with placeholder targets — write "the
    Signing Guide (configured link)".
-2. **What the config looks like** — full `automations.yml` blocks, valid YAML, one per genuinely
+2. **What the config looks like** — full `sdk-automations.yml` blocks, valid YAML, one per genuinely
    different policy. Prose only for what the examples cannot show. Read every key against the
    constructor table in `design/guides/capability-kits.md` §3: a shape with no constructor is the
    design's to move (§3.3), and moving it after the code is written costs the code.

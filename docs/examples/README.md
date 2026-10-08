@@ -33,7 +33,7 @@ testing. As files here they ran, passed, and measured nothing.
 
 ## What is deliberately not decided here
 
-These files show the SHAPE of a configuration at the decided repository-root path, `automations.yml`.
+These files show the SHAPE of a configuration at the decided repository-root path, `sdk-automations.yml`.
 They do not implement the future default-branch fetch. A capability's own keys — everything in its
 block beside `enabled` — are opaque to the shared parser, which checks the key names against each
 capability's declaration and nothing more; the values are read by the capability's own spec, and

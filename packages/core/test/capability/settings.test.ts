@@ -3,7 +3,7 @@
  *
  * Two halves, in the order a reader meets them. The constructors first, each
  * against the rule its row of §3's table states, and then against what it says
- * about itself; then the three capability designs, whose `automations.yml`
+ * about itself; then the three capability designs, whose `sdk-automations.yml`
  * examples are the fixtures under `fixtures/settings/`. The second half is the
  * acceptance claim: the toolkit is proved against all three designs.
  *

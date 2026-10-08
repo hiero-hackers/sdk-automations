@@ -101,7 +101,7 @@ ordering timeline read. Mode is `dry-run`; no writes are sent, and the sweep all
 | --- | --- | --- | --- |
 | triageQueue | New issue, welcome on, locking off | 2 | 0 |
 | prDashboard | All checks on, one signed commit and one assigned linked issue | 5 | 1 |
-| configReport | PR changes automations.yml, proposed config is valid | 5 | 0 |
+| configReport | PR changes sdk-automations.yml, proposed config is valid | 5 | 0 |
 
 The two dashboard commit checks share one commits read. A mixed-lane case runs two dashboard
 deliveries alongside 20 due repositories with a 40-unit sweep cap. The sweep stops at 40 while

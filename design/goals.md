@@ -19,7 +19,7 @@ installs one App and switches on/off and configures the features it wants.
 
 1. **Each capability is separate.** Each capability can switch on/off and be configured without impacting other capabilities.
 2. **Every repository makes a configuration-driven choice.** A repository declares its choices in an
-   `automations.yml` file on its default branch, configuring labels, thresholds, and contributor rules
+   `sdk-automations.yml` file on its default branch, configuring labels, thresholds, and contributor rules
    within each capability it enables.
 3. **Each config combination safely defaults.** No configuration means no workflow-changing writes. Every user-facing capability defaults to off.
 4. **The project is capability neutral.** The team starts with the shared App foundation, then adds capabilities that maintainers have

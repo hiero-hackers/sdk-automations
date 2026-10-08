@@ -559,7 +559,7 @@ async function withPaths<T>(
     body: (paths: { configFile: string; storeFile: string; privateKeyFile: string }) => Promise<T>,
 ): Promise<T> {
     const dir = mkdtempSync(join(tmpdir(), "shell-main-"));
-    const configFile = join(dir, "automations.yml");
+    const configFile = join(dir, "sdk-automations.yml");
     const privateKeyFile = join(dir, "app-private-key.pem");
     writeFileSync(configFile, CONFIG);
     try {
@@ -670,7 +670,7 @@ globalThis.fetch = async (input, init = {}) => {
             permissions: { issues: "write", pull_requests: "read" },
         }), { status: 201 });
     }
-    if (String(input).includes("/contents/automations.yml")) {
+    if (String(input).includes("/contents/sdk-automations.yml")) {
         return new Response(${JSON.stringify(configBody)}, { status: 200 });
     }
     if (String(input).endsWith("/graphql")) {

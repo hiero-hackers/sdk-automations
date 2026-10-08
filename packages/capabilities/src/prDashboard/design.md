@@ -33,7 +33,7 @@ broken before rendering (they are attacker-controlled); the guide is the maintai
 
 ## What the config looks like
 
-Proposed `automations.yml` block:
+Proposed `sdk-automations.yml` block:
 
 ```yaml
 schemaVersion: 1

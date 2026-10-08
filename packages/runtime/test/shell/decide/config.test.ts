@@ -12,7 +12,7 @@ import { CONFIG_PATH, fileConfigSource } from "../../../src/shell/decide/config.
 
 describe("configuration source", () => {
     it("owns the repository path and content-addresses exact text", async () => {
-        expect(CONFIG_PATH).toBe("automations.yml");
+        expect(CONFIG_PATH).toBe("sdk-automations.yml");
         // Returned, not fired and forgotten: withTempDir chains the removal
         // onto the promise, so the directory outlives the load it feeds.
         await withTempDir("shell-config-", async (directory) => {

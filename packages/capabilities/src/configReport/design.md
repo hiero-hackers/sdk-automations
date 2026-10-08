@@ -1,10 +1,10 @@
-# configReport — one comment on a pull request that changes `automations.yml`, saying what the App would read from it
+# configReport — one comment on a pull request that changes `sdk-automations.yml`, saying what the App would read from it
 
 ## What the output looks like
 
 One comment per pull request, updated in place. When the file parses:
 
-> ### `automations.yml` — what this pull request would mean
+> ### `sdk-automations.yml` — what this pull request would mean
 >
 > The file at `sha256:5a3e898528ce` parses. This is what the App would read from it.
 >
@@ -53,7 +53,7 @@ fix is a field the resolver's answer would have to carry, which is a platform ch
 
 When it does not parse:
 
-> ### `automations.yml` — what this pull request would mean
+> ### `sdk-automations.yml` — what this pull request would mean
 >
 > The file at `sha256:2e2637a3a3f5` is rejected, so the App would read no configuration from it at
 > all — one error anywhere rejects the whole document.
@@ -93,13 +93,13 @@ does not judge.
 
 ## How it works
 
-Acts on: pull requests that are open and that change `automations.yml` at the repository root.
+Acts on: pull requests that are open and that change `sdk-automations.yml` at the repository root.
 Never acts on: closed or merged pull requests, which the platform withholds from a capability that
 did not declare `closed: true` (D59); pull requests that leave the file alone; and the file itself —
 the App holds `contents: read` and cannot change its own configuration.
 
 Two rules a reader must not miss. **The head sha is a report input only.** The content of
-`automations.yml` at a pull request's head is written by whoever opened the pull request, fork
+`sdk-automations.yml` at a pull request's head is written by whoever opened the pull request, fork
 included; it is parsed by the same hardened parser the default branch goes through, rendered with
 the platform's escaping, and it never becomes the repository's configuration. **The comment is a
 comment, not a check run.** It blocks nothing and merges nothing; `checks: write` stays withheld
@@ -113,7 +113,7 @@ flowchart LR
     CL -->|yes| R["ask: configAtHead"]
     R --> A{"platform: could it answer?"}
     A -->|no| S["skipped — an operator note"]
-    A -->|yes| T{"touched automations.yml?"}
+    A -->|yes| T{"touched sdk-automations.yml?"}
     T -->|no| N1["nothing"]
     T -->|yes| C["postManagedComment — update in place"]
 ```
@@ -163,7 +163,7 @@ carrying a newline. The tree is a nested list, which is a tree that escaping wor
 
 | Scenario | Proves |
 |---|---|
-| A pull request that leaves `automations.yml` alone | nothing is said, and no comment is asked for |
+| A pull request that leaves `sdk-automations.yml` alone | nothing is said, and no comment is asked for |
 | The resolver could not answer | the platform ends the evaluation and explains it under this capability's name, never a pass (D51) |
 | A merged pull request | the platform says nothing, the capability is never woken, and the resolver is never asked (D59) |
 | A clean file | mode, every capability with its resolved settings, and the file's mappings |

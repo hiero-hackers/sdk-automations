@@ -84,7 +84,7 @@ flowchart LR
 - A pull request may also try to enable a destructive action, not only zero a warning period.
 - Configuration validation rejects unsafe document shapes today. Live permission-readiness checks and a
   pull-request effective-change report are required before `active`; neither is built.
-- Fork content: a fork pull request adds or edits repository content, including `automations.yml`.
+- Fork content: a fork pull request adds or edits repository content, including `sdk-automations.yml`.
 - The base repository's Contents API then serves that file at the pull-request head commit.
 - Observed directly in the sandbox (experiment 6.6, `FINDING(fork-content-via-base-api)`).
 - A configuration or policy fetch never honors a ref or commit a pull request can influence.

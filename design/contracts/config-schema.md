@@ -11,7 +11,7 @@ checks, permission-readiness checks, inheritance, and schema migration are futur
 
 ## 1. Source and authority
 
-- The repository file is **`automations.yml` at the repository root** (D93).
+- The repository file is **`sdk-automations.yml` at the repository root** (D93).
 - With App credentials, the read adapter fetches it from the repository's default branch. Credential-free
   development and CI read an operator-maintained local copy through the same `ConfigSource` seam.
 - An absent file and an empty file both produce the no-configuration result: `observe`, no capabilities,
@@ -163,7 +163,7 @@ a later commit containing a fix arrives as a new delivery.
 
 The following mitigations named by D38 are **not built yet**:
 
-- a pull-request check annotating invalid `automations.yml` changes;
+- a pull-request check annotating invalid `sdk-automations.yml` changes;
 - a repository-visible effective-configuration or health report;
 - permission diagnostics before capability evaluation.
 

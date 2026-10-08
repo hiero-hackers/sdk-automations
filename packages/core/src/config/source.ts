@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 
 /** The path inside the configured repository, relative to its root (D93). */
-export const CONFIG_PATH = "automations.yml";
+export const CONFIG_PATH = "sdk-automations.yml";
 export const ABSENT_CONFIG_REVISION = "sha256:absent";
 export const UNREADABLE_CONFIG_REVISION = "sha256:unreadable";
 

@@ -1,5 +1,5 @@
 /**
- * `docs/automations.schema.json` — what an editor checks an `automations.yml`
+ * `docs/automations.schema.json` — what an editor checks an `sdk-automations.yml`
  * against, rendered from the same specs the parser reads that file with.
  *
  * A whole file rather than a block inside one: JSON carries no comments, so

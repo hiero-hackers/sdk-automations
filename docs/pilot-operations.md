@@ -33,7 +33,7 @@ instrument under [the operations boundary](../design/guides/operations.md).
   acknowledging relay cannot prove the receiver accepted a delivery. Confirm the App subscribes
   to the events used by the selected capability and covers only the approved repository.
 - Set `APP_ID`, `PRIVATE_KEY_PATH`, `INSTALLATION_ID` and `WEBHOOK_SECRET`; omit `APP_SLUG`.
-  With credentials, the effective `automations.yml` is on the repository's default branch;
+  With credentials, the effective `sdk-automations.yml` is on the repository's default branch;
   `CONFIG_FILE` is only the credential-free fallback. Its mode must be `observe`, with only the
   agreed capabilities enabled. Check mappings and permissions with the repository owner.
 - Start without `SWEEP_CADENCE_HOURS`. A schedule-triggered capability will not run in this

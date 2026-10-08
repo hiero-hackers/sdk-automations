@@ -8,7 +8,7 @@
 import { field, Halt, listOf, messageOf, type Call } from "./github.js";
 import { LABELS } from "./scenarios.js";
 
-const CONFIG_PATH = "automations.yml";
+const CONFIG_PATH = "sdk-automations.yml";
 
 export const TEMPLATE_FILE = "rehearsal.yml";
 

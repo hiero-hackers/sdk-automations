@@ -3,7 +3,7 @@ import { ABSENT_CONFIG_REVISION, CONFIG_PATH, revisionOf } from "../../src/confi
 
 describe("configuration source identity", () => {
     it("shares one path and one absent revision", () => {
-        expect(CONFIG_PATH).toBe("automations.yml");
+        expect(CONFIG_PATH).toBe("sdk-automations.yml");
         expect(ABSENT_CONFIG_REVISION).toBe("sha256:absent");
     });
 });

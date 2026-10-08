@@ -268,7 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir smoke
-          cat > smoke/automations.yml <<'YAML'
+          cat > smoke/sdk-automations.yml <<'YAML'
           schemaVersion: 2
           mode: dry-run
           capabilities:
@@ -281,7 +281,7 @@ jobs:
           docker build -t sdk-automations:smoke .
           docker run -d --name shell -p 8790:8790 \
             -e WEBHOOK_SECRET=smoke-secret -e REPO_OWNER=scrubbed-1 -e REPO_NAME=scrubbed-2 \
-            -e CONFIG_FILE=/config/automations.yml -v "$PWD/smoke:/config:ro" sdk-automations:smoke
+            -e CONFIG_FILE=/config/sdk-automations.yml -v "$PWD/smoke:/config:ro" sdk-automations:smoke
           fail() { echo "$1"; docker logs shell; exit 1; }
           ready=0
           for _ in $(seq 60); do

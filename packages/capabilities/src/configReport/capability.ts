@@ -1,5 +1,5 @@
 /**
- * configReport — the pull request's own report on `automations.yml`, built
+ * configReport — the pull request's own report on `sdk-automations.yml`, built
  * against `design.md`. The rendering is `render.ts`.
  *
  * Content at a pull request's head sha is fork-authored: a report input only.
@@ -36,7 +36,7 @@ export const configReport: Capability<ConfigReportDeclaration> = {
                 },
                 cause: "pullRequestChangesConfiguration",
                 explain: {
-                    summary: "Reported what this pull request's automations.yml would mean.",
+                    summary: "Reported what this pull request's sdk-automations.yml would mean.",
                     detail: [`proposed configuration read at revision ${proposed.revision}`],
                 },
             }),
