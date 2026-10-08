@@ -57,7 +57,7 @@ const SKILL_LABEL = "skill: beginner";
 
 function configWith(commands = '\n  commands:\n    working: "/working"'): RepositoryConfig {
     const result = parseConfigDocument(
-        `schemaVersion: 1
+        `schemaVersion: 2
 mode: observe
 mappings:
   labels:

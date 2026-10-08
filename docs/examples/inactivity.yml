@@ -12,7 +12,6 @@
 # below — the release is an enabled-block of its own: drop a `reap:` and that
 # level reminds and never acts.
 
-schemaVersion: 2
 mode: dry-run
 
 capabilities:

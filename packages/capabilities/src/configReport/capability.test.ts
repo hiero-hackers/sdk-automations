@@ -401,7 +401,7 @@ principals:
     it("renders a hostile capability setting inert", () => {
         const body = renderConfiguration("sha256:hostile", {
             revision: "sha256:hostile",
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode: "observe",
             capabilities: {
                 sample: {
@@ -422,7 +422,7 @@ principals:
 
     /** A refused key reaches only the message that quotes it back. */
     it("renders a hostile key inert inside the message that quotes it", async () => {
-        const body = await bodyFor(`schemaVersion: 1
+        const body = await bodyFor(`schemaVersion: 2
 mappings:
   alerts:
     "@everyone *now*": "P0"
@@ -451,7 +451,7 @@ mappings:
     it("names the comment as wouldApply under dry-run, and approves nothing", async () => {
         const rehearsal = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 mode: "dry-run",
                 capabilities: { configReport: { enabled: true } },
             },
@@ -485,7 +485,7 @@ mappings:
     it("renders lists, written absences and values no spec produces yet", () => {
         const body = renderConfiguration("sha256:shape", {
             revision: "sha256:shape",
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode: "observe",
             capabilities: {
                 sample: {
@@ -651,7 +651,7 @@ mappings:
         );
         const body = renderConfiguration("sha256:large", {
             revision: "sha256:large",
-            schemaVersion: 1,
+            schemaVersion: 2,
             mode: "observe",
             capabilities: {},
             mappings: { labels: {}, commands: {}, skills: {}, alerts },

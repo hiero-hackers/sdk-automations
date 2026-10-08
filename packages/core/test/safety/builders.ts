@@ -34,7 +34,7 @@ export const request = (over?: Partial<WriteRequest>): WriteRequest => ({
  */
 export const config = (over?: Partial<RepositoryConfig>): RepositoryConfig => ({
     revision: "rev-test",
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode: "active",
     capabilities: {
         assignment: { enabled: true, settings: {} },

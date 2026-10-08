@@ -59,7 +59,7 @@ const NOW = new Date("2026-09-09T12:00:00.000Z");
 
 function config(): RepositoryConfig {
     const result = parseConfigDocument(
-        `schemaVersion: 1
+        `schemaVersion: 2
 mode: observe
 mappings:
   commands:

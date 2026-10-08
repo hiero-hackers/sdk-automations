@@ -36,7 +36,6 @@ broken before rendering (they are attacker-controlled); the guide is the maintai
 Proposed `automations.yml` block:
 
 ```yaml
-schemaVersion: 1
 mode: dry-run # disabled | observe | dry-run | active — rehearse, then arm
 
 capabilities:
@@ -68,7 +67,6 @@ mappings:
 A trimmed setup — two checks, comment only (unused sections simply absent):
 
 ```yaml
-schemaVersion: 1
 mode: active
 
 capabilities:

@@ -159,7 +159,7 @@ describe("the live configuration source", () => {
         const built = harness([
             failure(404, "Not Found"),
             success('{"id":1}'),
-            success(fileBody("schemaVersion: 1\n")),
+            success(fileBody("schemaVersion: 2\n")),
         ]);
         const src = githubConfigSource({ client: built.client, repository: REPOSITORY });
 
@@ -170,7 +170,7 @@ describe("the live configuration source", () => {
         const second = await src.load();
         expect(second.ok).toBe(true);
         if (second.ok) {
-            expect(second.document.text).toBe("schemaVersion: 1\n");
+            expect(second.document.text).toBe("schemaVersion: 2\n");
         }
         expect(built.scripted.calls).toHaveLength(3);
     });

@@ -736,7 +736,7 @@ async function withLiveGitHub(
     await withPaths(async ({ configFile, privateKeyFile, storeFile }) => {
         // Deliberately not the config GitHub serves: a local copy that could
         // satisfy the case would hide a live read that never happened.
-        writeFileSync(configFile, "schemaVersion: 1\nmode: observe\n");
+        writeFileSync(configFile, "schemaVersion: 2\nmode: observe\n");
         const { privateKey } = generateKeyPairSync("rsa", {
             modulusLength: 2048,
             privateKeyEncoding: { type: "pkcs8", format: "pem" },

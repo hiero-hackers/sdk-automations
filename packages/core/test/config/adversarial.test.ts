@@ -27,7 +27,7 @@ describe("hostile keys survive as data, never as prototype", () => {
     it("Object.prototype member names are ordinary keys, and absent lookups are undefined", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 capabilities: { constructor: { enabled: false } },
             },
             { revision: "rev-test", knownCapabilities: admitting(["constructor"]) },
@@ -53,7 +53,7 @@ describe("hostile keys survive as data, never as prototype", () => {
      * set reads `undefined` rather than an inherited member.
      */
     it("a __proto__ principal is refused, and a legal one lands on a bare record", () => {
-        const raw = JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"team-x"}}');
+        const raw = JSON.parse('{"schemaVersion":2,"principals":{"__proto__":"team-x"}}');
         const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
         expect(result.ok).toBe(false);
         if (!result.ok) {
@@ -63,7 +63,7 @@ describe("hostile keys survive as data, never as prototype", () => {
         }
 
         const legal = parseConfig(
-            { schemaVersion: 1, principals: { maintainerTeam: "team-x" } },
+            { schemaVersion: 2, principals: { maintainerTeam: "team-x" } },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(legal.ok).toBe(true);
@@ -83,7 +83,7 @@ describe("hostile keys survive as data, never as prototype", () => {
     it("an inherited name is not an admitted capability", () => {
         for (const name of ["constructor", "toString", "hasOwnProperty"]) {
             const result = parseConfig(
-                { schemaVersion: 1, capabilities: { [name]: { enabled: false } } },
+                { schemaVersion: 2, capabilities: { [name]: { enabled: false } } },
                 { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
             );
             expect(result.ok).toBe(false);
@@ -101,7 +101,7 @@ describe("hostile keys survive as data, never as prototype", () => {
     it("an inherited name is not a declared settings key", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 capabilities: { triageQueue: { enabled: false, toString: 1 } },
             },
             {
@@ -129,7 +129,7 @@ describe("hostile keys survive as data, never as prototype", () => {
     it("an inherited member does not satisfy a required meaning", () => {
         const result = parseConfig(
             JSON.parse(
-                '{"schemaVersion":1,"capabilities":{"tracker":{"enabled":true}},"mappings":{"commands":{}}}',
+                '{"schemaVersion":2,"capabilities":{"tracker":{"enabled":true}},"mappings":{"commands":{}}}',
             ),
             {
                 revision: "rev-test",
@@ -149,7 +149,7 @@ describe("hostile keys survive as data, never as prototype", () => {
     it("returned records are null-prototype — nothing inherited, ever", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 capabilities: { prDashboard: { enabled: true } },
                 principals: { maintainerTeam: "t" },
             },
@@ -174,21 +174,21 @@ describe("never throws, for any already-parsed shape", () => {
         true,
         [],
         [1, 2, 3],
-        [{ schemaVersion: 1 }],
+        [{ schemaVersion: 2 }],
         { schemaVersion: "1" },
-        { schemaVersion: 1, mode: 42 },
-        { schemaVersion: 1, capabilities: [] },
-        { schemaVersion: 1, capabilities: { a: [] } },
-        { schemaVersion: 1, capabilities: { a: { enabled: {}, settings: [] } } },
-        { schemaVersion: 1, mappings: [] },
-        { schemaVersion: 1, mappings: { labels: [] } },
-        { schemaVersion: 1, mappings: { labels: { ready: 7 } } },
-        { schemaVersion: 1, mappings: { labels: { ready: null } } },
-        { schemaVersion: 1, principals: "team" },
-        { schemaVersion: 1, principals: { a: { nested: true } } },
+        { schemaVersion: 2, mode: 42 },
+        { schemaVersion: 2, capabilities: [] },
+        { schemaVersion: 2, capabilities: { a: [] } },
+        { schemaVersion: 2, capabilities: { a: { enabled: {}, settings: [] } } },
+        { schemaVersion: 2, mappings: [] },
+        { schemaVersion: 2, mappings: { labels: [] } },
+        { schemaVersion: 2, mappings: { labels: { ready: 7 } } },
+        { schemaVersion: 2, mappings: { labels: { ready: null } } },
+        { schemaVersion: 2, principals: "team" },
+        { schemaVersion: 2, principals: { a: { nested: true } } },
         // Deep nesting in an undeclared setting stays opaque.
         {
-            schemaVersion: 1,
+            schemaVersion: 2,
             capabilities: {
                 a: { enabled: false, deep: { deeper: { deepest: [[[{}]]] } } },
             },
@@ -231,7 +231,7 @@ describe("never throws, for any already-parsed shape", () => {
         ["a name the platform has no opinion about", "Maintainers (EU)"],
     ])("a principal that is %s is kept exactly as written", (_why, handle) => {
         const result = parseConfig(
-            { schemaVersion: 1, principals: { maintainerTeam: handle } },
+            { schemaVersion: 2, principals: { maintainerTeam: handle } },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(true);
@@ -257,7 +257,7 @@ describe("never throws, for any already-parsed shape", () => {
         ["a label shaped like the App's own marker", "<!-- hiero-automation:v2 -->"],
     ])("%s is the repository's business, and is kept as written", (_why, spelling) => {
         const result = parseConfig(
-            { schemaVersion: 1, mappings: { labels: { ready: spelling } } },
+            { schemaVersion: 2, mappings: { labels: { ready: spelling } } },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(true);
@@ -274,7 +274,7 @@ describe("never throws, for any already-parsed shape", () => {
     it("the same word may be a label and a command", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 mappings: { labels: { ready: "/assign" }, commands: { assign: "/assign" } },
             },
             { revision: "rev-test", knownCapabilities: [] },
@@ -293,7 +293,7 @@ describe("never throws, for any already-parsed shape", () => {
      */
     it("a command that is only a slash is accepted", () => {
         const result = parseConfig(
-            { schemaVersion: 1, mappings: { commands: { assign: "/" } } },
+            { schemaVersion: 2, mappings: { commands: { assign: "/" } } },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(true);
@@ -303,7 +303,7 @@ describe("never throws, for any already-parsed shape", () => {
     it("accepted entries are exactly the validated entries — nothing vanishes, nothing appears", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 capabilities: {
                     prDashboard: { enabled: true },
                     assignment: { enabled: false },

@@ -47,22 +47,13 @@ export function checkTopLevelKeys(raw: Record<string, unknown>): readonly Config
         );
 }
 
-/**
- * D31 as revised by D151: a STATED version other than the number 1 is rejected
- * whole; an absent key is version 1, and a present null is stated (D56).
- */
+/** An absent `schemaVersion` is the current format. A stated one must be the number 2. */
 export function checkSchemaVersion(raw: Record<string, unknown>): readonly ConfigError[] {
-    if (
-        !Object.hasOwn(raw, "schemaVersion") ||
-        raw.schemaVersion === 1 ||
-        raw.schemaVersion === 2
-    ) {
-        return [];
-    }
+    if (!Object.hasOwn(raw, "schemaVersion") || raw.schemaVersion === 2) return [];
     return [
         err(
             "schemaVersionUnsupported",
-            `schemaVersion, when stated, must be the number 1 or 2, got ${JSON.stringify(raw.schemaVersion)}`,
+            `schemaVersion, when stated, must be the number 2, got ${JSON.stringify(raw.schemaVersion)}`,
             "schemaVersion",
         ),
     ];
@@ -145,7 +136,6 @@ export function readCapabilities(
     raw: Record<string, unknown>,
     knownCapabilities: readonly AdmittedCapability[],
     names: SettingsView | null,
-    schemaVersion: 1 | 2,
 ): Checked<[string, CapabilityConfig][]> {
     const entries: [string, CapabilityConfig][] = [];
     const errors: ConfigError[] = [];
@@ -205,34 +195,13 @@ export function readCapabilities(
         }
         /** An unadmitted name has no spec to read against, and was reported above. */
         const declared = admitted.get(name);
-        let stated: Readonly<Record<string, unknown>> = {};
-        let base = `capabilities.${name}`;
-        let shapeOk = true;
-        if (schemaVersion === 1 && declared !== undefined) {
-            for (const key of Object.keys(value)) {
-                if (key === "enabled" || key === "settings") continue;
-                errors.push(
-                    err(
-                        "unknownKey",
-                        `capability "${name}": unknown key "${key}" in a version 1 block`,
-                        `${base}.${key}`,
-                    ),
-                );
-            }
-            base = `${base}.settings`;
-            if (value.settings !== undefined && !isPlainObject(value.settings)) {
-                errors.push(err("notAMapping", `${base} must be a mapping`, base));
-                shapeOk = false;
-            } else {
-                stated = value.settings ?? {};
-            }
-        } else if (schemaVersion === 2) {
-            stated = Object.fromEntries(Object.entries(value).filter(([key]) => key !== "enabled"));
-        }
+        const stated: Readonly<Record<string, unknown>> = Object.fromEntries(
+            Object.entries(value).filter(([key]) => key !== "enabled"),
+        );
         const read =
-            declared === undefined || !shapeOk
+            declared === undefined
                 ? null
-                : readCapabilitySettings(name, declared, names, stated, base);
+                : readCapabilitySettings(name, declared, names, stated, `capabilities.${name}`);
         if (read !== null && !read.ok) errors.push(...read.errors);
         const labels = declared?.labels ?? [];
         entries.push([

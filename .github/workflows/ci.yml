@@ -269,7 +269,6 @@ jobs:
           set -euo pipefail
           mkdir smoke
           cat > smoke/automations.yml <<'YAML'
-          schemaVersion: 2
           mode: dry-run
           capabilities:
             triageQueue:

@@ -8,7 +8,6 @@
 # per-reason clock. The shared parser confirms only that the block is a
 # mapping; the capability's own spec reads the keys and reports what it cannot.
 
-schemaVersion: 2
 mode: active
 
 capabilities:

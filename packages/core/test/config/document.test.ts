@@ -79,17 +79,13 @@ describe("every rejection the catalogue names is reachable", () => {
     );
 });
 
-/**
- * The counterpart to the corpus row that D31's revision deleted. A document
- * with no `schemaVersion:` line used to be refused; it is now version 1, and
- * the claim worth holding is an ACCEPTANCE, which no rejection row can make.
- */
+/** An ACCEPTANCE, which no rejection row can make: no version line is the current format. */
 describe("a document that states no version", () => {
-    it("is version 1, and needs nothing else to be whole", () => {
+    it("is the current format, and needs nothing else to be whole", () => {
         for (const yaml of [`mode: observe\ncapabilities: {}\n`, `mode: observe\n`]) {
             const result = parse(yaml);
             expect(result.ok, yaml).toBe(true);
-            if (result.ok) expect(result.config.schemaVersion).toBe(1);
+            if (result.ok) expect(result.config.schemaVersion).toBe(2);
         }
     });
 });
@@ -144,13 +140,13 @@ describe("a rejection with a path carries the line that path sits on", () => {
     };
 
     it("a wrong-typed mode points at the mode: line", () => {
-        const [error] = errorsOf(`schemaVersion: 1\nmode: sideways\ncapabilities: {}\n`);
+        const [error] = errorsOf(`schemaVersion: 2\nmode: sideways\ncapabilities: {}\n`);
         expect(error?.code).toBe("modeInvalid");
         expect(error?.line).toBe(2);
     });
 
     it("an unknown top-level key points at itself", () => {
-        const [error] = errorsOf(`schemaVersion: 1\nmode: observe\ncapabilties: {}\n`);
+        const [error] = errorsOf(`schemaVersion: 2\nmode: observe\ncapabilties: {}\n`);
         expect(error?.code).toBe("unknownKey");
         expect(error?.line).toBe(3);
     });
@@ -162,7 +158,7 @@ describe("a rejection with a path carries the line that path sits on", () => {
      */
     it("an unknown setting points at the setting, not at its block", () => {
         const [error] = errorsOf(
-            `schemaVersion: 1\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: true\n` +
+            `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: true\n` +
                 `    annouce: true\nmappings:\n  labels:\n    awaitingTriage: "status: triage"\n`,
         );
         expect(error?.path).toBe("capabilities.triageQueue.annouce");
@@ -174,7 +170,7 @@ describe("a rejection with a path carries the line that path sits on", () => {
      * document does NOT contain, so it is the nearest-ancestor rule's only
      * document-reachable demonstration: the deepest node the walk reaches.
      */
-    const NEEDS_WORKING = `schemaVersion: 1\ncapabilities:\n  tracker:\n    enabled: true\n`;
+    const NEEDS_WORKING = `schemaVersion: 2\ncapabilities:\n  tracker:\n    enabled: true\n`;
 
     it("a required mapping lands on commands: when the family is there", () => {
         const [error] = errorsOf(`${NEEDS_WORKING}mappings:\n  commands:\n    assign: "/assign"\n`);
@@ -207,13 +203,13 @@ describe("a rejection with a path carries the line that path sits on", () => {
      * character a maintainer came to fix.
      */
     it("a value sitting below its key reports the key's line", () => {
-        const [error] = errorsOf(`schemaVersion: 1\nmode:\n  sideways\ncapabilities: {}\n`);
+        const [error] = errorsOf(`schemaVersion: 2\nmode:\n  sideways\ncapabilities: {}\n`);
         expect(error?.code).toBe("modeInvalid");
         expect(error?.line).toBe(2);
     });
 
     it("a block scalar reports the key's line", () => {
-        const [error] = errorsOf(`schemaVersion: 1\nmode: |\n  observe\ncapabilities: {}\n`);
+        const [error] = errorsOf(`schemaVersion: 2\nmode: |\n  observe\ncapabilities: {}\n`);
         expect(error?.code).toBe("modeInvalid");
         expect(error?.line).toBe(2);
     });
@@ -225,7 +221,7 @@ describe("a rejection with a path carries the line that path sits on", () => {
      */
     it("Windows line endings do not drift", () => {
         const [error] = errorsOf(
-            `schemaVersion: 1\r\nmode: observe\r\ncapabilities:\r\n  triageQueue:\r\n    enabled: yes please\r\n`,
+            `schemaVersion: 2\r\nmode: observe\r\ncapabilities:\r\n  triageQueue:\r\n    enabled: yes please\r\n`,
         );
         expect(error?.path).toBe("capabilities.triageQueue.enabled");
         expect(error?.line).toBe(5);
@@ -374,7 +370,7 @@ describe("no document, however hostile, escapes as an exception", () => {
     });
 
     it("a document using aliases within the budget still resolves them", () => {
-        const modest = `x: &x observe\nschemaVersion: 1\nmode: *x\ncapabilities: {}\n`;
+        const modest = `x: &x observe\nschemaVersion: 2\nmode: *x\ncapabilities: {}\n`;
         const result = parse(modest);
         expect(result.ok).toBe(false);
         if (result.ok) return;

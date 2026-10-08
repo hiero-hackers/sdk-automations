@@ -1,6 +1,6 @@
 {
     "revision": "minimal.yml",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "mode": "observe",
     "capabilities": {},
     "mappings": {

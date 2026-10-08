@@ -10,8 +10,8 @@ describe("configuration source identity", () => {
 
 describe("a revision is the text's own hash", () => {
     it("names the same text the same way and different text differently", () => {
-        expect(revisionOf("schemaVersion: 1\n")).toBe(revisionOf("schemaVersion: 1\n"));
-        expect(revisionOf("schemaVersion: 1\n")).not.toBe(revisionOf("schemaVersion: 2\n"));
+        expect(revisionOf("mode: observe\n")).toBe(revisionOf("mode: observe\n"));
+        expect(revisionOf("mode: observe\n")).not.toBe(revisionOf("mode: dry-run\n"));
         expect(revisionOf("")).toMatch(/^sha256:[0-9a-f]{12}$/);
     });
 });

@@ -7,7 +7,6 @@
 # The label strings are this repository's own words. A capability never sees
 # them; it asks for `awaitingTriage` and the adapter looks up the string.
 
-schemaVersion: 2
 mode: observe
 
 capabilities:

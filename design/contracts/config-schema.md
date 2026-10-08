@@ -45,7 +45,6 @@ an exception.
 ## 3. Schema shape
 
 ```yaml
-schemaVersion: 2
 mode: observe
 capabilities:
   triageQueue:
@@ -67,7 +66,7 @@ The accepted top-level keys are exactly:
 
 | Key | Current contract |
 |---|---|
-| `schemaVersion` | Optional; omission is version `1`. Version `1` keeps a capability's options under `settings:`; version `2` states `schemaVersion: 2` and puts them beside `enabled`. Every other stated value — a present null, a quoted number — is `schemaVersionUnsupported` (D151). A future format must state its own version to be read as one. |
+| `schemaVersion` | Optional; omission is version `2`, the only version read. Every other stated value — `1`, a present null, a quoted number — is `schemaVersionUnsupported` (D222). A future format must state its own version to be read as one. |
 | `mode` | Optional; omission defaults to `observe`, while a present null or invalid value is rejected. |
 | `capabilities` | Optional mapping from an admitted capability name to a flat block: an `enabled` boolean and, beside it, the keys the capability's spec reads. |
 | `mappings` | Optional; contains the `labels`, `commands` and `skills` families. |
@@ -90,10 +89,9 @@ Unknown keys are rejected at the top level, inside `mappings`, and inside each c
   The spec's keys are the legal names, so an undeclared name is `unknownKey` at
   `capabilities.<name>.<key>`; its fields judge the values, so a value a field cannot read is
   `settingInvalid` at that value's own dotted path. Both apply whether the block is enabled or
-  disabled (D84). A file written against the older shape, with the keys nested under a `settings:`
-  wrapper, is therefore refused by name at `capabilities.<name>.settings` rather than read as a
-  setting the capability declares. The value stored is what the spec RESOLVED, with every default
-  applied.
+  disabled (D84). A `settings:` wrapper is therefore refused by name at `capabilities.<name>.settings`
+  rather than read as a setting the capability declares. The value stored is what the spec RESOLVED,
+  with every default applied.
 - The VALUE read happens only when `mappings` and `principals` parsed, because a settings value may name
   one of their entries; the KEY sweep always runs. The file is rejected either way, and a value judged
   against a family that failed would name the wrong line — the rule the required-meaning check follows.
@@ -179,7 +177,7 @@ protocol 8.2).
 | `duplicateKey` | The YAML repeats a key. |
 | `notAMapping` | The document or a mapping-shaped section has another type. |
 | `unknownKey` | A closed mapping contains an unsupported key. |
-| `schemaVersionUnsupported` | `schemaVersion` is stated and is not the unquoted number `1` or `2`; absence is version `1`. |
+| `schemaVersionUnsupported` | `schemaVersion` is stated and is not the unquoted number `2`; absence is version `2`. |
 | `modeInvalid` | `mode` is present but is not one of §4's values. |
 | `capabilityNameInvalid` | A capability name is not a valid configuration key. |
 | `capabilityEnabledNotBoolean` | `enabled` is present but is not a boolean. |
@@ -204,8 +202,8 @@ protocol 8.2).
 
 - Check mapped-label existence and live installation grants before activation.
 - Build the pull-request validation check and effective-configuration report required by D38.
-- Decide how a version-2 parser treats a version-1 file, and deprecation, retention and rollback policy (Q14); absence being version 1 is decided (D151).
-- Add inheritance only if repeated repository demand justifies it; version 1 has none.
+- Decide deprecation, retention and rollback policy for a future format (Q14); absence being the current version is decided (D222).
+- Add inheritance only if repeated repository demand justifies it; the current version has none.
 - Keep `active` unsupported in every composition that wires no write path, and keep the armed one behind
   the standing gate (D125, protocol 8.2) until that protocol has been re-run against the operations as
   they stand.

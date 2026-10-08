@@ -292,13 +292,18 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
     },
     {
         code: "schemaVersionUnsupported",
-        why: 'the version is quoted, so it is the string "1"',
-        yaml: `schemaVersion: "1"\nmode: observe\n${VALID_TAIL}`,
+        why: 'the version is quoted, so it is the string "2"',
+        yaml: `schemaVersion: "2"\nmode: observe\n${VALID_TAIL}`,
+    },
+    {
+        code: "schemaVersionUnsupported",
+        why: "the retired version 1, whose settings wrapper is no longer read",
+        yaml: `schemaVersion: 1\nmode: observe\n${VALID_TAIL}`,
     },
     /**
-     * Absence is version 1, so the only way to say nothing is to write
-     * nothing. `schemaVersion:` with no value is a STATED version — null —
-     * and is refused, the way an empty `mode:` is (D56).
+     * Absence is the current format, so the only way to say nothing is to
+     * write nothing. `schemaVersion:` with no value is a STATED version —
+     * null — and is refused, the way an empty `mode:` is (D56).
      */
     {
         code: "schemaVersionUnsupported",
@@ -899,7 +904,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         code: "unknownKey",
         why: "__proto__ as a settings key is an ordinary undeclared one",
         raw: JSON.parse(
-            '{"schemaVersion":1,"capabilities":{"triageQueue":{"enabled":false,"__proto__":{"announce":true}}}}',
+            '{"schemaVersion":2,"capabilities":{"triageQueue":{"enabled":false,"__proto__":{"announce":true}}}}',
         ),
         known: INTAKE_DECLARED,
         path: "capabilities.triageQueue.__proto__",
@@ -1276,20 +1281,20 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "capabilityNameInvalid",
         why: "a capability named __proto__ is rejected rather than lost after validation",
-        raw: JSON.parse('{"schemaVersion":1,"capabilities":{"__proto__":{"enabled":true}}}'),
+        raw: JSON.parse('{"schemaVersion":2,"capabilities":{"__proto__":{"enabled":true}}}'),
         path: "capabilities.__proto__",
         messageIncludes: ["not a valid configuration key"],
     },
     {
         code: "unknownKey",
         why: "__proto__ at the top level is an ordinary unknown key",
-        raw: JSON.parse('{"schemaVersion":1,"__proto__":{"mode":"active"}}'),
+        raw: JSON.parse('{"schemaVersion":2,"__proto__":{"mode":"active"}}'),
         path: "__proto__",
     },
     {
         code: "meaningNotMappable",
         why: "__proto__ under labels is an ordinary unmappable meaning",
-        raw: JSON.parse('{"schemaVersion":1,"mappings":{"labels":{"__proto__":"x"}}}'),
+        raw: JSON.parse('{"schemaVersion":2,"mappings":{"labels":{"__proto__":"x"}}}'),
         path: "mappings.labels.__proto__",
     },
     /**
@@ -1301,7 +1306,7 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
     {
         code: "principalNameInvalid",
         why: "a principal named __proto__ is rejected rather than lost after validation",
-        raw: JSON.parse('{"schemaVersion":1,"principals":{"__proto__":"@alice"}}'),
+        raw: JSON.parse('{"schemaVersion":2,"principals":{"__proto__":"@alice"}}'),
         path: "principals.__proto__",
         messageIncludes: ["not a valid name"],
     },

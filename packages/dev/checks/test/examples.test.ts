@@ -80,7 +80,7 @@ describe("the shipped examples", () => {
      */
     it("refuses a capability the shell does not ship", () => {
         const invented = parseText(
-            "schemaVersion: 1\ncapabilities:\n  neverShipped:\n    enabled: false\n",
+            "schemaVersion: 2\ncapabilities:\n  neverShipped:\n    enabled: false\n",
             "invented",
         );
         expect(invented.ok ? [] : invented.errors.map((e) => e.code)).toEqual([
@@ -97,7 +97,7 @@ describe("the shipped examples", () => {
     /** D203: the meaning a capability requires is mapped by default, so the file parses. */
     it("accepts an enabled capability on the default spelling of the meaning it requires", () => {
         const unmapped = parseText(
-            "schemaVersion: 1\ncapabilities:\n  triageQueue:\n    enabled: true\n",
+            "schemaVersion: 2\ncapabilities:\n  triageQueue:\n    enabled: true\n",
             "unmapped",
         );
         expect(unmapped.ok ? unmapped.config.mappings.labels.awaitingTriage : unmapped.errors).toBe(
@@ -107,7 +107,7 @@ describe("the shipped examples", () => {
 
     it("refuses a settings key no capability declares", () => {
         const typo = parseText(
-            "schemaVersion: 1\ncapabilities:\n  triageQueue:\n    enabled: false\n    annouce: true\n",
+            "schemaVersion: 2\ncapabilities:\n  triageQueue:\n    enabled: false\n    annouce: true\n",
             "typo",
         );
         expect(typo.ok ? [] : typo.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([

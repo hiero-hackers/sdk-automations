@@ -73,7 +73,6 @@ path it already carries, and that prefix is dropped rather than printed twice (D
 ## What the config looks like
 
 ```yaml
-schemaVersion: 1
 mode: dry-run # disabled | observe | dry-run | active — rehearse, then arm
 
 capabilities:

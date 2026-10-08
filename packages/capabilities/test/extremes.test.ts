@@ -671,7 +671,7 @@ describe("the mode decides, not the capability", () => {
 
     it("active with no capability enabled is a valid file that does nothing", async () => {
         const result = parseConfig(
-            { schemaVersion: 1, mode: "active", capabilities: {}, mappings: MAPPINGS },
+            { schemaVersion: 2, mode: "active", capabilities: {}, mappings: MAPPINGS },
             { revision: "rev-extremes", knownCapabilities: DECLARATIONS },
         );
         expect(result.ok).toBe(true);

@@ -218,8 +218,7 @@ const DISCLAIMER = [
 
 /** One sentence per top-level key, for the maintainer hovering over it. */
 const TOP_LEVEL_NOTES: { readonly [K in TopLevelKey]: string } = {
-    schemaVersion:
-        "The configuration format's version. Absent means 1; the flattened capability shape is version 2.",
+    schemaVersion: "The configuration format's version. Optional; the only value is 2.",
     mode: "How far the App may go. Each step does what the one before it does, and more.",
     capabilities:
         "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
@@ -277,28 +276,11 @@ function mappingsSchema(): Subschema {
 /**
  * The `capabilities:` section: one property per shipped capability, and nothing
  * else. A capability's block has the same shape as every block inside it —
- * `enabled` and the spec's own keys beside it — so the editor refuses a file
- * written against the old `settings:` wrapper at the wrapper's own line.
+ * `enabled` and the spec's own keys beside it.
  */
-function capabilitiesSchema(schemaVersion: 1 | 2): Subschema {
+function capabilitiesSchema(): Subschema {
     const one = (name: string, fields: Described): Subschema => {
         const settings = groupSchema(fields);
-        const requiredSettings = (settings.required as readonly string[] | undefined) ?? [];
-        if (schemaVersion === 1) {
-            return {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                    enabled: {
-                        type: "boolean",
-                        description: `Run ${name}. Consent is literally true; absent leaves it off.`,
-                        default: false,
-                    },
-                    settings,
-                },
-                ...(requiredSettings.length === 0 ? {} : { required: ["settings"] }),
-            };
-        }
         return {
             ...settings,
             properties: {
@@ -328,19 +310,15 @@ function capabilitiesSchema(schemaVersion: 1 | 2): Subschema {
  * The whole document, keyed off `TOP_LEVEL_KEYS` so the property order is the
  * order a maintainer meets the keys in and a new one fails to compile here.
  */
-function documentShape(schemaVersion: 1 | 2): Subschema {
+function documentShape(): Subschema {
     const sections: { readonly [K in TopLevelKey]: () => Subschema } = {
-        schemaVersion: () => ({
-            const: schemaVersion,
-            ...(schemaVersion === 1 ? { default: 1 } : {}),
-            description: TOP_LEVEL_NOTES.schemaVersion,
-        }),
+        schemaVersion: () => ({ const: 2, description: TOP_LEVEL_NOTES.schemaVersion }),
         mode: () => ({
             enum: [...REPOSITORY_MODES],
             description: TOP_LEVEL_NOTES.mode,
             default: "observe",
         }),
-        capabilities: () => capabilitiesSchema(schemaVersion),
+        capabilities: capabilitiesSchema,
         mappings: mappingsSchema,
         principals: () => ({
             type: "object",
@@ -353,7 +331,6 @@ function documentShape(schemaVersion: 1 | 2): Subschema {
         type: "object",
         additionalProperties: false,
         properties: Object.fromEntries(TOP_LEVEL_KEYS.map((key) => [key, sections[key]()])),
-        ...(schemaVersion === 1 ? {} : { required: ["schemaVersion"] }),
     };
 }
 
@@ -363,7 +340,7 @@ function schemaDocument(): Subschema {
         $id: SCHEMA_URL,
         title: "Hiero SDK automations configuration",
         description: DISCLAIMER,
-        oneOf: [documentShape(1), documentShape(2)],
+        ...documentShape(),
     };
 }
 

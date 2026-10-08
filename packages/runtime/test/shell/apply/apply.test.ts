@@ -1299,7 +1299,7 @@ describe("a second occasion of the same purpose on the same item", () => {
  */
 describe("a recorded send from a deployment before the schema bump", () => {
     const V1_BODY =
-        '<!-- hiero-automation:{"schemaVersion":1,"capability":"triageQueue","kind":"summary","effect":"0a70e62c14228dbe"} -->\n\nthe summary';
+        '<!-- hiero-automation:{"schemaVersion":2,"capability":"triageQueue","kind":"summary","effect":"0a70e62c14228dbe"} -->\n\nthe summary';
 
     it("claims no comment at all, and cannot confirm the one it posts", async () => {
         const github = fakeGitHub({ comments: [appComment(7, V1_BODY)] });

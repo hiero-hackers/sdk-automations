@@ -70,7 +70,7 @@ describe("evaluateWrite: apply ⇔ every rule passes (full sweep)", () => {
                                         for (const mode of REPOSITORY_MODES) {
                                             const config: RepositoryConfig = {
                                                 revision: "rev-test",
-                                                schemaVersion: 1,
+                                                schemaVersion: 2,
                                                 mode,
                                                 capabilities: {
                                                     [CAPABILITY]: {

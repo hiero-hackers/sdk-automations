@@ -10,7 +10,6 @@ one merge.
 **1.** Create `automations.yml` in your repository root:
 
 ```yaml
-schemaVersion: 2
 mode: dry-run
 
 capabilities:
@@ -67,7 +66,6 @@ be is named.
 **Triage only** — label incoming issues, touch nothing else:
 
 ```yaml
-schemaVersion: 2
 mode: dry-run
 capabilities:
   triageQueue:
@@ -80,7 +78,6 @@ mappings:
 **Full workflow with pull-request checks:**
 
 ```yaml
-schemaVersion: 2
 mode: dry-run
 capabilities:
   triageQueue:

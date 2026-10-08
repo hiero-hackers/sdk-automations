@@ -469,7 +469,7 @@ describe("a firing that reads nothing", () => {
         armed();
         const { decided, run } = driven(
             {},
-            configFrom("schemaVersion: 1\nmode: dry-run\n", CAPABILITIES),
+            configFrom("schemaVersion: 2\nmode: dry-run\n", CAPABILITIES),
         );
 
         await run();

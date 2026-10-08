@@ -17,7 +17,7 @@ New here? Start with the [Quickstart](quickstart.md). Want a file to copy?
 capability writes inside its own block is deliberately capability-owned and may be deeper:
 
 ```yaml
-schemaVersion: 2              # ── top level. Required for the flat capability shape
+schemaVersion: 2              # ── top level. Optional; omit it, the only value is 2
 mode: dry-run                 # ── top level. Optional, default: observe
 
 capabilities:                 # ── top level. Optional, default: nothing enabled
@@ -58,12 +58,12 @@ decision rather than an active effect.
 |---|---|
 | Type | integer |
 | Required | no |
-| Default | `1` |
-| Allowed | `1`, `2` |
+| Default | `2` |
+| Allowed | `2` |
 
-Leave it out and the file is version 1. Version 1 keeps capability options inside `settings:`.
-Version 2 puts those options beside `enabled` and must state `schemaVersion: 2`. Quoted numbers and
-an empty `schemaVersion:` are rejected.
+Leave it out. The key exists so a future format can state its own number; today the only value is
+`2`, and a file that omits it is the same file. Quoted numbers, `1`, and an empty `schemaVersion:`
+are rejected.
 
 ### `mode`
 
@@ -130,10 +130,10 @@ consent, and consent is not inferred from anything that merely looks true.
 | Required | no |
 | Default | the capability's documented value for that key |
 
-A version 2 capability's options sit beside its `enabled`, on the same level. Version 1 keeps the
-same options inside `settings:`. Every capability declares which setting names it reads, and a name outside
-that list is an `unknownKey` error naming the exact path — so `annouce:` fails instead of configuring
-nothing. Using one version's shape with the other version is also rejected. Disabled blocks are checked
+A capability's options sit beside its `enabled`, on the same level. Every capability declares which
+setting names it reads, and a name outside that list is an `unknownKey` error naming the exact path —
+so `annouce:` fails instead of configuring nothing, and a `settings:` block is refused the same way.
+Disabled blocks are checked
 too: a typo that waits for the day you flip `enabled` is the surprise this rule exists to end.
 
 Names AND values, in one pass. The same declaration says what each setting may hold, so a number where a
@@ -335,7 +335,7 @@ The exact codes the App reports, and what to fix.
 | `duplicateKey` | The same key appears twice; delete one |
 | `notAMapping` | Something is a list or a bare value where `key: value` pairs belong |
 | `unknownKey` | A key the schema does not have — usually a typo. Includes a setting name the capability never declared |
-| `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `1` or `2` — omit the key and it is `1` |
+| `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `2` — omit the key |
 | `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prDashboard` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |

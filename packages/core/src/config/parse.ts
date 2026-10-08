@@ -36,7 +36,7 @@ export function cleanRecord<V>(
  */
 export const NO_CONFIG: RepositoryConfig = {
     revision: "",
-    schemaVersion: 1,
+    schemaVersion: 2,
     mode: "observe",
     capabilities: cleanRecord([]),
     mappings: { labels: { ...DEFAULT_LABEL_MAPPINGS }, commands: {}, skills: {}, alerts: {} },
@@ -75,7 +75,6 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         };
     }
 
-    const schemaVersion = raw.schemaVersion === 2 ? 2 : 1;
     const mode = readMode(raw);
     const mappings = readMappings(raw);
     const principals = readPrincipals(raw);
@@ -83,7 +82,6 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         raw,
         options.knownCapabilities,
         namesIn(mappings, principals),
-        schemaVersion,
     );
 
     // §2.6 — fail closed: any error anywhere yields no configuration, whole-file (D38).
@@ -119,7 +117,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         ok: true,
         config: {
             revision: options.revision,
-            schemaVersion,
+            schemaVersion: 2,
             mode: mode.value,
             capabilities: cleanRecord(capabilities.value),
             mappings: mappings.value,

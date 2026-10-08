@@ -33,7 +33,7 @@ const PULL = { kind: "pullRequest", number: 34 } as const;
 /** The two label meanings the assignments below are projected through. */
 function configWith(): RepositoryConfig {
     const result = parseConfigDocument(
-        `schemaVersion: 1
+        `schemaVersion: 2
 mode: observe
 mappings:
   labels:

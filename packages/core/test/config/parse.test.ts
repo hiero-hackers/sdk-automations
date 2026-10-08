@@ -248,7 +248,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
             skills: {},
             alerts: {},
         });
-        expect(NO_CONFIG.schemaVersion).toBe(1);
+        expect(NO_CONFIG.schemaVersion).toBe(2);
     });
 
     it("accepts the documented candidate shape (§3)", () => {
@@ -292,10 +292,9 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         }
     });
 
-    it("keeps version 1 repositories on the settings wrapper", () => {
+    it("refuses the retired settings wrapper by name, as an unknown setting", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
                 capabilities: {
                     triageQueue: { enabled: true, settings: { announce: true } },
                 },
@@ -307,32 +306,9 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
                 }),
             },
         );
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-            expect(result.config.capabilities.triageQueue?.settings).toEqual({ announce: true });
-        }
-    });
-
-    it("rejects a block that mixes the version 1 wrapper with version 2 fields", () => {
-        const result = parseConfig(
-            {
-                schemaVersion: 1,
-                capabilities: {
-                    triageQueue: { enabled: true, settings: { announce: true }, announce: false },
-                },
-            },
-            {
-                revision: "rev-test",
-                knownCapabilities: admitting(["triageQueue"], {
-                    triageQueue: spec({ announce: flag({ default: false }) }),
-                }),
-            },
-        );
-        expect(result.ok).toBe(false);
-        if (!result.ok)
-            expect(result.errors.map((error) => error.path)).toContain(
-                "capabilities.triageQueue.announce",
-            );
+        expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
+            "unknownKey @ capabilities.triageQueue.settings",
+        ]);
     });
 
     /**
@@ -341,7 +317,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
      */
     it("an omitted enabled leaves the capability off, not on", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { triageQueue: {} } },
+            { schemaVersion: 2, capabilities: { triageQueue: {} } },
             { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
         );
         expect(result.ok).toBe(true);
@@ -356,7 +332,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     it("genuinely distinct labels still pass, with their spelling preserved", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 mappings: {
                     labels: { ready: "Status: Ready", needsReview: "status: needs review" },
                 },
@@ -375,7 +351,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
      */
     it("a disabled capability requires none of its meanings", () => {
         const result = parseConfig(
-            { schemaVersion: 1, capabilities: { triageQueue: { enabled: false } } },
+            { schemaVersion: 2, capabilities: { triageQueue: { enabled: false } } },
             {
                 revision: "rev-test",
                 knownCapabilities: [
@@ -400,7 +376,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     it("stores a settings block as the spec resolved it, defaults and all", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 capabilities: {
                     triageQueue: { enabled: false },
                     triage: { enabled: false },
@@ -428,16 +404,15 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     });
 
     /**
-     * D31 as revised: an absent version IS version 1, so nothing at all is a
-     * complete document. A future format has to state `schemaVersion: 2` to be
-     * read as one, which is what stops a file drifting into a newer version by
-     * accident. The corpus holds the present-but-null half.
+     * An absent version is the current format, so nothing at all is a complete
+     * document. A future format has to state its own number to be read as one.
+     * The corpus holds the present-but-null half.
      */
-    it("an absent schemaVersion is version 1, and an empty mapping is a whole document", () => {
+    it("an absent schemaVersion is the current format, and an empty mapping is a whole document", () => {
         for (const raw of [{ mode: "observe" }, {}]) {
             const result = parseConfig(raw, { revision: "rev-test", knownCapabilities: [] });
             expect(result.ok).toBe(true);
-            if (result.ok) expect(result.config.schemaVersion).toBe(1);
+            if (result.ok) expect(result.config.schemaVersion).toBe(2);
         }
     });
 
@@ -445,7 +420,7 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
     // half, which is an error rather than a default.
     it("an absent mode defaults to observe", () => {
         const result = parseConfig(
-            { schemaVersion: 1 },
+            { schemaVersion: 2 },
             { revision: "rev-test", knownCapabilities: [] },
         );
         expect(result.ok).toBe(true);

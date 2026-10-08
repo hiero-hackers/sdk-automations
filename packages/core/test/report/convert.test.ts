@@ -176,7 +176,7 @@ describe("configuration findings", () => {
     it("a report groups configuration errors by kind — the thing prose could not do", () => {
         const result = parseConfig(
             {
-                schemaVersion: 1,
+                schemaVersion: 2,
                 mode: "active",
                 nope: 1,
                 alsoNope: 2,
