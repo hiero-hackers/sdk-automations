@@ -27,9 +27,12 @@ rest to stdout. A refusal to boot is the exception and stays a human sentence: i
 ## Run it in a container
 
 ```bash
-docker build -t sdk-automations .
-docker run -d -p 8790:8790 -v sdk-state:/state -e WEBHOOK_SECRET=… -e REPO_OWNER=… -e REPO_NAME=… sdk-automations
+docker pull ghcr.io/hiero-hackers/sdk-automations:0.1.0   # or build it: docker build -t sdk-automations .
+docker run -d -p 8790:8790 -v sdk-state:/state -e WEBHOOK_SECRET=… -e REPO_OWNER=… -e REPO_NAME=… ghcr.io/hiero-hackers/sdk-automations:0.1.0
 ```
+
+A `v*` tag publishes the image with the commit in its `org.opencontainers.image.revision` label, which
+`docker inspect` reads back: that label is the version an operator records.
 
 The image binds `0.0.0.0` and keeps its store under `/state`, so mount a volume there or a redeploy
 takes the decision rows with it. Wait on `GET /readyz`, not on the port: it answers `200` only after

@@ -36,6 +36,11 @@ const WRITE_ALLOWLIST = new Set([
     // job may carry those writes — the credentialed probe stays read-only (D158).
     ".github/workflows/conformance.yml:publish:contents",
     ".github/workflows/conformance.yml:publish:pull-requests",
+    // The release image is pushed and attested by the one publishing job; the
+    // tag push that triggers it is read-only everywhere else.
+    ".github/workflows/release.yml:image:packages",
+    ".github/workflows/release.yml:image:id-token",
+    ".github/workflows/release.yml:image:attestations",
 ]);
 
 function workflowText(path: string): string {
