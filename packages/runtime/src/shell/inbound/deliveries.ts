@@ -78,6 +78,8 @@ export interface DeliveriesOptions {
     readonly log: Log;
     /** The installation switch (D171): every delivery is accepted and recorded, and none is decided. */
     readonly suspended?: boolean;
+    /** Told each configuration this lane parsed for a repository, before it decides anything. */
+    readonly configured?: (repository: RepositoryRef, config: RepositoryConfig) => void;
 }
 
 /** What every persisted record says about which delivery it answers. */
@@ -231,6 +233,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
         clock,
         log,
         suspended = false,
+        configured,
     } = options;
     let draining: Promise<void> | null = null;
 
@@ -348,6 +351,7 @@ export function createDeliveries(options: DeliveriesOptions): Deliveries {
         // here, because this is where the file is read (sweep.md §2, step 1).
 
         declareSweep({ store, repository: named, config: parsed, capabilities, now: clock() });
+        configured?.(named, parsed);
         const decided = await decideItem(
             {
                 kind: "delivery",

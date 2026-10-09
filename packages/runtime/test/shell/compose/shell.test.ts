@@ -19,7 +19,7 @@ import {
     type RepositoryRef,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../src/store/index.js";
-import { triageQueue, prDashboard } from "@hiero-hackers/automation-capabilities";
+import { inactivity, triageQueue, prDashboard } from "@hiero-hackers/automation-capabilities";
 import { capture, useTempDir } from "@hiero-hackers/automation-testkit";
 import {
     createShell,
@@ -30,6 +30,7 @@ import {
     type Shell,
     type ShellEvent,
 } from "../../../src/shell/index.js";
+import { spending } from "../spending.js";
 
 const SECRET = "shell-test-secret";
 const GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a69";
@@ -523,5 +524,70 @@ describe("the first slice, end to end", () => {
 
         expect(completions()).toEqual([{ deliveryId: GUID, kind: "decision" }]);
         expect(rows()).toEqual([]);
+    });
+});
+
+describe("a scheduled capability with no sweep to wake it", () => {
+    const INACTIVITY_CONFIG = `schemaVersion: 2
+mode: dry-run
+capabilities:
+  inactivity:
+    enabled: true
+`;
+
+    /** Both capabilities are known; which is enabled is the file's business. */
+    function build(sweep: boolean): Shell {
+        const shell = createShell({
+            secret: SECRET,
+            store,
+            capabilities: [toEngine(triageQueue), toEngine(inactivity)],
+            seams: seamsOn(configFile),
+            repository: REPOSITORY,
+            clock: () => BASE,
+            ...(sweep ? { sweep: { allowance: spending() } } : {}),
+            log,
+        });
+        running.push(shell);
+        return shell;
+    }
+
+    const idle = (): ShellEvent[] =>
+        logged.filter((event) => event.event === "scheduledCapabilityIdle");
+
+    it("says so once per repository and capability, however many deliveries arrive", async () => {
+        writeFileSync(configFile, INACTIVITY_CONFIG);
+        const shell = build(false);
+        await deliver(shell, GUID);
+        await deliver(shell, SECOND_GUID);
+        await shell.drain();
+
+        expect(completions().map(({ kind }) => kind)).toEqual(["decision", "decision"]);
+        expect(idle()).toEqual([
+            {
+                event: "scheduledCapabilityIdle",
+                repository: "scrubbed-1/scrubbed-2",
+                capability: "inactivity",
+                detail: expect.stringContaining("SWEEP_CADENCE_HOURS"),
+            },
+        ]);
+    });
+
+    it("says nothing when the sweep is armed", async () => {
+        writeFileSync(configFile, INACTIVITY_CONFIG);
+        const shell = build(true);
+        await deliver(shell);
+        await shell.drain();
+
+        expect(completions()).toHaveLength(1);
+        expect(idle()).toEqual([]);
+    });
+
+    it("says nothing when only capabilities that hear events are enabled", async () => {
+        const shell = build(false);
+        await deliver(shell);
+        await shell.drain();
+
+        expect(completions()).toHaveLength(1);
+        expect(idle()).toEqual([]);
     });
 });

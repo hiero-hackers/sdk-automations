@@ -181,6 +181,15 @@ const ROUTING: Record<
         problem: true,
     },
     sweepFailed: { event: { event: "sweepFailed", detail: "the store is closed" }, problem: true },
+    scheduledCapabilityIdle: {
+        event: {
+            event: "scheduledCapabilityIdle",
+            repository: "owner/repo",
+            capability: "inactivity",
+            detail: "inactivity runs only on the sweep, and SWEEP_CADENCE_HOURS is unset",
+        },
+        problem: true,
+    },
     sweepClaimed: {
         event: {
             event: "sweepClaimed",

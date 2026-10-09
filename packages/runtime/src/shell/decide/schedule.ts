@@ -35,6 +35,20 @@ export function wantsSweeping(
     );
 }
 
+/** The enabled capabilities that run only on a clock: with no sweep, nothing ever wakes them. */
+export function scheduleOnlyCapabilities(
+    config: RepositoryConfig,
+    capabilities: readonly EngineCapability[],
+): string[] {
+    return capabilities.flatMap(({ declaration }) =>
+        config.capabilities[declaration.name]?.enabled === true &&
+        declaration.triggers.length > 0 &&
+        declaration.triggers.every((trigger) => trigger.kind === "schedule")
+            ? [declaration.name]
+            : [],
+    );
+}
+
 /** Everything the declaration below needs; the delivery lane holds all of it. */
 export interface SweepDeclaration {
     readonly store: Store;

@@ -111,6 +111,13 @@ export type ShellEvent =
       }
     | { readonly event: "sweepFailed"; readonly detail: string }
     | {
+          /** The configuration enables a capability that only a sweep wakes, and no sweep is armed. */
+          readonly event: "scheduledCapabilityIdle";
+          readonly repository: string;
+          readonly capability: string;
+          readonly detail: string;
+      }
+    | {
           /** A due `sweep:` schedule row was claimed; a firing has begun. */
           readonly event: "sweepClaimed";
           readonly scheduleId: string;
@@ -210,6 +217,7 @@ const PROBLEM_EVENTS: ReadonlySet<ShellEvent["event"]> = new Set([
     "effectAbandoned",
     "sweepRequeued",
     "sweepFailed",
+    "scheduledCapabilityIdle",
     "sweepUnreadable",
     "snapshotUnreadable",
     "drainFailed",
