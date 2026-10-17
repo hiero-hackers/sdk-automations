@@ -21,8 +21,7 @@ on:
         labeled,
         unlabeled,
       ]
-  pull_request_review:
-    types: [submitted]
+  # pull_request_review returns when a capability reads reviews; today it would run for nothing.
   schedule:
     - cron: "17 * * * *"
 

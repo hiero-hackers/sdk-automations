@@ -12,9 +12,11 @@
         "test:watch": "vitest",
         "capture": "tsx src/capture.ts",
         "lab:probe": "tsx src/probes/run.ts",
-        "lab:rehearse": "tsx src/rehearsal/run.ts"
+        "lab:rehearse": "tsx src/rehearsal/run.ts",
+        "lab:action": "tsx src/action/run.ts"
     },
     "devDependencies": {
+        "@hiero-hackers/automation-testkit": "workspace:*",
         "@types/node": "^24.19.2",
         "tsx": "^4.23.15",
         "typescript": "^5.6.0",

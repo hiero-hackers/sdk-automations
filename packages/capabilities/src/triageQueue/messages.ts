@@ -35,5 +35,8 @@ export function welcome(
 }
 
 /** The notice a released issue earns when the repository asked for one. */
-export const unlocked = (author: string): string =>
-    `✅ Hi ${mentions([author])} — this issue has been triaged and marked ready. The conversation is open again.`;
+/** The second sentence only when a lock was lifted: `ready` can arrive before the lock did. */
+export const unlocked = (author: string, wasLocked: boolean): string =>
+    `✅ Hi ${mentions([author])} — this issue has been triaged and marked ready.${
+        wasLocked ? " The conversation is open again." : ""
+    }`;

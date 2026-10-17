@@ -1,0 +1,31 @@
+run	Set up job	﻿2026-10-17T15:40:47.6808446Z Current runner version: '2.337.0'
+run	Set up job	2026-10-17T15:40:47.6844622Z ##[group]GITHUB_TOKEN Permissions
+run	Set up job	2026-10-17T15:40:47.6872076Z Contents: read
+run	Set up job	2026-10-17T15:40:47.6873061Z Issues: write
+run	Set up job	2026-10-17T15:40:47.6876710Z ##[endgroup]
+run	Set up job	2026-10-17T15:40:49.4041920Z Complete job name: run
+run	record the commit under test	﻿2026-10-17T15:40:56.1570062Z [36;1mecho "engine commit: $(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"[0m
+run	record the commit under test	2026-10-17T15:40:56.1899703Z engine commit: 0123456789abcdef0123456789abcdef01234567
+run	install and build the bundle	﻿2026-10-17T15:40:57.0001000Z Lockfile is up to date, resolution step is skipped
+run	install and build the bundle	2026-10-17T15:40:59.0002000Z -rw-r--r-- 1 runner runner 1234567 Oct 17 15:40 packages/runtime/dist/action.js
+run	run the action	﻿2026-10-17T15:40:03.0685196Z ##[group]Run ./sdk-automations
+run	run the action	2026-10-17T15:40:03.0685609Z with:
+run	run the action	2026-10-17T15:40:03.0685894Z   arm-writes: false
+run	run the action	2026-10-17T15:40:03.0688856Z   token: ***
+run	run the action	2026-10-17T15:40:03.0690620Z ##[endgroup]
+run	run the action	2026-10-17T15:40:03.1310812Z {"at":"2026-10-17T15:40:03.130Z","event":"deliveryAccepted","deliveryId":"45dea138-39cb-0ec2-9fc4-6afd689a088e","eventName":"issues"}
+run	run the action	2026-10-17T15:40:03.1317388Z {"at":"2026-10-17T15:40:03.131Z","event":"deliveryClaimed","deliveryId":"45dea138-39cb-0ec2-9fc4-6afd689a088e","eventName":"issues","attempts":0}
+run	run the action	2026-10-17T15:40:03.7768934Z {"at":"2026-10-17T15:40:03.776Z","event":"deliveryCompleted","deliveryId":"45dea138-39cb-0ec2-9fc4-6afd689a088e","kind":"decision"}
+run	run the action	2026-10-17T15:40:03.7801000Z sdk-automations.row {"item":{"kind":"issue","number":200},"capability":"triageQueue","verdict":"info","code":"capabilityExplained","detail":"triageQueue | the awaitingTriage label is applied on open\nand the welcome posted"}
+run	run the action	2026-10-17T15:40:03.7802000Z sdk-automations.row {"item":{"kind":"issue","number":200},"capability":"triageQueue","verdict":"info","code":"wouldApply","detail":"dry-run: triageQueue would applyMappedLabel"}
+run	run the action	2026-10-17T15:40:03.7803000Z sdk-automations.row {"item":{"kind":"issue","number":200},"capability":"triageQueue","verdict":"notice","code":"modeRecordsOnly","detail":null}
+run	echo the job summary into the log	﻿2026-10-17T15:40:04.1000000Z ##[group]summary step_summary_7a4c2d.md
+run	echo the job summary into the log	2026-10-17T15:40:04.1001000Z engine commit: 0123456789abcdef0123456789abcdef01234567
+run	echo the job summary into the log	2026-10-17T15:40:04.1002000Z ## scrubbed-1/scrubbed-2: issues (delivery) ([run](https://github.com/scrubbed-1/scrubbed-2/actions/runs/1))
+run	echo the job summary into the log	2026-10-17T15:40:04.1003000Z ### issue#200
+run	echo the job summary into the log	2026-10-17T15:40:04.1004000Z | capability | verdict | code | detail |
+run	echo the job summary into the log	2026-10-17T15:40:04.1005000Z | --- | --- | --- | --- |
+run	echo the job summary into the log	2026-10-17T15:40:04.1006000Z | triageQueue | info | capabilityExplained | triageQueue \| the awaitingTriage label is applied on open and the welcome posted |
+run	echo the job summary into the log	2026-10-17T15:40:04.1007000Z | triageQueue | notice | modeRecordsOnly | - |
+run	echo the job summary into the log	2026-10-17T15:40:04.1008000Z ##[endgroup]
+run	Complete job	﻿2026-10-17T15:40:05.0000000Z Cleaning up orphan processes

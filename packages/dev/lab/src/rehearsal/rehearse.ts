@@ -4,8 +4,8 @@
  * `run.ts` owns the order around it; `judge.ts` owns the verdicts.
  */
 
-import type { EvidenceLog } from "../probes/evidence.js";
-import { field, Halt, listOf, type Call } from "./github.js";
+import type { EvidenceLog } from "../evidence.js";
+import { field, Halt, listOf, type Call } from "../github.js";
 import {
     decisionDifferences,
     issueDifferences,

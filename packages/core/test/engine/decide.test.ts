@@ -134,6 +134,7 @@ describe("the apply path, on a real delivery", () => {
             externals,
         );
         expect(decision.approved).toHaveLength(1);
+        expect(decision.item).toEqual({ kind: "issue", number: 164 });
         expect(decision.approved[0]).toMatchObject({
             intent: { operation: "applyMappedLabel", item: { kind: "issue", number: 164 } },
             // A label carries no comment identity, and minting one would be
@@ -499,6 +500,7 @@ describe("deliveries that never reach a capability", () => {
             },
         ]);
         expect(decision.approved).toEqual([]);
+        expect(decision.item).toBeNull();
     });
 
     it("a malformed delivery is a problem carrying the normalizer's code", async () => {

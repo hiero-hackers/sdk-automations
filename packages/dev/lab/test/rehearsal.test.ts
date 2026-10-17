@@ -7,7 +7,7 @@ import {
     type HookDelivery,
     type IssueState,
 } from "../src/rehearsal/judge.js";
-import { parsedOrHalt } from "../src/rehearsal/github.js";
+import { parsedOrHalt } from "../src/github.js";
 import { SCENARIOS } from "../src/rehearsal/scenarios.js";
 
 const attempt = (guid: string, statusCode = 202): HookDelivery => ({

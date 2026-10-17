@@ -5,7 +5,7 @@
  * restoration is read back.
  */
 
-import { field, Halt, listOf, messageOf, type Call } from "./github.js";
+import { field, Halt, listOf, messageOf, type Call } from "../github.js";
 import { LABELS } from "./scenarios.js";
 
 const CONFIG_PATH = "sdk-automations.yml";

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { Halt } from "./github.js";
+import { Halt } from "../github.js";
 import type { StoredDecision, StoredDelivery } from "./judge.js";
 
 const RUNTIME_DIR = fileURLToPath(new URL("../../../../runtime/", import.meta.url));

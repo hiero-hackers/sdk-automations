@@ -31,7 +31,7 @@ effect left `unknown`. Interrupting with Ctrl-C stops the shell and still restor
 | `judge.ts` | Has a step settled, and how does what was read differ from what was expected? |
 | `sandbox.ts` | What does a run change on the sandbox, and how is each change put back? |
 | `shell.ts` | How is the shell under test started, read and stopped? |
-| `github.ts` | How does the rehearsal call GitHub as the person? |
+| `../github.ts` | How does the rehearsal call GitHub as the person? Shared with the lab's other runners. |
 
 ## Running it
 

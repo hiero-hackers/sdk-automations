@@ -155,8 +155,10 @@ module.exports = {
             comment:
                 "The testkit is importable from a test path and nowhere else. 'Who may depend on " +
                 "it' is not the question — every package's tests may — so this reads the " +
-                "IMPORTER's directory rather than the layer table.",
-            from: { path: `${P}(?!testkit/)[^/]+/src/` },
+                "IMPORTER's directory rather than the layer table. The lab's src/ is the one " +
+                "other reader: an instrument pointed at GitHub that ships nothing and holds the " +
+                "Action to the same journeys table the runtime's matrices hold the shell to.",
+            from: { path: `${P}(?!testkit/|lab/)[^/]+/src/` },
             to: { path: `${P}testkit/` },
         },
         {

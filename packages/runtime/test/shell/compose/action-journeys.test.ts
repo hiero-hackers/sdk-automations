@@ -7,9 +7,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type EngineCapability } from "@hiero-hackers/automation-core";
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
-import { capture, WEBHOOK_CAPTURES } from "@hiero-hackers/automation-testkit";
+import {
+    CONFIGS,
+    configFor,
+    JOURNEYS,
+    capture,
+    WEBHOOK_CAPTURES,
+    type Row,
+} from "@hiero-hackers/automation-testkit";
 import { parseActionEnvironment, runAction, runStore } from "../../../src/shell/compose/action.js";
-import { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
 import { scriptedGitHub } from "./scripted-github.js";
 
 const START = new Date("2026-09-15T10:00:00.000Z");

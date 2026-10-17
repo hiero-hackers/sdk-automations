@@ -20,6 +20,7 @@ import { createApplier, recordedWarningsIn } from "../apply/apply.js";
 import { createItemDecider, type DecideItem } from "../decide/item.js";
 import { declareSweep } from "../decide/schedule.js";
 import { hydrateWarnings } from "../decide/warnings.js";
+import type { EffectOutcome } from "../effects.js";
 import { createDeliveries } from "../inbound/deliveries.js";
 import { contained, createLogger, type Log, type ShellEvent } from "../log.js";
 import {
@@ -123,6 +124,8 @@ export interface RunOutcome {
     readonly events: readonly ShellEvent[];
     /** The items decided, in order; the summary explains each from the store. */
     readonly items: readonly ItemRef[];
+    /** What became of every effect the run applied, in order. */
+    readonly effects: readonly EffectOutcome[];
     /** `active` was decided as `dry-run` because the workflow did not arm writes. */
     readonly modeLowered: boolean;
     readonly exitCode: 0 | 1;
@@ -189,6 +192,7 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
     const sweeping = run.eventName === "schedule";
     let modeLowered = false;
     const items: ItemRef[] = [];
+    const effects: EffectOutcome[] = [];
 
     const live = liveGitHub({
         auth: {
@@ -242,15 +246,21 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
             clock,
             ...(applier === undefined ? {} : { applier }),
         });
-        return (input, config, at, allowance) => {
+        return async (input, config, at, allowance) => {
             const item = input.kind === "facts" ? input.facts.item : itemNamedBy(payload);
             if (item !== null) items.push(item);
             deciding = item === null ? null : { item, revision: config.revision };
-            if (config.mode === "active" && !run.armWrites) {
-                modeLowered = true;
-                return decide(input, { ...config, mode: "dry-run" }, at, allowance);
-            }
-            return decide(input, config, at, allowance);
+            const lowered = config.mode === "active" && !run.armWrites;
+            if (lowered) modeLowered = true;
+            const decided = await decide(
+                input,
+                lowered ? { ...config, mode: "dry-run" } : config,
+                at,
+                allowance,
+            );
+            // Stryker disable next-line ConditionalExpression: armed writes wire the path, so an active decision never ends unsupported here.
+            if (decided.kind === "decided") effects.push(...decided.outcomes);
+            return decided;
         };
     };
 
@@ -284,11 +294,20 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
                 event.deliveryId === run.deliveryId &&
                 event.kind !== "repositoryMismatch",
         );
-        return { kind: "delivery", events, items, modeLowered, exitCode: finished ? 0 : 1 };
+        return {
+            kind: "delivery",
+            events,
+            items,
+            effects,
+            modeLowered,
+            exitCode: finished ? 0 : 1,
+        };
     }
 
     const config = await deliveries.configuration(run.repository, laneSeams.configSource);
-    if (config === null) return { kind: "idle", events, items, modeLowered, exitCode: 0 };
+    if (config === null) {
+        return { kind: "idle", events, items, effects, modeLowered, exitCode: 0 };
+    }
     declareSweep({ store, repository: run.repository, config, capabilities, now: clock() });
     const sweep = createSweep({
         store,
@@ -315,6 +334,7 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
         kind: fired ? "sweep" : "idle",
         events,
         items,
+        effects,
         modeLowered,
         exitCode: failed ? 1 : 0,
     };

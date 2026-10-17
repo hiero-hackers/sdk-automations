@@ -140,8 +140,14 @@ function onTriaged(facts: Facts, config: View, platform: Platform): Intents {
         intents.push(
             platform.intent({
                 operation: "postManagedComment",
-                desired: { kind: "notice", topic: "unlock", body: unlocked(facts.author) },
-                explain: "Said the issue is ready and its conversation open.",
+                desired: {
+                    kind: "notice",
+                    topic: "unlock",
+                    body: unlocked(facts.author, facts.locked),
+                },
+                explain: facts.locked
+                    ? "Said the issue is ready and its conversation open."
+                    : "Said the issue is ready.",
             }),
         );
     }

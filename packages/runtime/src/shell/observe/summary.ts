@@ -1,11 +1,13 @@
 /**
  * The run's job summary: what one Action run decided, item by item, as markdown, with the
- * workflow commands that surface a failure or a lowered mode on the run page.
+ * workflow commands that surface an effect, a failure or a lowered mode on the run page, and
+ * one machine-readable line per decision row for a reader of the log.
  */
 
 import { appendFileSync } from "node:fs";
 import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
 import type { RunOutcome } from "../compose/action.js";
+import type { EffectOutcome, EffectOutcomeName } from "../effects.js";
 import type { ShellEvent } from "../log.js";
 import { standing } from "./explain.js";
 import type { Store } from "../../store/index.js";
@@ -61,9 +63,11 @@ const detailOf = (event: ShellEvent): string =>
 const named = (event: ShellEvent): string =>
     event.event === "deliveryCompleted" ? `${event.event} (${event.kind})` : event.event;
 
+/** One item's heading and tables, or nothing when no decision and no effect names it. */
 function itemSection(store: Store, repository: RepositoryRef, item: ItemRef): string[] {
     const decisions = store.ledger.decisionsOn(repository, item);
     const effects = store.ledger.effectsOn(repository, item);
+    if (decisions.length === 0 && effects.length === 0) return [];
     return [
         `### ${spelled(item)}`,
         "",
@@ -85,9 +89,12 @@ export function renderSummary(store: Store, run: SummaryRun, outcome: RunOutcome
     const link = run.runUrl === null ? "" : ` ([run](${run.runUrl}))`;
     const lines = [`## ${owner}/${repo}: ${run.eventName} (${outcome.kind})${link}`, ""];
     if (outcome.modeLowered) lines.push(LOWERED, "");
-    for (const item of distinct(outcome.items)) {
-        lines.push(...itemSection(store, run.repository, item));
-    }
+    const sections = distinct(outcome.items).map((item) =>
+        itemSection(store, run.repository, item),
+    );
+    const silent = sections.filter((section) => section.length === 0).length;
+    lines.push(...sections.flat());
+    if (silent > 0) lines.push(`Items decided with no rows: ${String(silent)}.`, "");
     const [cause] = failures(outcome.events);
     if (outcome.exitCode !== 0 && cause !== undefined) {
         const detail = detailOf(cause);
@@ -98,14 +105,47 @@ export function renderSummary(store: Store, run: SummaryRun, outcome: RunOutcome
     return `${lines.join("\n")}\n`;
 }
 
-/** One workflow command per failure and one notice when the mode was lowered. */
+/** A workflow command: `%`, CR and LF are the three characters the runner decodes in a message. */
+const command = (level: "notice" | "warning", message: string): string =>
+    `::${level}::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`;
+
+/** The outcomes worth a line in the log, and how loud each is. */
+const LEVEL: Partial<Record<EffectOutcomeName, "notice" | "warning">> = {
+    applied: "notice",
+    refused: "warning",
+};
+
+const effectLine = (effect: EffectOutcome): string =>
+    `${effect.capability} ${effect.operation} ${spelled(effect.item)} ${effect.outcome}` +
+    (effect.code === null ? "" : ` ${effect.code}`);
+
+/** One command per applied or refused effect and per failure, and one notice when the mode was lowered. */
 export function annotations(outcome: RunOutcome): string[] {
     const detail = (event: ShellEvent): string =>
         detailOf(event) === "" ? "" : ` ${detailOf(event)}`;
     return [
-        ...(outcome.modeLowered ? [`::notice::${LOWERED}`] : []),
-        ...failures(outcome.events).map((event) => `::warning::${named(event)}${detail(event)}`),
+        ...(outcome.modeLowered ? [command("notice", LOWERED)] : []),
+        ...outcome.effects.flatMap((effect) => {
+            const level = LEVEL[effect.outcome];
+            return level === undefined ? [] : [command(level, effectLine(effect))];
+        }),
+        ...failures(outcome.events).map((event) =>
+            command("warning", `${named(event)}${detail(event)}`),
+        ),
     ];
+}
+
+/** What a reader of the log greps for; the compact JSON after it is one decision row. */
+export const ROW_MARKER = "sdk-automations.row";
+
+/** One line per decision row on every item the run decided, in the order the store holds them. */
+export function rowLines(store: Store, repository: RepositoryRef, outcome: RunOutcome): string[] {
+    return distinct(outcome.items).flatMap((item) =>
+        store.ledger.decisionsOn(repository, item).map(({ capability, verdict, code, detail }) => {
+            const row = { item: { kind: item.kind, number: item.number }, capability, verdict };
+            return `${ROW_MARKER} ${JSON.stringify({ ...row, code, detail })}`;
+        }),
+    );
 }
 
 /** Appends to the step summary file when the runner names one. */

@@ -111,6 +111,8 @@ export interface Decision {
     readonly report: Report;
     /** Effects that passed every gate in `active` mode. */
     readonly approved: readonly Effect[];
+    /** The item the record named; `null` when the input carried none to read. */
+    readonly item: ItemRef | null;
 }
 
 // ─── The gates one intent passes ─────────────────────────────────────
@@ -599,5 +601,6 @@ export async function decide(
             findings,
         },
         approved,
+        item: facts === null ? null : facts.item,
     };
 }

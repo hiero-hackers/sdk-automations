@@ -1,7 +1,7 @@
 /**
- * What every shipped capability decides on every captured delivery under the credential-free
- * composition: one config enabling that capability alone, one cell per capture. A cell absent
- * from `JOURNEYS` asserts that nothing was decided.
+ * What every shipped capability decides on every captured delivery: one config enabling that
+ * capability alone, one cell per capture. A cell absent from `JOURNEYS` asserts that nothing was
+ * decided. One definition, read by the runtime's matrices and by the lab's action rehearsal.
  */
 
 /** One decision row, as the store keeps it, without the pass it belongs to. */
@@ -71,9 +71,9 @@ const effects = (capability: string, count: number): Row[] =>
         .flat()
         .sort((a, b) => `${a.verdict}${a.code}`.localeCompare(`${b.verdict}${b.code}`));
 
-/** The whole config file for one capability enabled alone, in dry-run. */
-export const configFor = (capability: string): string => `schemaVersion: 2
-mode: dry-run
+/** The whole config file for one capability enabled alone, in dry-run unless `mode` says otherwise. */
+export const configFor = (capability: string, mode = "dry-run"): string => `schemaVersion: 2
+mode: ${mode}
 capabilities:
 ${CONFIGS[capability] ?? ""}mappings:
   labels:

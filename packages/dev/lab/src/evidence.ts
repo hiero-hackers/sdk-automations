@@ -1,5 +1,5 @@
 /**
- * The probe's raw evidence: one append-only JSONL per run under the untracked `evidence/`.
+ * A run's raw evidence: one append-only JSONL per run under the untracked `evidence/`.
  * Nothing tracked reads it, and no credential reaches it — `safeHeaders` drops the carriers.
  */
 
@@ -39,7 +39,7 @@ export class EvidenceLog {
     constructor(
         private readonly experiment: string,
         private readonly runId: string = new Date().toISOString().replace(/[:.]/g, "-"),
-        directory: string = fileURLToPath(new URL("../../evidence/", import.meta.url)),
+        directory: string = fileURLToPath(new URL("../evidence/", import.meta.url)),
     ) {
         mkdirSync(directory, { recursive: true });
         this.path = join(directory, `${experiment}-${this.runId}.jsonl`);

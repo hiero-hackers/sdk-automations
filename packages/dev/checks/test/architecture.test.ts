@@ -70,7 +70,8 @@ const NON_PRODUCTION = new Set(["checks", "lab", "capabilities", "testkit"]);
 /**
  * Test-only in two directions, each half checked where it is written down: a
  * manifest may name it only from `devDependencies` (here), and a source file
- * may import it only from a `test/` path (the cruiser's `testkit-is-test-only`).
+ * may import it only from a `test/` path or the lab's instrument (the
+ * cruiser's `testkit-is-test-only`).
  */
 const TESTKIT = "testkit";
 

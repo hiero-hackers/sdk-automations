@@ -11,7 +11,7 @@ import { createSign } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { drifted, driftOf, objectOf, outgrewOnePage, parsed, type Sent, weather } from "./drift.js";
-import { EvidenceLog, safeHeaders } from "./evidence.js";
+import { EvidenceLog, safeHeaders } from "../evidence.js";
 import { EVENT_SHAPES } from "./events.js";
 import { probeWebhooks, type WebhookResult } from "./webhooks.js";
 import {

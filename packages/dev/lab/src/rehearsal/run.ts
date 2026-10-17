@@ -13,8 +13,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { EvidenceLog } from "../probes/evidence.js";
-import { createGitHub, field, Halt, messageOf, type Call } from "./github.js";
+import { EvidenceLog } from "../evidence.js";
+import { createGitHub, Halt, messageOf, sandboxOwner } from "../github.js";
 import { createRehearsal, type ScenarioResult } from "./rehearse.js";
 import { createSandbox } from "./sandbox.js";
 import { SCENARIOS, type Scenario } from "./scenarios.js";
@@ -94,17 +94,6 @@ function selectedScenarios(names: readonly string[]): readonly Scenario[] {
 
 // ─── Guards ──────────────────────────────────────────────────────────
 
-/** The token's person, after proving the sandbox is that person's own private repository. */
-async function sandboxOwner(call: Call, env: Environment): Promise<string> {
-    const login = field((await call("GET", "/user")).body, "login");
-    if (login !== env.owner) {
-        throw new Halt(`the sandbox must belong to the token's own account, not ${env.owner}`);
-    }
-    const sandbox = await call("GET", `/repos/${env.owner}/${env.repo}`);
-    if (field(sandbox.body, "private") !== true) throw new Halt("the sandbox must be private");
-    return login;
-}
-
 /** The commit under test, and whether the production packages differ from it. */
 function checkout(): { readonly commit: string; readonly productionDirty: boolean } {
     const git = (...args: string[]): string =>
@@ -137,7 +126,7 @@ async function main(): Promise<number> {
     }
     const scenarios = selectedScenarios(process.argv.slice(2));
     const call = createGitHub(env.token);
-    const login = await sandboxOwner(call, env);
+    const login = await sandboxOwner(call, env.owner, env.repo);
 
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const directory = join(LAB_DIR, "evidence", `${EXPERIMENT}-${runId}`);

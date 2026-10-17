@@ -491,11 +491,17 @@ describe("triageQueue", () => {
             },
         );
 
-        expect(
-            (await triageQueue.evaluate(record, quarantineView, watch(record).platform)).map(
-                (intent) => intent.operation,
-            ),
-        ).toEqual(["postManagedComment"]);
+        const intents = await triageQueue.evaluate(record, quarantineView, watch(record).platform);
+
+        expect(intents.map((intent) => intent.operation)).toEqual(["postManagedComment"]);
+        // Nothing was locked, so the confirmation does not claim to have opened anything.
+        expect(intents.map((intent) => intent.desired)).toEqual([
+            {
+                kind: "notice",
+                topic: "unlock",
+                body: "✅ Hi @opener — this issue has been triaged and marked ready.",
+            },
+        ]);
     });
 
     /** A lock the repository never asked for is a human's, and stays. */

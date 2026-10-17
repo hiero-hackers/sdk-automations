@@ -122,6 +122,9 @@ importers:
         specifier: workspace:*
         version: link:../../core
     devDependencies:
+      '@hiero-hackers/automation-testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2

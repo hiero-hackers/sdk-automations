@@ -1,6 +1,7 @@
 /**
  * Test-only support shared by more than one package: the captured webhook
- * payloads, and the temp-dir helpers for tests that touch disk.
+ * payloads, the journeys table they are decided against, and the temp-dir
+ * helpers for tests that touch disk.
  *
  * Fixtures are module-mediated, never path-read from outside this package (D82).
  */
@@ -9,6 +10,8 @@ import { afterEach, beforeEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+export { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
 
 /**
  * One captured delivery, with the provenance that makes it evidence.

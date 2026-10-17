@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { asDeliveryGuid, deriveManagedMarker } from "@hiero-hackers/automation-core";
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
-import { capture } from "@hiero-hackers/automation-testkit";
+import { CONFIGS, capture } from "@hiero-hackers/automation-testkit";
 import {
     ACTION_REFUSAL,
     deliveryIdOf,
@@ -19,7 +19,6 @@ import {
 } from "../../../src/shell/compose/action.js";
 import { explainItem } from "../../../src/shell/observe/explain.js";
 import type { ShellEvent } from "../../../src/shell/log.js";
-import { CONFIGS } from "./journeys.js";
 import { scriptedGitHub } from "./scripted-github.js";
 
 const START = new Date("2026-09-15T10:00:00.000Z");

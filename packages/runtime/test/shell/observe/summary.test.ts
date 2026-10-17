@@ -6,8 +6,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deriveManagedMarker, type ReadBack } from "@hiero-hackers/automation-core";
-import { capture } from "@hiero-hackers/automation-testkit";
+import {
+    deriveManagedMarker,
+    type EngineCapability,
+    type EngineHandle,
+    type ReadBack,
+} from "@hiero-hackers/automation-core";
+import { triageQueueDeclaration } from "@hiero-hackers/automation-capabilities";
+import { capture, configFor } from "@hiero-hackers/automation-testkit";
 import { hydrateWarnings } from "../../../src/shell/decide/warnings.js";
 import {
     parseActionEnvironment,
@@ -16,13 +22,15 @@ import {
     type ActionRun,
     type RunOutcome,
 } from "../../../src/shell/compose/action.js";
+import { explainItem } from "../../../src/shell/observe/explain.js";
 import {
     annotations,
     appendSummary,
     cell,
     renderSummary,
+    ROW_MARKER,
+    rowLines,
 } from "../../../src/shell/observe/summary.js";
-import { CONFIGS } from "../compose/journeys.js";
 import { scriptedGitHub } from "../compose/scripted-github.js";
 
 const START = new Date("2026-09-15T10:00:00.000Z");
@@ -36,18 +44,6 @@ const ENVIRONMENT = {
     GITHUB_RUN_ATTEMPT: "1",
     GITHUB_SERVER_URL: "https://github.com",
 };
-
-const configFor = (capability: string, mode = "dry-run"): string => `schemaVersion: 2
-mode: ${mode}
-capabilities:
-${CONFIGS[capability] ?? ""}mappings:
-  labels:
-    awaitingTriage: "status: triage"
-  commands:
-    assign: /assign
-    unassign: /unassign
-    working: /working
-`;
 
 afterEach(() => {
     vi.unstubAllGlobals();
@@ -85,6 +81,7 @@ describe("the job summary", () => {
         expect(text).toContain("issue#164");
         expect(text.match(/modeRecordsOnly/g)).toHaveLength(2);
         expect(text).not.toContain("dry-run because");
+        expect(text).not.toContain("Items decided with no rows");
         expect(annotations(outcome)).toEqual([]);
         store.close();
     });
@@ -100,6 +97,73 @@ describe("the job summary", () => {
         store.close();
     });
 
+    it("lists a capability's skip as one info row carrying its reason and lines", async () => {
+        const skipping: EngineCapability = {
+            declaration: triageQueueDeclaration,
+            evaluate: async (_facts: never, _view: never, platform: never) =>
+                (platform as EngineHandle).skip("Skipped: scripted.", "line a", "line b"),
+        };
+        scriptedGitHub({ now: () => START, config: () => configFor("triageQueue") });
+        const run = runOf();
+        const store = runStore();
+        const outcome = await runAction(run, {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+            capabilities: [skipping],
+        });
+        const text = renderSummary(store, run, outcome);
+        expect(text).toContain(
+            "| triageQueue | info | capabilitySkipped | Skipped: scripted. (line a; line b) |",
+        );
+        expect(text.match(/\| triageQueue \|/g)).toHaveLength(1);
+        const item = { kind: "issue", number: 164 } as const;
+        expect(explainItem(store, run.repository, item).lines).toContainEqual(
+            expect.stringContaining("capabilitySkipped"),
+        );
+        store.close();
+    });
+
+    it("lists a capability that threw as one problem row on its item", async () => {
+        const throwing: EngineCapability = {
+            declaration: triageQueueDeclaration,
+            evaluate: async () => {
+                throw new Error("boom");
+            },
+        };
+        scriptedGitHub({ now: () => START, config: () => configFor("triageQueue") });
+        const run = runOf();
+        const store = runStore();
+        const outcome = await runAction(run, {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+            capabilities: [throwing],
+        });
+        expect(outcome.exitCode).toBe(0);
+        const text = renderSummary(store, run, outcome);
+        expect(text).toContain(
+            '| triageQueue | problem | capabilityFailed | "triageQueue" failed during evaluation: boom |',
+        );
+        store.close();
+    });
+
+    it("carries what became of each effect an armed run applied, and logs only applied or refused", async () => {
+        const run = runOf({ armWrites: true });
+        const { store, outcome } = await decided(run, "active");
+        expect(outcome.modeLowered).toBe(false);
+        expect(
+            outcome.effects.map(({ operation, outcome: fate, code }) => [operation, fate, code]),
+        ).toEqual([
+            ["applyMappedLabel", "retryLater", "itemUnreadable"],
+            ["postManagedComment", "retryLater", "itemUnreadable"],
+        ]);
+        expect(annotations(outcome)).toEqual([]);
+        store.close();
+    });
+
     it("closes with the event that made the run exit non-zero", async () => {
         const run = runOf({ repository: { owner: "other", repo: "place" } });
         const { store, outcome } = await decided(run, "dry-run");
@@ -110,6 +174,93 @@ describe("the job summary", () => {
         const lines = annotations(outcome);
         expect(lines).toHaveLength(1);
         expect(lines[0]).toMatch(/^::warning::deliveryCompleted \(repositoryMismatch\)/);
+        store.close();
+    });
+});
+
+describe("the machine-readable rows", () => {
+    const parsed = (line: string): unknown => JSON.parse(line.slice(`${ROW_MARKER} `.length));
+
+    it("prints one line per decision row on each decided item, in the store's order", async () => {
+        const run = runOf();
+        const { store, outcome } = await decided(run, "dry-run");
+        const item = { kind: "issue", number: 164 } as const;
+        const rows = store.ledger.decisionsOn(run.repository, item);
+        const lines = rowLines(store, run.repository, outcome);
+        expect(rows.length).toBeGreaterThan(1);
+        expect(lines).toHaveLength(rows.length);
+        expect(lines[0]).toMatch(
+            /^sdk-automations\.row \{"item":\{"kind":"issue","number":164\},"capability":"triageQueue","verdict":"info","code":"capabilityExplained","detail":"[^\n]*"\}$/,
+        );
+        expect(lines.map(parsed)).toEqual(
+            rows.map(({ capability, verdict, code, detail }) => ({
+                item,
+                capability,
+                verdict,
+                code,
+                detail,
+            })),
+        );
+        store.close();
+    });
+
+    it("keeps a detail carrying a newline and a pipe on one line, and round-trips it", async () => {
+        const skipping: EngineCapability = {
+            declaration: triageQueueDeclaration,
+            evaluate: async (_facts: never, _view: never, platform: never) =>
+                (platform as EngineHandle).skip("Skipped: a | b.", "c\nd"),
+        };
+        scriptedGitHub({ now: () => START, config: () => configFor("triageQueue") });
+        const run = runOf();
+        const store = runStore();
+        const outcome = await runAction(run, {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+            capabilities: [skipping],
+        });
+        const lines = rowLines(store, run.repository, outcome);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).not.toContain("\n");
+        expect(lines[0]).toContain("|");
+        expect(parsed(lines[0]!)).toMatchObject({
+            code: "capabilitySkipped",
+            detail: "Skipped: a | b. (c\nd)",
+        });
+        store.close();
+    });
+
+    it("prints nothing for a run that decided no item, and an item once however often decided", () => {
+        const store = runStore();
+        const repository = { owner: "o", repo: "r" } as const;
+        const item = { kind: "pullRequest", number: 7 } as const;
+        const idle: RunOutcome = {
+            kind: "idle",
+            events: [],
+            items: [],
+            effects: [],
+            modeLowered: false,
+            exitCode: 0,
+        };
+        expect(rowLines(store, repository, idle)).toEqual([]);
+        store.ledger.decide({
+            passId: "pass-1",
+            source: "webhook",
+            sourceId: "d",
+            at: "2026-09-15T10:00:00.000Z",
+            repository,
+            item,
+            capability: "prDashboard",
+            verdict: "info",
+            code: "wouldApply",
+            detail: null,
+            effectId: null,
+        });
+        const twice: RunOutcome = { ...idle, kind: "delivery", items: [item, item] };
+        expect(rowLines(store, repository, twice)).toEqual([
+            `${ROW_MARKER} {"item":{"kind":"pullRequest","number":7},"capability":"prDashboard","verdict":"info","code":"wouldApply","detail":null}`,
+        ]);
         store.close();
     });
 });
@@ -168,6 +319,7 @@ describe("appendSummary", () => {
                 },
             ],
             items: [item, item],
+            effects: [],
             modeLowered: false,
             exitCode: 1,
         };
@@ -185,6 +337,42 @@ describe("appendSummary", () => {
         store.close();
     });
 
+    it("renders only the items with a row, then counts the rest once", () => {
+        const store = runStore();
+        const repository = { owner: "o", repo: "r" } as const;
+        const decided = { kind: "issue", number: 5 } as const;
+        store.ledger.decide({
+            passId: "pass-1",
+            source: "sweep",
+            sourceId: "pass-1",
+            at: "2026-09-15T10:00:00.000Z",
+            repository,
+            item: decided,
+            capability: "inactivity",
+            verdict: "info",
+            code: "wouldApply",
+            detail: "dry-run: inactivity would postManagedComment",
+            effectId: null,
+        });
+        const outcome: RunOutcome = {
+            kind: "sweep",
+            events: [],
+            items: [{ kind: "issue", number: 6 }, decided, { kind: "pullRequest", number: 7 }],
+            effects: [],
+            modeLowered: false,
+            exitCode: 0,
+        };
+        const text = renderSummary(
+            store,
+            { repository, eventName: "schedule", runUrl: null },
+            outcome,
+        );
+        expect(text.match(/^### .*$/gm)).toEqual(["### issue#5"]);
+        expect(text).toContain("| inactivity | info | wouldApply |");
+        expect(text).toContain("\nItems decided with no rows: 2.\n");
+        store.close();
+    });
+
     it("escapes a cell so no value can close it, and spells an empty one as a dash", () => {
         expect(cell(null)).toBe("-");
         expect(cell("")).toBe("-");
@@ -198,6 +386,7 @@ describe("appendSummary", () => {
             kind: "delivery",
             events: [{ event: "deliveryDeadLettered", deliveryId: "d", attempts: 5 }],
             items: [],
+            effects: [],
             modeLowered: false,
             exitCode: 1,
         };
@@ -218,6 +407,7 @@ describe("appendSummary", () => {
             kind: "idle",
             events: [{ event: "deliveryCompleted", deliveryId: "d", kind: "decision" }],
             items: [],
+            effects: [],
             modeLowered: false,
             exitCode: 1,
         };
@@ -230,6 +420,68 @@ describe("appendSummary", () => {
         expect(text).not.toContain("exited non-zero");
         expect(annotations(outcome)).toEqual([]);
         store.close();
+    });
+
+    it("logs one notice per applied effect and one warning per refused, in run order", () => {
+        const item = { kind: "issue", number: 164 } as const;
+        const effect = (
+            over: Partial<RunOutcome["effects"][number]>,
+        ): RunOutcome["effects"][number] => ({
+            effectId: "e",
+            capability: "triageQueue",
+            operation: "applyMappedLabel",
+            item,
+            outcome: "applied",
+            code: null,
+            detail: null,
+            ...over,
+        });
+        const outcome: RunOutcome = {
+            kind: "delivery",
+            events: [],
+            items: [item],
+            effects: [
+                effect({
+                    outcome: "refused",
+                    operation: "postManagedComment",
+                    code: "writeForbidden",
+                }),
+                effect({ outcome: "already", code: "leaseHeld" }),
+                effect({}),
+                effect({ outcome: "unknown", code: "postconditionUnconfirmed" }),
+            ],
+            modeLowered: false,
+            exitCode: 0,
+        };
+        expect(annotations(outcome)).toEqual([
+            "::warning::triageQueue postManagedComment issue#164 refused writeForbidden",
+            "::notice::triageQueue applyMappedLabel issue#164 applied",
+        ]);
+    });
+
+    it("escapes a message so a percent sign or a line break cannot end the command", () => {
+        const outcome: RunOutcome = {
+            kind: "delivery",
+            events: [
+                {
+                    event: "deliveryAttemptFailed",
+                    deliveryId: "d",
+                    disposition: "retryScheduled",
+                    attempts: 1,
+                    maxAttempts: 5,
+                    retryNotBefore: null,
+                    detail: "GitHub answered 502\r\n100% of the time",
+                },
+            ],
+            items: [],
+            effects: [],
+            modeLowered: true,
+            exitCode: 1,
+        };
+        expect(annotations(outcome)).toEqual([
+            `::notice::${"The configuration asked for `active`; it was decided as `dry-run` because the workflow did not arm writes."}`,
+            "::warning::deliveryAttemptFailed GitHub answered 502%0D%0A100%25 of the time",
+        ]);
     });
 
     it("writes nothing without a path and appends with one", () => {

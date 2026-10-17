@@ -151,6 +151,7 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
         const rows = decisionsOf({
             ...pass,
             repository,
+            item: decision.item,
             at,
             report: decision.report,
             effects: outcomes,
