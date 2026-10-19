@@ -25,6 +25,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+    CAPABILITY_MODES,
     CAPABILITY_NAME_PATTERN,
     COMMANDS,
     describeSpec,
@@ -210,8 +211,9 @@ const DISCLAIMER = [
     "settings spec carries. Shape and spelling only: that label, command, skill and alert",
     "mappings are injective and share one namespace, that a settings value naming a meaning or",
     "a principal names one this same file maps, that a `duration` is inside the platform's",
-    "century ceiling and sits the required distance above the one it is measured against, and",
-    "that a capability is only enabled once the meanings it requires are mapped — none of those",
+    "century ceiling and sits the required distance above the one it is measured against, that",
+    "a capability is only enabled once the meanings it requires are mapped, and that a",
+    "capability's `mode` is no higher than the file's — none of those",
     "are questions JSON Schema can ask. The",
     "App's parser is the authority; this schema catches shape and spelling.",
 ].join(" ");
@@ -219,7 +221,7 @@ const DISCLAIMER = [
 /** One sentence per top-level key, for the maintainer hovering over it. */
 const TOP_LEVEL_NOTES: { readonly [K in TopLevelKey]: string } = {
     schemaVersion: "The configuration format's version. Optional; the only value is 2.",
-    mode: "How far the App may go. Each step does what the one before it does, and more.",
+    mode: "How far the App may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
     capabilities:
         "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
     mappings: "The words this repository spells each meaning with.",
@@ -275,8 +277,8 @@ function mappingsSchema(): Subschema {
 
 /**
  * The `capabilities:` section: one property per shipped capability, and nothing
- * else. A capability's block has the same shape as every block inside it —
- * `enabled` and the spec's own keys beside it.
+ * else. A capability's block is `enabled`, its own `mode`, and the spec's own
+ * keys beside them; a block inside it takes no `mode`.
  */
 function capabilitiesSchema(): Subschema {
     const one = (name: string, fields: Described): Subschema => {
@@ -288,6 +290,10 @@ function capabilitiesSchema(): Subschema {
                     type: "boolean",
                     description: `Run ${name}. Consent is literally true; absent leaves it off.`,
                     default: false,
+                },
+                mode: {
+                    enum: [...CAPABILITY_MODES],
+                    description: `The most ${name} may do. Never above the file's mode, which it inherits when absent. To switch it off, set enabled to false.`,
                 },
                 ...(settings.properties as Subschema),
             },

@@ -25,7 +25,7 @@ Nothing to fix — this is your configuration, or our caution, behaving as speci
 |---|---|
 | `killSwitch` | The intent-level emergency gate is on; returned intents are refused after capability evaluation |
 | `modeDisabled` | Your file says `disabled`; enabled capabilities may be evaluated, but every screened intent is refused |
-| `modeRecordsOnly` | Your file says `observe` or `dry-run` — both record the action instead of applying it, and `dry-run` also names what it would have done in a `wouldApply` line beside this one |
+| `modeRecordsOnly` | The capability runs in `observe` or `dry-run` — its block's own `mode`, or your file's when the block states none, and the message says which. Both record the action instead of applying it, and `dry-run` also names what it would have done in a `wouldApply` line beside this one |
 | `observation` | It was only ever a read; there was nothing to apply |
 | `capabilityDisabled` | The capability is `enabled: false` (or absent) in your file |
 | `itemBlocked` | A human marked the item `blocked`, so the App keeps its hands off |

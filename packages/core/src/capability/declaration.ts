@@ -9,6 +9,7 @@ import {
     MAPPABLE_MEANINGS,
     type MappableMeaning,
     MAPPING_FAMILIES,
+    RESERVED_BLOCK_KEYS,
     SKILL_TIERS,
 } from "../config/schema.js";
 import type { MappingFamily, RequiredMappings } from "../config/schema.js";
@@ -205,9 +206,10 @@ function validateDeclaration(d: CapabilityDeclaration): readonly string[] {
         );
     }
 
-    if (Object.hasOwn(d.settings, "enabled")) {
+    for (const [key, what] of Object.entries(RESERVED_BLOCK_KEYS)) {
+        if (!Object.hasOwn(d.settings, key)) continue;
         errors.push(
-            `${at}: settings may not declare "enabled" — it is consent on the capability's own block, whose other keys are the settings`,
+            `${at}: settings may not declare "${key}" — the capability's own block reads it as ${what}, and its other keys are the settings`,
         );
     }
 

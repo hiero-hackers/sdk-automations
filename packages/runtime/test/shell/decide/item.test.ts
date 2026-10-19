@@ -76,8 +76,13 @@ const RECORD: Facts = {
 /** The one capability every case here decides through; the box knows no others. */
 const CAPABILITIES: readonly EngineCapability[] = [toEngine(triageQueue)];
 
-function configIn(mode: string): RepositoryConfig {
-    const result = parseConfigDocument(CONFIG_TEXT.replace("MODE", mode), {
+/** `blockMode` is what triageQueue's own block states; absent, it inherits the file's. */
+function configIn(mode: string, blockMode?: string): RepositoryConfig {
+    const text = CONFIG_TEXT.replace("MODE", mode).replace(
+        "    welcome: false\n",
+        `    welcome: false\n${blockMode === undefined ? "" : `    mode: ${blockMode}\n`}`,
+    );
+    const result = parseConfigDocument(text, {
         revision: "rev-a",
         knownCapabilities: CAPABILITIES.map(({ declaration }) => declaration),
     });
@@ -212,6 +217,24 @@ describe("the write path", () => {
             reason: "active mode is unsupported by the runnable shell",
         });
         expect(rows()).toEqual([]);
+    });
+
+    /** The gate asks whether any capability runs in `active`, not whether the file says it. */
+    it("decides an active file whose one capability is held at dry-run, with no write path", async () => {
+        const decided = await decider()(delivered, configIn("active", "dry-run"), AT);
+        expect(decided).toMatchObject({ kind: "decided", outcomes: [] });
+        expect(rows().map((row) => row.code)).toContain("wouldApply");
+    });
+
+    it("hands a wired applier nothing when every enabled capability is held back", async () => {
+        const wired = recordingApplier();
+        const decided = await decider({ applier: wired.applier })(
+            delivered,
+            configIn("active", "observe"),
+            AT,
+        );
+        expect(wired.passes).toEqual([]);
+        expect(decided).toMatchObject({ kind: "decided", outcomes: [] });
     });
 
     it("meets the same gate for a fact record: one lifecycle, not two", async () => {

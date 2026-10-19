@@ -62,6 +62,7 @@ describe("the check order is contract, and now assertable directly", () => {
                 request: write,
                 actionClass: write.actionClass,
                 config: config(),
+                mode: { mode: "active", source: "inherited" } as const,
                 context: context({ latestHumanChangeAt: "unknown" }),
                 capabilityEnabled: true,
                 missing: [] as readonly string[],
@@ -119,6 +120,19 @@ describe("the standing rules — the item-independent half a resend re-checks", 
                 killSwitchActive: true,
             }),
         ).toMatchObject({ outcome: "refuse", code: "killSwitch" });
+    });
+
+    /** A resend re-checks the standing rules, so the capability's own mode holds there too. */
+    it("records a capability its block holds back, under an active file", () => {
+        const held = config({
+            capabilities: { assignment: { enabled: true, mode: "dry-run", settings: {} } },
+        });
+        expect(
+            evaluateStandingRules(standing, held, {
+                installationGrants: ["issues:write"],
+                killSwitchActive: false,
+            }),
+        ).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
     });
 
     it("refuses a capability the repository turned off, and a grant the installation lost", () => {

@@ -65,6 +65,17 @@ export const SHORT_LADDER = `  inactivity:
 /** How long after its warning the short ladder acts. */
 export const SHORT_GRACE_MS = 2 * 60 * 60_000;
 
+/** configReport held at dry-run by its own block, whatever the file's mode is. */
+const HELD_REPORT = `  configReport:
+    enabled: true
+    mode: dry-run
+`;
+
+/** An active file: prDashboard inherits `active`, configReport's block holds it at `dry-run`. */
+export function heldConfig(): string {
+    return `mode: active\ncapabilities:\n${CONFIGS["prDashboard"] ?? ""}${HELD_REPORT}${TRIAGE_MAPPINGS}`;
+}
+
 export function lockingConfig(mode: string): string {
     return `mode: ${mode}\ncapabilities:\n${LOCKING_TRIAGE}${TRIAGE_MAPPINGS}`;
 }

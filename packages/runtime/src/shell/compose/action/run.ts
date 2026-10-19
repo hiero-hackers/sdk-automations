@@ -7,6 +7,8 @@
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
 import {
     ABSENT_CONFIG_REVISION,
+    anyCapabilityActive,
+    loweredTo,
     type DestructiveWarning,
     type EngineCapability,
     type ItemRef,
@@ -37,7 +39,7 @@ export interface RunOutcome {
     readonly items: readonly ItemRef[];
     /** What became of every effect the run applied, in order. */
     readonly effects: readonly EffectOutcome[];
-    /** `active` was decided as `dry-run` because the workflow did not arm writes. */
+    /** A capability's `active` was decided as `dry-run` because the workflow did not arm writes. */
     readonly modeLowered: boolean;
     /** No `sdk-automations.yml` at the default branch: the run decided with nothing enabled. */
     readonly configAbsent: boolean;
@@ -130,11 +132,12 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
             const item = input.kind === "facts" ? input.facts.item : itemNamedBy(payload);
             if (item !== null) items.push(item);
             deciding = item === null ? null : { item, revision: config.revision };
-            const lowered = config.mode === "active" && !run.armWrites;
+            // The file and every stated `active` together, so no block outlives the lowered file.
+            const lowered = !run.armWrites && anyCapabilityActive(config);
             if (lowered) modeLowered = true;
             const decided = await decide(
                 input,
-                lowered ? { ...config, mode: "dry-run" } : config,
+                lowered ? loweredTo(config, "dry-run") : config,
                 at,
                 allowance,
             );

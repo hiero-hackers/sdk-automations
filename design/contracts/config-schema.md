@@ -49,6 +49,7 @@ mode: observe
 capabilities:
   triageQueue:
     enabled: false
+    mode: observe
     welcome: true
 mappings:
   labels:
@@ -68,7 +69,7 @@ The accepted top-level keys are exactly:
 |---|---|
 | `schemaVersion` | Optional; omission is version `2`, the only version read. Every other stated value — `1`, a present null, a quoted number — is `schemaVersionUnsupported` (D222). A future format must state its own version to be read as one. |
 | `mode` | Optional; omission defaults to `observe`, while a present null or invalid value is rejected. |
-| `capabilities` | Optional mapping from an admitted capability name to a flat block: an `enabled` boolean and, beside it, the keys the capability's spec reads. |
+| `capabilities` | Optional mapping from an admitted capability name to a flat block: an `enabled` boolean, an optional `mode`, and beside them the keys the capability's spec reads. |
 | `mappings` | Optional; contains the `labels`, `commands` and `skills` families. |
 | `principals` | Optional string-to-string mapping. |
 
@@ -81,10 +82,17 @@ Unknown keys are rejected at the top level, inside `mappings`, and inside each c
   `enabled: false`. Unknown and retired names are rejected with `capabilityUnknown`; there is no retirement
   tombstone in the current direct-set model (D58's earlier registry design no longer exists).
 - Only the boolean value `true` enables a capability. Omission is false; strings and numbers are rejected.
-- `enabled` is reserved at the top of a block, and a declaration naming it as a setting is refused at
-  boot: the block is flat, so consent and a setting would be one key. Nested levels need no rule — the
-  kit's own block constructors own their `enabled`.
-- Every key of a block other than `enabled` IS a setting, and they are read together against the
+- `enabled` and `mode` are reserved at the top of a block, and a declaration naming either as a
+  setting is refused at boot: the block is flat, so the platform's key and a setting would be one key.
+  Nested levels need no rule — the kit's own block constructors own their `enabled`, and a nested
+  block takes no `mode`.
+- A block's `mode`, when stated, is `observe`, `dry-run` or `active`; anything else is `modeInvalid` at
+  `capabilities.<name>.mode`. `disabled` is not a block mode: `enabled: false` is how a capability is
+  switched off, and one meaning gets one spelling. A stated mode above the file's is
+  `capabilityModeAboveFile` at the same path (§4). Both are judged on a disabled block too, as its
+  settings are. When the file's own `mode` is invalid the bound is not judged: the file is rejected
+  either way, and a bound that failed would name the wrong fix.
+- Every key of a block other than `enabled` and `mode` IS a setting, and they are read together against the
   admitted capability's declared SPEC — the settings toolkit of `design/guides/capability-kits.md` §3.
   The spec's keys are the legal names, so an undeclared name is `unknownKey` at
   `capabilities.<name>.<key>`; its fields judge the values, so a value a field cannot read is
@@ -141,12 +149,19 @@ meanings too, so the only question left about a key is its shape.
 
 ## 4. Repository modes
 
+The file's `mode` is a **ceiling and a default**. A capability whose block states no `mode` runs in
+the file's; one that states a mode runs in that, and the mode may be equal to the file's or lower,
+never higher. So an empty file is still `observe`, and the top line still bounds the blast radius of
+every capability in the file — lowering it below a block's stated mode rejects the whole file, which
+stops every capability until the block is lowered too. The rows below describe a capability's
+**effective mode**: `disabled` only ever arrives from the file.
+
 | Mode | Current behavior |
 |---|---|
 | `disabled` | Core still evaluates enabled capabilities and declared resolvers, then refuses every screened intent with `modeDisabled`; it approves no effect. |
 | `observe` | Core records findings and record-only intent explanations, never an effect to apply. This is the safe default. |
 | `dry-run` | The same record-only decision path as `observe`, plus a `wouldApply` finding naming each effect that reached the mode rule. No identity is minted and nothing is prepared. |
-| `active` | A valid core mode the shell honours only when it was composed with a write path: the shipped default records `modeUnsupported` before `decide()`, while a process started with `APP_SLUG` beside the credential triad applies effects, behind the standing gate — App-owned comment identity (D125) and the armed FX-gate protocol (`packages/dev/lab/protocols/8.2-first-effects.md`). |
+| `active` | A valid core mode the shell honours only when it was composed with a write path: the shipped default records `modeUnsupported` before `decide()` whenever an enabled capability's effective mode is `active`, while a process started with `APP_SLUG` beside the credential triad applies effects, behind the standing gate — App-owned comment identity (D125) and the armed FX-gate protocol (`packages/dev/lab/protocols/8.2-first-effects.md`). |
 
 For modes that reach `decide()`, the process kill switch is the first safety verdict for each returned
 intent. It does not prevent capability or resolver evaluation, and the shell intercepts `active` before
@@ -178,9 +193,10 @@ protocol 8.2).
 | `notAMapping` | The document or a mapping-shaped section has another type. |
 | `unknownKey` | A closed mapping contains an unsupported key. |
 | `schemaVersionUnsupported` | `schemaVersion` is stated and is not the unquoted number `2`; absence is version `2`. |
-| `modeInvalid` | `mode` is present but is not one of §4's values. |
+| `modeInvalid` | The file's `mode` is present but is not one of §4's values, or a block's `mode` is present but is not `observe`, `dry-run` or `active`. |
 | `capabilityNameInvalid` | A capability name is not a valid configuration key. |
 | `capabilityEnabledNotBoolean` | `enabled` is present but is not a boolean. |
+| `capabilityModeAboveFile` | A block states a mode above the file's; the message names both modes and both fixes — raise the file, or lower the block. |
 | `capabilityUnknown` | The application did not directly admit the configured capability name. |
 | `settingInvalid` | A settings value the admitted capability's spec cannot read, at that value's own path — `capabilities.<name>.<key>`, with no `settings` segment. |
 | `meaningNotMappable` | A label mapping names a meaning outside the closed catalogue. |
@@ -203,7 +219,8 @@ protocol 8.2).
 - Check mapped-label existence and live installation grants before activation.
 - Build the pull-request validation check and effective-configuration report required by D38.
 - Decide deprecation, retention and rollback policy for a future format (Q14); absence being the current version is decided (D222).
-- Add inheritance only if repeated repository demand justifies it; the current version has none.
+- Add inheritance between files only if repeated repository demand justifies it; the current version
+  has none. A block inheriting its file's `mode` is §4's ceiling, not this.
 - Keep `active` unsupported in every composition that wires no write path, and keep the armed one behind
   the standing gate (D125, protocol 8.2) until that protocol has been re-run against the operations as
   they stand.
@@ -214,6 +231,6 @@ protocol 8.2).
 top-level vocabulary by `pnpm contracts`, and served from the default branch for a
 `# yaml-language-server: $schema=…` modeline. It is a shape-and-spelling check and nothing more: mapping
 injectivity and the shared label namespace, a settings value naming a meaning or principal this file
-maps, a `duration`'s ceiling and `above` relation and the cascade, and the enabled-capability required-mapping rule are
+maps, a `duration`'s ceiling and `above` relation and the cascade, a block's `mode` against the file's, and the enabled-capability required-mapping rule are
 all cross-field and stay the parser's. The schema's own top-level `description` says so, so a maintainer
 cannot read a green editor as a parsed file (D149).

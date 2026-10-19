@@ -7,6 +7,7 @@
  */
 
 import {
+    effectiveMode,
     inert,
     LABEL_DEFAULTS,
     type ConfigError,
@@ -85,23 +86,41 @@ function labelsSetBy(
     ];
 }
 
-/** Every capability the file switched on, with what its block resolved to. */
+/** The mode one capability runs in and where it came from, so no reader resolves the inheritance. */
+function modeLine(config: RepositoryConfig, name: string): string {
+    const { mode, source } = effectiveMode(config, name);
+    return `${mode} (${source === "stated" ? "stated on its block" : "inherited from the file"})`;
+}
+
+/** Every capability the file switched on, with its mode and what its block resolved to. */
 function capabilities(config: RepositoryConfig): readonly string[] {
     const entries = Object.entries(config.capabilities);
     const on = entries.filter(([, block]) => block.enabled);
     const off = entries.filter(([, block]) => !block.enabled).map(([name]) => inert(name));
+    // A capability added to an active file goes live on merge; this line is where that shows.
+    const live = on
+        .map(([name]) => name)
+        .filter((name) => {
+            const { mode, source } = effectiveMode(config, name);
+            return mode === "active" && source === "inherited";
+        })
+        .map(inert);
 
     const lines = on.flatMap(([name, block]) => {
         const settings = tree(block.settings, 1);
         const labels = labelsSetBy(config, block.labels ?? []);
+        const heading = `${inert(name)} — on, ${modeLine(config, name)}`;
         return settings.length === 0 && labels.length === 0
-            ? [bullet(0, `${inert(name)} — on, no settings`)]
-            : [bullet(0, `${inert(name)} — on`), ...settings, ...labels];
+            ? [bullet(0, `${heading}, no settings`)]
+            : [bullet(0, heading), ...settings, ...labels];
     });
     return [
         "**Capabilities**",
         "",
         ...(lines.length === 0 ? [bullet(0, "none — this file enables no capability")] : lines),
+        ...(live.length === 0
+            ? []
+            : ["", `Inheriting active, so writing once this merges: ${live.join(", ")}.`]),
         ...(off.length === 0 ? [] : ["", `Switched off: ${off.join(", ")}.`]),
     ];
 }
@@ -143,7 +162,7 @@ export function renderConfiguration(revision: string, config: RepositoryConfig):
             "",
             `The file at \`${revision}\` parses. This is what the App would read from it.`,
             "",
-            `**Mode** — ${config.mode}`,
+            `**Mode** — ${config.mode}, the most any capability may do`,
             "",
             ...capabilities(config),
             "",

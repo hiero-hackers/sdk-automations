@@ -82,6 +82,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
         raw,
         options.knownCapabilities,
         namesIn(mappings, principals),
+        mode.ok ? mode.value : null,
     );
 
     // §2.6 — fail closed: any error anywhere yields no configuration, whole-file (D38).

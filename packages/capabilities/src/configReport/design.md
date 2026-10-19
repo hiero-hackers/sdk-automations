@@ -8,17 +8,17 @@ One comment per pull request, updated in place. When the file parses:
 >
 > The file at `sha256:5a3e898528ce` parses. This is what the App would read from it.
 >
-> **Mode** — dry-run
+> **Mode** — dry-run, the most any capability may do
 >
 > **Capabilities**
 >
-> - triageQueue — on
+> - triageQueue — on, dry-run (inherited from the file)
 >   - welcome: true
 >   - labels it may set
 >     - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it
-> - prDashboard — on, no settings
-> - configReport — on, no settings
-> - inactivity — on
+> - prDashboard — on, dry-run (inherited from the file), no settings
+> - configReport — on, dry-run (inherited from the file), no settings
+> - inactivity — on, observe (stated on its block)
 >   - exemptBlocked: true
 >   - remindAfter: 336
 >   - reapAfter: 504
@@ -45,6 +45,13 @@ One comment per pull request, updated in place. When the file parses:
 
 Trimmed above at `inactivity`'s ladders, which go three levels deeper; nothing else is elided. A
 capability the file switched off is named on one trailing line rather than expanded.
+
+**Each capability's mode is shown with where it came from**: its own block, or the file's top line,
+which is also the most any capability may do (D236). A reviewer never resolves the inheritance by
+hand. Under an `active` file one more trailing line names every capability that inherits `active`,
+because a block added to such a file writes as soon as it merges:
+
+> Inheriting active, so writing once this merges: triageQueue, configReport.
 
 **A clock is shown as the hours it RESOLVED to, not as the `14d` the file wrote.** The report
 renders `{ enabled, settings }` and nothing else: a capability cannot know the shipped declarations

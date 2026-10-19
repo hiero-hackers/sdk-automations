@@ -62,6 +62,22 @@ any decision is made.
 `dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
 be is named.
 
+The mode at the top of the file is the most any capability may do. To promote capabilities one at a
+time, give a block its own lower `mode` and let the rest inherit the file's:
+
+```yaml
+mode: active
+capabilities:
+  triageQueue:
+    enabled: true            # inherits active
+  prDashboard:
+    enabled: true
+    mode: dry-run            # still rehearsing
+```
+
+A block may never state more than the file does. See
+[`capabilities.<name>.mode`](configuration.md#capabilitiesnamemode).
+
 ## Common setups
 
 **Triage only** — label incoming issues, touch nothing else:

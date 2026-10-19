@@ -4,8 +4,13 @@ import type { Spec } from "./spec.js";
 
 // ─── Vocabulary ──────────────────────────────────────────────────────
 
-/** The blast-radius ladder a repository chooses from, least to most. */
-export const REPOSITORY_MODES = ["disabled", "observe", "dry-run", "active"] as const;
+/** The modes a block may state, least to most. Not `disabled`: `enabled: false` is that. */
+export const CAPABILITY_MODES = ["observe", "dry-run", "active"] as const;
+
+export type CapabilityMode = (typeof CAPABILITY_MODES)[number];
+
+/** The blast-radius ladder a repository chooses from, least to most. The ORDER is the ceiling's. */
+export const REPOSITORY_MODES = ["disabled", ...CAPABILITY_MODES] as const;
 
 export type RepositoryMode = (typeof REPOSITORY_MODES)[number];
 
@@ -41,11 +46,19 @@ export type Skill = (typeof SKILL_TIERS)[number];
 /** Capability names double as configuration keys (`capabilities.<name>`, §3). */
 export const CAPABILITY_NAME_PATTERN = /^[a-z][a-zA-Z0-9]*$/;
 
+/** The keys of a capability's own block that are the platform's, never a setting: what each is. */
+export const RESERVED_BLOCK_KEYS = {
+    enabled: "consent",
+    mode: "the mode it runs in, bounded by the file's",
+} as const;
+
 // ─── The shape of a document ─────────────────────────────────────────
 
 /** One capability's block. `settings` is spec-resolved (§3); no document writes that key. */
 export interface CapabilityConfig {
     readonly enabled: boolean;
+    /** The mode the block STATED, never above the file's; absent inherits it (`effectiveMode`). */
+    readonly mode?: CapabilityMode;
     readonly settings: Readonly<Record<string, unknown>>;
     readonly labels?: readonly MappableMeaning[];
 }

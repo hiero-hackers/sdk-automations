@@ -3,7 +3,7 @@
  * `design/contracts/safety.md`'s mechanically checkable subset only.
  */
 
-import type { RepositoryConfig } from "../config/index.js";
+import { effectiveMode, type EffectiveMode, type RepositoryConfig } from "../config/index.js";
 import { missingPermissions } from "../github/index.js";
 import { isBlocked } from "../workflow/index.js";
 import type {
@@ -41,6 +41,8 @@ export function evaluatePreflight(context: WriteContext): SafetyVerdict | null {
 /** What a rule may look at when it knows nothing about the item. */
 interface StandingFacts {
     readonly config: RepositoryConfig;
+    /** The requesting capability's mode, never the file's alone (config-schema.md §4). */
+    readonly mode: EffectiveMode;
     readonly actionClass: StandingRequest["actionClass"];
     readonly capabilityEnabled: boolean;
     readonly missing: readonly string[];
@@ -151,15 +153,15 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
             : null,
     ),
     standing("modeDisabled", (f) =>
-        f.config.mode === "disabled"
+        f.mode.mode === "disabled"
             ? refuse("modeDisabled", "the repository mode is disabled")
             : null,
     ),
     standing("modeRecordsOnly", (f) =>
-        f.config.mode === "observe" || f.config.mode === "dry-run"
+        f.mode.mode === "observe" || f.mode.mode === "dry-run"
             ? record(
                   "modeRecordsOnly",
-                  `repository mode is ${f.config.mode}; the effect is recorded, not applied (rule 10)`,
+                  `the capability's mode is ${f.mode.mode}, ${f.mode.source === "stated" ? "stated on its block" : "inherited from the file"}; the effect is recorded, not applied (rule 10)`,
               )
             : null,
     ),
@@ -172,6 +174,7 @@ function standingFacts(
 ): StandingFacts {
     return {
         config,
+        mode: effectiveMode(config, request.capability),
         actionClass: request.actionClass,
         // Derived, never supplied: the reviewed file is the only source (D73).
         capabilityEnabled: config.capabilities[request.capability]?.enabled === true,

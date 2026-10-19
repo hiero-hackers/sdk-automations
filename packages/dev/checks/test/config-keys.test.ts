@@ -103,6 +103,7 @@ describe("the configuration keys", () => {
             "### `cap`",
             "```yaml",
             "enabled: true",
+            "# mode: dry-run — optional; m",
             "group: # default — d",
             '  # guide: "…" — optional; g',
             "  after: 1d",
@@ -113,6 +114,7 @@ describe("the configuration keys", () => {
         expect(settingsPaths(block)).toEqual([
             "cap",
             "cap.enabled",
+            "cap.mode",
             "cap.group",
             "cap.group.guide",
             "cap.group.after",
@@ -124,6 +126,18 @@ describe("the configuration keys", () => {
         expect(drift(small, renamed)).toEqual({
             vanished: ["capabilities: cap.a"],
             added: ["capabilities: cap.b"],
+        });
+
+        // A baseline missing a block's `mode` row is a key the page offers and nobody declared.
+        const withoutMode: Baseline = { topLevel: [], mappings: [], capabilities: ["cap"] };
+        const withMode: Baseline = {
+            topLevel: [],
+            mappings: [],
+            capabilities: ["cap", "cap.mode"],
+        };
+        expect(drift(withoutMode, withMode)).toEqual({
+            vanished: [],
+            added: ["capabilities: cap.mode"],
         });
     });
 });

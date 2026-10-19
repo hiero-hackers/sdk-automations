@@ -40,6 +40,7 @@
 
 import {
     block,
+    CAPABILITY_MODES,
     carriesFactGroup,
     count,
     duration,
@@ -399,7 +400,8 @@ const REFUSAL_CODES: { readonly [C in SafetyRefusalCode]: CodeFacts } = {
 /** Not refusals: the decision was reached and written down instead (D57). */
 const RECORD_ONLY_CODES: { readonly [C in RecordOnlyCode]: string } = {
     observation: "The request's class is `observation`.",
-    modeRecordsOnly: "The repository mode is `observe` or `dry-run`.",
+    modeRecordsOnly:
+        "The capability's mode is `observe` or `dry-run`: its block's own `mode`, or the file's where the block states none.",
 };
 
 /** The two verdict-code tables of `design/contracts/safety.md`. */
@@ -672,9 +674,17 @@ function treeLines(fields: Described, depth: number, outer: readonly Described[]
 }
 
 /**
+ * The block's own `mode`, beside its consent. Commented, because a block that
+ * leaves it out inherits the file's and there is no default to show.
+ */
+const MODE_LINE = commented(
+    `mode: dry-run — optional; ${CAPABILITY_MODES.join(", ")}, never above the file's mode, which a block leaving it out inherits`,
+);
+
+/**
  * One capability's block, or the sentence that it has no settings. The document
- * is flat, so the block is `enabled` and the spec's keys beside it — rendered
- * at the same depth, which is how a maintainer writes them.
+ * is flat, so the block is `enabled`, its `mode` and the spec's keys beside them
+ * — rendered at the same depth, which is how a maintainer writes them.
  *
  * Exported for the spec no capability ships: `docs.test.ts` renders a spec of
  * its own to hold the tree to a rule the shipped four cannot exercise.
@@ -683,11 +693,17 @@ export function settingsTree(name: string, settings: Spec): string {
     const described = describeSpec(settings);
     const heading = `### \`${name}\``;
     if (Object.keys(described).length === 0) {
-        return `${heading}\n\nNo settings. \`${name}\` declares no keys, so its block holds \`enabled\` and nothing else.`;
+        return `${heading}\n\nNo settings. \`${name}\` declares no keys, so its block holds \`enabled\`, a \`mode\` if it states one, and nothing else.`;
     }
-    return [heading, "", "```yaml", "enabled: true", ...treeLines(described, 0, []), "```"].join(
-        "\n",
-    );
+    return [
+        heading,
+        "",
+        "```yaml",
+        "enabled: true",
+        MODE_LINE,
+        ...treeLines(described, 0, []),
+        "```",
+    ].join("\n");
 }
 
 /**

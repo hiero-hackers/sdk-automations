@@ -4,6 +4,7 @@
  */
 
 import { budget } from "./budget.js";
+import { capabilityMode } from "./capability-mode.js";
 import { conformance } from "./conformance.js";
 import { firstEffects } from "./first-effects.js";
 import { grace } from "./grace.js";
@@ -20,6 +21,7 @@ export const PROTOCOLS: readonly Protocol[] = [
     reRun,
     budget,
     pilotShape,
+    capabilityMode,
 ];
 
 export const PRE_TAG: readonly string[] = ["9.1", "9.2", "9.4", "9.6"];

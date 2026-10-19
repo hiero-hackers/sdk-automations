@@ -15,7 +15,7 @@ The plan, phases A to J, lives beside the repository rather than in it: the fold
 - **Phase B, the Action shell, is merged** ([#231](https://github.com/hiero-hackers/sdk-automations/pull/231),
   [#232](https://github.com/hiero-hackers/sdk-automations/pull/232),
   [#233](https://github.com/hiero-hackers/sdk-automations/pull/233)): a run maps one event to one
-  delivery or the hourly sweep, arms writes only when the mode is `active` and `arm-writes` is
+  delivery or the hourly sweep, arms writes only when a capability's mode is `active` and `arm-writes` is
   `"true"`, and writes a job summary of every decision and effect.
 - **Phase C, the sandbox, has passed** protocols 9.1 (conformance for all five capabilities),
   9.2 (first effects), 9.3 (grace across runs), 9.4 (same-second events), 9.6 (a re-run of an old
@@ -28,7 +28,10 @@ The plan, phases A to J, lives beside the repository rather than in it: the fold
 
 1. **Tag the first release**, so a repository can name and pin the version it runs.
 2. **Observe on analytics** (Phase E): two files merged, `mode: observe`, `arm-writes: "false"`,
-   then dry-run, then each capability active by its own written approval.
+   then dry-run, then each capability active by its own written approval. That last step reads as a
+   diff: the file goes to `active` with every block stating `mode: dry-run`, and a capability's
+   approval is the pull request deleting its block's `mode:` line — one line, naming it, which
+   configReport answers by listing it as going live (D236).
 3. **Docs** (Phase D): the quickstart, installing and troubleshooting pages carry the Action.
 4. **Python SDK migration** (Phase G): each bot becomes a capability, dry-run beside the running
    bot for seven days, then one pull request that removes the bot and sets the capability active.

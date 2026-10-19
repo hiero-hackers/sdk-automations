@@ -46,6 +46,7 @@ you leave the key out; `docs/examples/full.yml` is the same catalogue with the o
 
 ```yaml
 enabled: true
+# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 welcome: false # default — Post a welcome comment on a new issue, saying it is waiting for triage; a requirement below posts it too
 lockUntilTriaged: false # default — Lock a new issue's conversation until someone with triage access adds the ready label — mappings.labels.ready, default "status: ready", which no capability creates yet; the welcome is posted either way
 confirmUnlock: false # default — Post a comment when the ready label unlocks the issue; does nothing unless lockUntilTriaged is on
@@ -57,6 +58,7 @@ requirements: # default — What a triaged issue carries, one opt-in item each, 
 
 ```yaml
 enabled: true
+# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 checks: # default — The quality checks this repository runs — each one off until it is enabled
   dcoSignoff: # off until enabled — Say so when a commit carries no Signed-off-by trailer
     enabled: true
@@ -79,6 +81,7 @@ applyLabels: [] # none — The positions the dashboard may set: needsRevision on
 
 ```yaml
 enabled: true
+# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 exemptBlocked: true # default — Leave anything carrying the blocked meaning alone — no reminder, no release
 remindAfter: 14d # default — Silence before a reminder, for every ladder and reason that sets none of its own
 reap: # default — The release clock every ladder and reason inherits — consent is each acting level's own
@@ -117,12 +120,13 @@ pullRequests: # off until enabled — Run the ladder on pull requests, linked to
 
 ### `configReport`
 
-No settings. `configReport` declares no keys, so its block holds `enabled` and nothing else.
+No settings. `configReport` declares no keys, so its block holds `enabled`, a `mode` if it states one, and nothing else.
 
 ### `assignment`
 
 ```yaml
 enabled: true
+# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 autoAssign: # off until enabled — Assign a commenter who uses this repository's assign command — needs mappings.commands.assign
   enabled: true
   claimableOnlyWhen: [] # none — An issue is claimable only while it carries one of these meanings; empty means any open issue

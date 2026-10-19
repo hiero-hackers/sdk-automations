@@ -45,6 +45,25 @@ ${CONFIGS[capability] ?? ""}mappings:
     working: /working
 `;
 
+/** Two capabilities in one file, each block stating the mode given, or inheriting when absent. */
+const configOf = (
+    mode: string,
+    blocks: Readonly<Record<string, string | null>>,
+): string => `schemaVersion: 2
+mode: ${mode}
+capabilities:
+${Object.entries(blocks)
+    .map(([name, stated]) =>
+        (CONFIGS[name] ?? "").replace(
+            /^( {2}\w+:\n)/,
+            stated === null ? "$1" : `$1    mode: ${stated}\n`,
+        ),
+    )
+    .join("")}mappings:
+  labels:
+    awaitingTriage: "status: triage"
+`;
+
 afterEach(() => {
     vi.unstubAllGlobals();
 });
@@ -278,6 +297,67 @@ describe("one run", () => {
         expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 164 })).not.toEqual(
             [],
         );
+        store.close();
+    });
+
+    it("lowers a block's stated active with the file while writes are not armed", async () => {
+        scriptedGitHub({
+            now: () => START,
+            config: () => configOf("active", { triageQueue: "active" }),
+        });
+        const store = runStore();
+        const outcome = await runAction(runOf({ armWrites: false }), {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+        });
+        expect(outcome.modeLowered).toBe(true);
+        expect(kinds(outcome.events)).not.toContain("effectApplied");
+        const codes = store.ledger
+            .decisionsOn(REPOSITORY, { kind: "issue", number: 164 })
+            .map((row) => row.code);
+        expect(codes.filter((code) => code === "wouldApply")).toHaveLength(2);
+        store.close();
+    });
+
+    it("lowers nothing while writes are not armed, when every block is held back already", async () => {
+        scriptedGitHub({
+            now: () => START,
+            config: () => configOf("active", { triageQueue: "dry-run" }),
+        });
+        const store = runStore();
+        const outcome = await runAction(runOf({ armWrites: false }), {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+        });
+        expect(outcome.modeLowered).toBe(false);
+        expect(kinds(outcome.events)).not.toContain("effectApplied");
+        store.close();
+    });
+
+    it("hands the applier the capability that inherits active, and rehearses the one its block holds back", async () => {
+        scriptedGitHub({
+            now: () => START,
+            config: () => configOf("active", { prDashboard: null, configReport: "dry-run" }),
+        });
+        const store = runStore();
+        const outcome = await runAction(runOf({ armWrites: true, eventName: "pull_request" }), {
+            payload: capture("pull_request.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+        });
+        expect(outcome.modeLowered).toBe(false);
+        // The script serves no pull request to the apply-time read, so what the write came to is not asked here.
+        expect(outcome.effects.map((effect) => effect.capability)).toEqual(["prDashboard"]);
+        const [item] = outcome.items;
+        const rows = store.ledger.decisionsOn(REPOSITORY, item!);
+        expect(
+            rows.filter((row) => row.code === "wouldApply").map((row) => row.capability),
+        ).toEqual(["configReport"]);
         store.close();
     });
 

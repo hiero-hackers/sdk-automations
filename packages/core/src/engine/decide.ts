@@ -33,7 +33,7 @@ import {
     type ResolverSource,
 } from "./invoke.js";
 import { normalizeDelivery } from "./events.js";
-import type { RepositoryConfig } from "../config/index.js";
+import { effectiveMode, type RepositoryConfig } from "../config/index.js";
 import { closureOf } from "../workflow/index.js";
 import {
     activitySinceWarning,
@@ -278,9 +278,9 @@ function outcomeOf(
         findings.push(explanationFinding(intent.explanation, subject));
     }
     findings.push(verdictFinding(verdict, effectSubject));
-    // After the verdict, which it elaborates: this says what the mode recorded.
+    // After the verdict, which it elaborates: this says what the capability's mode recorded.
     if (
-        config.mode === "dry-run" &&
+        effectiveMode(config, intent.capability).mode === "dry-run" &&
         verdict.outcome === "record-only" &&
         verdict.code === "modeRecordsOnly"
     ) {

@@ -283,6 +283,82 @@ describe("dry-run rehearses, observe records", () => {
     });
 });
 
+/**
+ * A block's mode holds one capability back while the file lets its sibling act:
+ * the ramp the roadmap promotes capabilities along, one at a time.
+ */
+describe("a capability's own mode, beside a sibling's", () => {
+    const observedAt = new Date("2026-08-07T00:00:00Z");
+    const item = { kind: "issue", number: 7 } as const;
+    const repository = { owner: "o", repo: "r" } as const;
+
+    /** A second capability acting on the same record: one notice, nothing else. */
+    const greeter: EngineCapability = {
+        declaration: declareCapability({
+            ...declaration,
+            name: "greeter",
+            labels: [],
+            intents: ["postManagedComment"],
+        }) as never,
+        async evaluate(): Promise<readonly AnyIntent[]> {
+            const make = intentFactory("greeter", { repository, item, observedAt });
+            return [
+                make({
+                    operation: "postManagedComment",
+                    desired: { kind: "notice", body: "welcome" },
+                    cause: "issueWithoutPosition",
+                    explain: { summary: "New issue welcomed." },
+                }),
+            ];
+        },
+    };
+
+    const decideUnder = (modes: Readonly<Record<string, "observe" | "dry-run" | "active">>) =>
+        decide(
+            { kind: "facts", facts: webhookIssue({ repository, item, observedAt }) },
+            configWith({
+                mode: "active",
+                capabilities: ["triage", "greeter"],
+                modes,
+                labels: TRIAGE_LABELS,
+                revision: REV,
+            }),
+            [triage, greeter],
+            externals,
+        );
+
+    it("approves the sibling that inherits active, and rehearses the one held at dry-run", async () => {
+        const decision = await decideUnder({ greeter: "dry-run" });
+        expect(decision.approved.map((effect) => effect.intent.capability)).toEqual(["triage"]);
+        expect(
+            decision.report.findings.map(
+                (f) => `${"capability" in f.subject ? f.subject.capability : ""}:${f.code}`,
+            ),
+        ).toEqual([
+            "triage:capabilityExplained",
+            "triage:applied",
+            "greeter:capabilityExplained",
+            "greeter:modeRecordsOnly",
+            "greeter:wouldApply",
+        ]);
+        const held = decision.report.findings.find((f) => f.code === "modeRecordsOnly");
+        expect(held?.summary).toContain("dry-run, stated on its block");
+    });
+
+    it("still evaluates a capability held at observe, and rehearses nothing for it", async () => {
+        const decision = await decideUnder({ greeter: "observe" });
+        expect(decision.approved.map((effect) => effect.intent.capability)).toEqual(["triage"]);
+        expect(decision.report.findings.map((f) => f.code)).not.toContain("wouldApply");
+        expect(decision.report.findings.map((f) => f.code)).toContain("capabilityExplained");
+    });
+
+    it("keeps the report's mode the file's, whatever a block states", async () => {
+        const decision = await decideUnder({ triage: "observe", greeter: "dry-run" });
+        expect(decision.approved).toEqual([]);
+        expect(decision.report.mode).toBe("active");
+    });
+});
+
 describe("the gates, each visible in the report", () => {
     it("a disabled capability is never consulted", async () => {
         const decision = await decide(

@@ -57,6 +57,7 @@ export {
 export type { BlockOf, SettingsOf, Spec } from "../config/spec.js";
 export { LABEL_DEFAULTS } from "../config/label-defaults.js";
 export type { Command, MappableMeaning, RepositoryConfig, Skill } from "../config/schema.js";
+export { effectiveMode, type EffectiveMode } from "../config/mode.js";
 export type { ConfigError, ConfigResult } from "../config/results.js";
 export { MIN_GRACE_HOURS, MIN_REAP_HOURS } from "../safety/destructive.js";
 export type { ClaimedFacts } from "../safety/world.js";

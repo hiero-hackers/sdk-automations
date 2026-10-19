@@ -348,6 +348,68 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         why: "1 is not a boolean either",
         yaml: `schemaVersion: 2\nmode: observe\ncapabilities:\n  triageQueue:\n    enabled: 1\n`,
     },
+
+    // ---- a block's mode: one of three, and never above the file's ----
+    {
+        code: "capabilityModeAboveFile",
+        why: "a block stating active under a dry-run file",
+        yaml: `mode: dry-run\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode: active\n`,
+        path: "capabilities.triageQueue.mode",
+        errorCount: 1,
+        messageIncludes: [
+            "states mode active, above the file's mode dry-run",
+            "raise the file's mode to active, or lower capabilities.triageQueue.mode to dry-run",
+        ],
+    },
+    {
+        code: "capabilityModeAboveFile",
+        why: "an absent file mode is observe, and bounds a block as a stated one does",
+        yaml: `capabilities:\n  triageQueue:\n    enabled: true\n    mode: dry-run\n`,
+        path: "capabilities.triageQueue.mode",
+        messageIncludes: ["above the file's mode observe"],
+    },
+    {
+        code: "capabilityModeAboveFile",
+        why: "a disabled file leaves no mode to lower a block to, so the fix is removing it",
+        yaml: `mode: disabled\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode: observe\n`,
+        messageIncludes: ["or remove capabilities.triageQueue.mode"],
+    },
+    {
+        code: "capabilityModeAboveFile",
+        why: "a disabled block is bounded too, as its settings are checked",
+        yaml: `mode: observe\ncapabilities:\n  triageQueue:\n    enabled: false\n    mode: active\n`,
+        path: "capabilities.triageQueue.mode",
+    },
+    {
+        code: "modeInvalid",
+        why: "disabled is the file's word; a block is switched off by enabled: false",
+        yaml: `mode: active\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode: disabled\n`,
+        path: "capabilities.triageQueue.mode",
+        errorCount: 1,
+        messageIncludes: [
+            "mode must be one of observe, dry-run, active",
+            "set capabilities.triageQueue.enabled to false",
+        ],
+    },
+    {
+        code: "modeInvalid",
+        why: "a block's mode with nothing after it is null, not an inherited mode",
+        yaml: `mode: active\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode:\n`,
+        path: "capabilities.triageQueue.mode",
+    },
+    {
+        code: "modeInvalid",
+        why: "a block's mode in the wrong case",
+        yaml: `mode: active\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode: Active\n`,
+        path: "capabilities.triageQueue.mode",
+    },
+    {
+        code: "modeInvalid",
+        why: "a bad file mode is not also a bound a valid block is judged against",
+        yaml: `mode: Dry-run\ncapabilities:\n  triageQueue:\n    enabled: true\n    mode: active\n`,
+        path: "mode",
+        errorCount: 1,
+    },
     {
         code: "capabilityUnknown",
         why: "mentioning a capability that does not ship",
@@ -1112,6 +1174,47 @@ export const VALUE_REJECTIONS: readonly ValueRejection[] = [
         raw: { ...COMPLETE, capabilities: { ghost: { enabled: true } } },
         known: INTAKE,
         path: "capabilities.ghost",
+    },
+    {
+        code: "capabilityModeAboveFile",
+        why: "a block stating dry-run under an observe file",
+        raw: {
+            ...COMPLETE,
+            mode: "observe",
+            capabilities: { triageQueue: { enabled: true, mode: "dry-run" } },
+        },
+        known: INTAKE,
+        path: "capabilities.triageQueue.mode",
+        errorCount: 1,
+    },
+    {
+        code: "modeInvalid",
+        why: "a block's mode that is not a string",
+        raw: { ...COMPLETE, capabilities: { triageQueue: { enabled: true, mode: true } } },
+        known: INTAKE,
+        path: "capabilities.triageQueue.mode",
+        errorCount: 1,
+    },
+    /** D84's key sweep is unchanged by a stated mode: a disabled block's typo is still found. */
+    {
+        code: "unknownKey",
+        why: "a misspelt setting beside a stated mode, on a disabled block",
+        raw: {
+            ...COMPLETE,
+            capabilities: { triageQueue: { enabled: false, mode: "observe", annouce: true } },
+        },
+        known: INTAKE_DECLARED,
+        path: "capabilities.triageQueue.annouce",
+        errorCount: 1,
+    },
+    /** A block's mode is judged even on a name the App does not admit; both are said at once. */
+    {
+        code: "modeInvalid",
+        why: "a bad block mode on an unknown capability is reported beside the name",
+        raw: { ...COMPLETE, capabilities: { ghost: { enabled: true, mode: "on" } } },
+        known: INTAKE,
+        alsoReports: ["capabilityUnknown"],
+        path: "capabilities.ghost.mode",
     },
 
     // ---- mappings ----

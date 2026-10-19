@@ -7,17 +7,21 @@
 import { readSettings, type SettingsView } from "./spec.js";
 import { checked, err, type Checked, type ConfigError, type ConfigErrorCode } from "./results.js";
 import { labelKey } from "./labels.js";
+import { isAbove } from "./mode.js";
 import {
+    CAPABILITY_MODES,
     CAPABILITY_NAME_PATTERN,
     COMMANDS,
     MAPPABLE_MEANINGS,
     MAPPING_FAMILIES,
     MAPPING_SECTION_KEYS,
     REPOSITORY_MODES,
+    RESERVED_BLOCK_KEYS,
     SKILL_TIERS,
     TOP_LEVEL_KEYS,
     type AdmittedCapability,
     type CapabilityConfig,
+    type CapabilityMode,
     type Command,
     type MappableMeaning,
     type Mappings,
@@ -128,14 +132,62 @@ function readCapabilitySettings(
     };
 }
 
+function isCapabilityMode(value: unknown): value is CapabilityMode {
+    return (CAPABILITY_MODES as readonly unknown[]).includes(value);
+}
+
+/**
+ * A block's stated `mode`, judged against the file's. `ceiling` is `null` when
+ * the file's own mode did not parse: a bound that failed names the wrong fix.
+ */
+function readBlockMode(
+    name: string,
+    value: Record<string, unknown>,
+    ceiling: RepositoryMode | null,
+): Checked<CapabilityMode | undefined> {
+    if (!Object.hasOwn(value, "mode")) return { ok: true, value: undefined };
+    const at = `capabilities.${name}.mode`;
+    const stated = value.mode;
+    if (!isCapabilityMode(stated)) {
+        const instead =
+            stated === "disabled"
+                ? ` — to switch it off, set capabilities.${name}.enabled to false`
+                : "";
+        return {
+            ok: false,
+            errors: [
+                err(
+                    "modeInvalid",
+                    `capability "${name}": mode must be one of ${CAPABILITY_MODES.join(", ")}, got ${JSON.stringify(stated)}${instead}`,
+                    at,
+                ),
+            ],
+        };
+    }
+    if (ceiling === null || !isAbove(stated, ceiling)) return { ok: true, value: stated };
+    const lower = ceiling === "disabled" ? `remove ${at}` : `lower ${at} to ${ceiling}`;
+    return {
+        ok: false,
+        errors: [
+            err(
+                "capabilityModeAboveFile",
+                `capability "${name}" states mode ${stated}, above the file's mode ${ceiling}, which bounds every capability` +
+                    ` — raise the file's mode to ${stated}, or ${lower}`,
+                at,
+            ),
+        ],
+    };
+}
+
 /**
  * The `capabilities` section, block by block. A block is flat, so everything
- * but the reserved `enabled` is what the spec is read against.
+ * but the reserved `enabled` and `mode` is what the spec is read against.
  */
 export function readCapabilities(
     raw: Record<string, unknown>,
     knownCapabilities: readonly AdmittedCapability[],
     names: SettingsView | null,
+    ceiling: RepositoryMode | null,
 ): Checked<[string, CapabilityConfig][]> {
     const entries: [string, CapabilityConfig][] = [];
     const errors: ConfigError[] = [];
@@ -183,6 +235,9 @@ export function readCapabilities(
             );
         }
         const enabled = value.enabled === true;
+        // Judged on a disabled block too, as its settings are (D84).
+        const mode = readBlockMode(name, value, ceiling);
+        if (!mode.ok) errors.push(...mode.errors);
         if (!admitted.has(name)) {
             errors.push(
                 err(
@@ -196,7 +251,7 @@ export function readCapabilities(
         /** An unadmitted name has no spec to read against, and was reported above. */
         const declared = admitted.get(name);
         const stated: Readonly<Record<string, unknown>> = Object.fromEntries(
-            Object.entries(value).filter(([key]) => key !== "enabled"),
+            Object.entries(value).filter(([key]) => !Object.hasOwn(RESERVED_BLOCK_KEYS, key)),
         );
         const read =
             declared === undefined
@@ -208,6 +263,7 @@ export function readCapabilities(
             name,
             {
                 enabled,
+                ...(mode.ok && mode.value !== undefined ? { mode: mode.value } : {}),
                 settings: read?.ok === true ? read.value : stated,
                 ...(labels.length === 0 ? {} : { labels }),
             },

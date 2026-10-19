@@ -257,11 +257,11 @@ describe("configReport", () => {
                 "",
                 `The file at \`${REVISION}\` parses. This is what the App would read from it.`,
                 "",
-                "**Mode** — active",
+                "**Mode** — active, the most any capability may do",
                 "",
                 "**Capabilities**",
                 "",
-                "- triageQueue — on",
+                "- triageQueue — on, active (inherited from the file)",
                 "  - welcome: true",
                 "  - lockUntilTriaged: false",
                 "  - confirmUnlock: false",
@@ -270,7 +270,7 @@ describe("configReport", () => {
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
                 // `enabled: true` and nothing else, so every check is parked.
-                "- prDashboard — on",
+                "- prDashboard — on, active (inherited from the file)",
                 "  - checks",
                 "    - dcoSignoff",
                 "      - enabled: false",
@@ -284,6 +284,8 @@ describe("configReport", () => {
                 "  - labels it may set",
                 "    - status: needs revision — needsRevision; defined #d93f0b if the repository lacks it",
                 "    - status: needs review — needsReview; defined #5319e7 if the repository lacks it",
+                "",
+                "Inheriting active, so writing once this merges: triageQueue, prDashboard.",
                 "",
                 "Switched off: inactivity.",
                 "",
@@ -315,11 +317,11 @@ describe("configReport", () => {
                 "",
                 `The file at \`${REVISION}\` parses. This is what the App would read from it.`,
                 "",
-                "**Mode** — dry-run",
+                "**Mode** — dry-run, the most any capability may do",
                 "",
                 "**Capabilities**",
                 "",
-                "- configReport — on, no settings",
+                "- configReport — on, dry-run (inherited from the file), no settings",
                 "",
                 "**Mappings**",
                 "",
@@ -352,6 +354,50 @@ capabilities:
 `);
 
         expect(body).toContain("Switched off: prDashboard, triageQueue.");
+    });
+
+    /**
+     * The ceiling and each capability's own mode, so a reviewer never resolves the inheritance by
+     * hand. A stated `active` is its block's decision; only an inherited one is listed as going live.
+     */
+    it("gives each capability its mode and its source, and names the ones going live by inheritance", async () => {
+        const body = await bodyFor(`mode: active
+
+capabilities:
+  triageQueue:
+    enabled: true
+    mode: dry-run
+  prDashboard:
+    enabled: true
+    mode: active
+  configReport:
+    enabled: true
+  inactivity:
+    enabled: false
+    mode: observe
+`);
+
+        expect(body).toContain("**Mode** — active, the most any capability may do");
+        expect(body).toContain("- triageQueue — on, dry-run (stated on its block)");
+        expect(body).toContain("- prDashboard — on, active (stated on its block)");
+        expect(body).toContain(
+            "- configReport — on, active (inherited from the file), no settings",
+        );
+        expect(body).toContain("Inheriting active, so writing once this merges: configReport.");
+        expect(body).toContain("Switched off: inactivity.");
+    });
+
+    it("lists nothing as going live when no capability inherits active", async () => {
+        const body = await bodyFor(`mode: active
+
+capabilities:
+  configReport:
+    enabled: true
+    mode: observe
+`);
+
+        expect(body).toContain("- configReport — on, observe (stated on its block), no settings");
+        expect(body).not.toContain("writing once this merges");
     });
 
     it("renders a rejected file as line, path and message in document order", async () => {
@@ -682,10 +728,10 @@ mappings:
 
         expect(body).toContain(
             [
-                "- triageQueue — on",
+                "- triageQueue — on, active (inherited from the file)",
                 "  - labels it may set",
                 "    - status: triage — awaitingTriage; defined #fbca04 if the repository lacks it",
-                "- configReport — on, no settings",
+                "- configReport — on, active (inherited from the file), no settings",
             ].join("\n"),
         );
     });

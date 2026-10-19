@@ -28,6 +28,7 @@ const ERROR_CODES: { readonly [K in ConfigErrorCode]: true } = {
     modeInvalid: true,
     capabilityNameInvalid: true,
     capabilityEnabledNotBoolean: true,
+    capabilityModeAboveFile: true,
     capabilityUnknown: true,
     settingInvalid: true,
     meaningNotMappable: true,

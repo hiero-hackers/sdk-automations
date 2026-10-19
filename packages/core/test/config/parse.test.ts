@@ -416,6 +416,63 @@ describe("parseConfig acceptances (design/contracts/config-schema.md)", () => {
         }
     });
 
+    /**
+     * The accepting half of a block's mode: what the block stated is kept, and
+     * a silent block keeps nothing, so a reader can tell inherited from stated.
+     */
+    it("stores a block's stated mode, and none for a block that inherits", () => {
+        const result = parseConfig(
+            {
+                mode: "active",
+                capabilities: {
+                    triageQueue: { enabled: true, mode: "dry-run" },
+                    prDashboard: { enabled: true },
+                },
+            },
+            {
+                revision: "rev-test",
+                knownCapabilities: admitting(["triageQueue", "prDashboard"]),
+            },
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.config.capabilities.triageQueue?.mode).toBe("dry-run");
+        expect(Object.hasOwn(result.config.capabilities.prDashboard ?? {}, "mode")).toBe(false);
+    });
+
+    it("lets a block state the file's own mode, which pins it when the file is raised", () => {
+        for (const mode of ["observe", "dry-run", "active"] as const) {
+            const result = parseConfig(
+                { mode, capabilities: { triageQueue: { enabled: true, mode } } },
+                { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
+            );
+            expect(result.ok, mode).toBe(true);
+        }
+    });
+
+    /** The pointer to `enabled: false` answers `disabled` alone; any other word gets the list. */
+    it("refuses a block's unknown mode with the three it may state, and nothing more", () => {
+        const result = parseConfig(
+            { mode: "active", capabilities: { triageQueue: { enabled: true, mode: "on" } } },
+            { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
+        );
+        expect(result.ok).toBe(false);
+        if (result.ok) return;
+        expect(result.errors.map((e) => e.message)).toEqual([
+            'capability "triageQueue": mode must be one of observe, dry-run, active, got "on"',
+        ]);
+    });
+
+    /** `mode` is the platform's, beside `enabled`: an empty spec still takes it. */
+    it("never reads a block's mode as a setting the spec declares", () => {
+        const result = parseConfig(
+            { mode: "active", capabilities: { triageQueue: { enabled: true, mode: "observe" } } },
+            { revision: "rev-test", knownCapabilities: admitting(["triageQueue"]) },
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.config.capabilities.triageQueue?.settings).toEqual({});
+    });
+
     // D56 — an absent key defaults; the corpus holds the present-but-empty
     // half, which is an error rather than a default.
     it("an absent mode defaults to observe", () => {

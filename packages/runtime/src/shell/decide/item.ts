@@ -5,6 +5,7 @@
  */
 
 import {
+    anyCapabilityActive,
     decide,
     type Allowance,
     type DecideInput,
@@ -130,7 +131,8 @@ export function createItemDecider(options: ItemDeciderOptions): DecideItem {
         );
 
     return async (input, config, at, allowance) => {
-        const active = config.mode === "active";
+        // A capability's own mode, not the file's alone: an active file may hold every block back.
+        const active = anyCapabilityActive(config);
         if (active && applier === undefined) {
             return { kind: "modeUnsupported", reason: MODE_UNSUPPORTED };
         }

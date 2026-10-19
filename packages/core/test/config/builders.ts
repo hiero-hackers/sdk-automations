@@ -19,6 +19,7 @@ import { spec } from "../../src/capability/index.js";
 import {
     parseConfig,
     type AdmittedCapability,
+    type CapabilityMode,
     type RepositoryConfig,
     type RepositoryMode,
     type Spec,
@@ -72,6 +73,8 @@ export interface ConfigOptions {
      * only the settings they are about.
      */
     readonly settings?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+    /** The mode a block states, keyed by capability name. A name with no entry inherits. */
+    readonly modes?: Readonly<Record<string, CapabilityMode>>;
     /**
      * The spec each admitted capability is admitted with, keyed by name. A
      * name with no entry is admitted with the empty spec, which takes no
@@ -106,6 +109,7 @@ export function configWith({
     capabilities = [],
     enabled = true,
     settings = {},
+    modes = {},
     specs = {},
     known = capabilities,
     revision = "rev-test",
@@ -117,7 +121,14 @@ export function configWith({
             // The document is flat: a block is `enabled` and the capability's
             // own keys beside it, so the settings spread in rather than nest.
             capabilities: Object.fromEntries(
-                capabilities.map((name) => [name, { enabled, ...(settings[name] ?? {}) }]),
+                capabilities.map((name) => [
+                    name,
+                    {
+                        enabled,
+                        ...(modes[name] === undefined ? {} : { mode: modes[name] }),
+                        ...(settings[name] ?? {}),
+                    },
+                ]),
             ),
             mappings: { labels, commands, skills, alerts },
         },

@@ -226,6 +226,7 @@ describe("docs/configuration.md", () => {
             modeInvalid: true,
             capabilityNameInvalid: true,
             capabilityEnabledNotBoolean: true,
+            capabilityModeAboveFile: true,
             capabilityUnknown: true,
             settingInvalid: true,
             meaningNotMappable: true,
@@ -351,6 +352,7 @@ describe("docs/capabilities.md", () => {
 
         expect(rendered.split("\n").slice(3)).toEqual([
             "enabled: true",
+            "# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits",
             "announce: false # default — Say so in a comment",
             '# guide: "…" — optional; A page explaining how to link an issue',
             "```",
@@ -376,6 +378,7 @@ describe("docs/capabilities.md", () => {
 
         expect(rendered.split("\n").slice(3)).toEqual([
             "enabled: true",
+            "# mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits",
             "remindAfter: <duration> # required — How long the wait may run",
             "guide: <text> # required — The page the notice points at",
             "```",

@@ -39,9 +39,16 @@ fork's code with that token. Never add one.
 
 Two gates stand between a run and a write: the configuration's `mode`, and the Action's
 `arm-writes` input. The example ships with `arm-writes: "false"`. Until it is `"true"`, a
-configuration that says `active` is decided as `dry-run`, and the job summary says so. The pull
-request that changes it to `"true"` is the approval. Make it after you have read the dry-run
-records and are content with what they show.
+configuration that says `active` is decided as `dry-run` — the file's mode and every block's own
+`mode` alike — and the job summary says so. The pull request that changes it to `"true"` is the
+approval. Make it after you have read the dry-run records and are content with what they show.
+`arm-writes` is the workflow's gate and covers the whole file; which capabilities write is the
+configuration's to say, one block at a time
+([`capabilities.<name>.mode`](configuration.md#capabilitiesnamemode)).
+
+The editor schema is served from the default branch, so it can accept a key the release you pin
+does not read yet. A block's own `mode` is one: `v0.1.0` refuses it as `unknownKey`, and the first
+release after it reads it.
 
 ## Rolling back
 

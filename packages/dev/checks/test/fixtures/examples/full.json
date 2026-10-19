@@ -50,6 +50,7 @@
         },
         "inactivity": {
             "enabled": true,
+            "mode": "observe",
             "settings": {
                 "exemptBlocked": true,
                 "remindAfter": 336,

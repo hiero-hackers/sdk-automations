@@ -118,6 +118,7 @@ describe("the arming guard", () => {
             "9.4",
             "9.6",
             "9.9",
+            "9.10",
         ]);
         expect(PROTOCOLS.filter(({ long }) => long).map(({ id }) => id)).toEqual(["9.3"]);
     });

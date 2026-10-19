@@ -13,6 +13,8 @@ export type ConfigErrorCode =
     | "modeInvalid"
     | "capabilityNameInvalid"
     | "capabilityEnabledNotBoolean"
+    /** A block states a mode above the file's, which bounds every capability. */
+    | "capabilityModeAboveFile"
     | "capabilityUnknown"
     /** A settings VALUE the admitted capability's spec cannot read. */
     | "settingInvalid"

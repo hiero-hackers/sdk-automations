@@ -4,7 +4,7 @@ One job: **facts about GitHub's behaviour that only contact with GitHub can veri
 our code; the lab verifies our beliefs about someone else's system. Conclusions never live here —
 they migrate to `design/` as register rows (D32) — and the protocols stay with the instrument that
 executes them: `src/scrub.ts` is the capture rules, `src/capture.ts` the receiver,
-[`src/rehearsal/`](src/rehearsal/README.md) protocol 8.6 as one command, `src/action/` 9.1 to 9.9
+[`src/rehearsal/`](src/rehearsal/README.md) protocol 8.6 as one command, `src/action/` 9.1 to 9.10
 (`pnpm lab:action --only 9.1,9.2 [--arm] [--long] [--engine <sha>]`: writes need `--arm`, 9.3 and 9.9's
 ladders `--long`; `GITHUB_TOKEN` or the App's `APP_ID`, `INSTALLATION_ID`, `PRIVATE_KEY_PATH`), and
 `src/probes/` the conformance instrument whose stamped results

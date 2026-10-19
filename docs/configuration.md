@@ -25,6 +25,7 @@ mode: dry-run                 # ── top level. Optional, default: observe
 capabilities:                 # ── top level. Optional, default: nothing enabled
   triageQueue:                     #    └─ one block per capability, keyed by its name
     enabled: true             #       └─ boolean, default: false
+    mode: observe             #       └─ optional, default: the file's mode, never above it
     welcome: true            #       └─ that capability's own options, keys defined by it
 
 mappings:                     # ── top level. Optional, default: no meanings available
@@ -47,7 +48,7 @@ Two things that prevent most mistakes:
 - In headings below, dots mean **nesting**, not key names: `capabilities.<name>.enabled` is the
   `enabled` line inside one capability's block, three levels deep.
 - Any shared key not on this tree is an error. Inside a capability's block the names beside
-  `enabled` and their values are checked against the capability's own declaration.
+  `enabled` and `mode` and their values are checked against the capability's own declaration.
 
 Nothing is required. Every default is non-writing—an empty file is valid and produces an `observe`
 decision rather than an active effect.
@@ -75,6 +76,10 @@ are rejected.
 | Required | no |
 | Default | `observe` |
 | Allowed | `disabled`, `observe`, `dry-run`, `active` |
+
+The file's `mode` is two things at once: the mode every capability runs in unless its own block says
+otherwise, and the most any capability in the file may do. A block may state a lower mode — see
+[`capabilities.<name>.mode`](#capabilitiesnamemode) — never a higher one.
 
 Core recognizes all four values. Whether `active` is honoured depends on the composition the endpoint
 was started as: one that wires no write path — the shipped default — rejects it before a decision and
@@ -124,6 +129,46 @@ names fail closed instead of being retained as compatibility entries.
 Must be a real boolean. `"true"` in quotes, `yes`, and `1` are all errors — being switched on is
 consent, and consent is not inferred from anything that merely looks true.
 
+### `capabilities.<name>.mode`
+
+| | |
+|---|---|
+| Type | string |
+| Required | no |
+| Default | the file's `mode` |
+| Allowed | `observe`, `dry-run`, `active` — at most the file's `mode` |
+
+One capability's own mode, for promoting capabilities one at a time. With the file at `active`, a
+capability whose block says `mode: dry-run` keeps rehearsing — its `wouldApply` lines and its findings
+are exactly what they were — while a capability that says nothing inherits `active` and writes:
+
+```yaml
+mode: active                 # the most any capability may do, and the default
+capabilities:
+  triageQueue:
+    enabled: true            # inherits active
+  prDashboard:
+    enabled: true
+    mode: dry-run            # held back until its own approval
+  inactivity:
+    enabled: true
+    mode: observe
+```
+
+Promoting `prDashboard` is then one line, deleted or changed to `active`, and the pull request that
+does it is that capability's approval. A block's mode may equal the file's, which pins it: raise the
+file later and a block that states its mode stays where it was.
+
+- **The file's mode is a ceiling.** A block above it is `capabilityModeAboveFile`, naming both modes
+  and both fixes. That includes lowering the file under a block that states more: the whole file is
+  rejected, so nothing runs at all until the block is lowered too — the safe direction to fail in.
+- **`disabled` is not a block mode.** Switch a capability off with `enabled: false`; a block saying
+  `mode: disabled` is `modeInvalid`.
+- **A capability added to an `active` file is active.** It inherits, so it writes as soon as the file
+  merges. The report the App posts on the pull request lists every capability inheriting `active`
+  by name; state a lower `mode` on the block to hold one back.
+- Checked like the rest of the block, enabled or not.
+
 ### `capabilities.<name>.<key>`
 
 | | |
@@ -144,8 +189,8 @@ path — checked with the rest of the file, before anything runs. A value you le
 capability's documented default. The keys each capability reads are listed on
 [capabilities](capabilities.md).
 
-Each capability only ever sees its own block — the keys beside its own `enabled`, and nothing
-another capability was given.
+Each capability only ever sees its own block — the keys beside its own `enabled` and `mode`, and
+nothing another capability was given. A capability never sees a mode at all; the App holds it back.
 
 **A clock is a duration, written as a whole number with a unit.** `4h` and `14d` are clocks; `14`
 is not, and neither are `2w`, `90m` or `1d4h` — the App refuses a bare number with the spelling it
@@ -324,6 +369,8 @@ Three things worth knowing:
 - **Unknown keys are errors, not ignored.** A typo like `capabilties:` fails loudly, and so does a
   setting the capability never declared. Setting *values* remain the capability's own business.
 - **An empty file, or no file, means `observe`.** Never `active`.
+- **The top line bounds every capability.** No block may state a mode above the file's, so lowering
+  `mode:` alone always lowers every capability — or, if a block states more, rejects the file.
 - **Duplicate keys are errors.** YAML would otherwise keep the last value silently — the one case
   where a typo could change your mode while the file still looks right.
 
@@ -338,9 +385,10 @@ The exact codes the App reports, and what to fix.
 | `notAMapping` | Something is a list or a bare value where `key: value` pairs belong |
 | `unknownKey` | A key the schema does not have — usually a typo. Includes a setting name the capability never declared |
 | `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `2` — omit the key |
-| `modeInvalid` | `mode` is not one of the four modes (check case and quoting) |
+| `modeInvalid` | `mode` is not one of the four modes, or a block's `mode` is not `observe`, `dry-run` or `active` (check case and quoting; switch a capability off with `enabled: false`) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prDashboard` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |
+| `capabilityModeAboveFile` | A block's `mode` is above the file's `mode`; raise the file's, or lower the block's |
 | `capabilityUnknown` | The capability is not available in this application; remove its block or run an application that ships it |
 | `settingInvalid` | A value in a capability's block is not what that setting takes — the message names the path and what it must be |
 | `meaningNotMappable` | A key under `mappings.labels` is not in the meanings table above |

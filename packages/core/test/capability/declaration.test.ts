@@ -3,6 +3,7 @@ import {
     declareCapability,
     flag,
     spec,
+    text,
     validateCapabilityDeclarations,
     type CapabilityDeclaration,
     type DeclaredTrigger,
@@ -120,9 +121,29 @@ describe("validateCapabilityDeclarations", () => {
                 { ...declaration, settings: spec({ enabled: flag({ default: false }) }) },
             ]),
         ).toEqual([
-            'capability "prDashboard": settings may not declare "enabled" — it is consent on the capability\'s own block, whose other keys are the settings',
+            'capability "prDashboard": settings may not declare "enabled" — the capability\'s own block reads it as consent, and its other keys are the settings',
         ]);
         expect(validateCapabilityDeclarations([declaration])).toEqual([]);
+    });
+
+    /**
+     * `mode` sits beside `enabled` on the block, so a spec declaring it is
+     * refused the same way. The near name is the control: the check reads the
+     * spec's exact keys, and a setting merely about modes is the capability's.
+     */
+    it("refuses a spec that declares mode, and only that key", () => {
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, settings: spec({ mode: text({ optional: true }) }) },
+            ]),
+        ).toEqual([
+            'capability "prDashboard": settings may not declare "mode" — the capability\'s own block reads it as the mode it runs in, bounded by the file\'s, and its other keys are the settings',
+        ]);
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, settings: spec({ modes: text({ optional: true }) }) },
+            ]),
+        ).toEqual([]);
     });
 
     /**

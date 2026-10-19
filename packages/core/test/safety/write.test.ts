@@ -298,6 +298,61 @@ describe("evaluateWrite (contracts/safety.md)", () => {
         },
     );
 
+    /**
+     * Rule 10 judges the requesting capability's mode: its block's where it
+     * stated one, the file's otherwise. The reason says which, so a reader of
+     * a record-only verdict never resolves the inheritance by hand.
+     */
+    describe("rule 10 reads the capability's own mode", () => {
+        const held = config({
+            capabilities: {
+                assignment: { enabled: true, mode: "dry-run", settings: {} },
+                triageQueue: { enabled: true, settings: {} },
+            },
+        });
+
+        it("records a capability whose block states dry-run under an active file", () => {
+            expect(evalWrite(request(), context(), held)).toEqual({
+                outcome: "record-only",
+                code: "modeRecordsOnly",
+                reason: "the capability's mode is dry-run, stated on its block; the effect is recorded, not applied (rule 10)",
+            });
+        });
+
+        it("applies its sibling, which inherits the file's active", () => {
+            expect(evalWrite(request({ capability: "triageQueue" }), context(), held)).toEqual({
+                outcome: "apply",
+            });
+        });
+
+        it("says when the mode was inherited rather than stated", () => {
+            expect(evalWrite(request(), context(), config({ mode: "observe" }))).toMatchObject({
+                reason: "the capability's mode is observe, inherited from the file; the effect is recorded, not applied (rule 10)",
+            });
+        });
+
+        it("refuses a switched-off block as disabled, whatever mode it states", () => {
+            const off = config({
+                capabilities: { assignment: { enabled: false, mode: "dry-run", settings: {} } },
+            });
+            expect(evalWrite(request(), context(), off)).toMatchObject({
+                outcome: "refuse",
+                code: "capabilityDisabled",
+            });
+        });
+
+        it("never lets a block above the file apply, even in a configuration built by hand", () => {
+            const escaped = config({
+                mode: "dry-run",
+                capabilities: { assignment: { enabled: true, mode: "active", settings: {} } },
+            });
+            expect(evalWrite(request(), context(), escaped)).toMatchObject({
+                outcome: "record-only",
+                code: "modeRecordsOnly",
+            });
+        });
+    });
+
     it("observations never require enablement or permission", () => {
         const verdict = evalWrite(
             request({ actionClass: "observation" }),

@@ -34,7 +34,8 @@ reported, and the tests freeze the sequence (D39, D52).
    activity.
 3. **General rules**, shared by both gates, in the order `GENERAL_RULES` lists them: observation,
    capability enabled, permissions, item open, item paused, human ordering known, timestamps valid,
-   no newer human change, mode not disabled, mode not record-only.
+   no newer human change, mode not disabled, mode not record-only. Both mode rules judge the
+   requesting capability's effective mode, never the file's alone (config-schema.md §4).
 4. Nothing objected — `apply`.
 
 ## 3. Refusal codes
@@ -88,7 +89,7 @@ Not refusals. The decision was reached and the effect was written down instead o
 | Code | Raised when |
 |---|---|
 | `observation` | The request's class is `observation`. |
-| `modeRecordsOnly` | The repository mode is `observe` or `dry-run`. |
+| `modeRecordsOnly` | The capability's mode is `observe` or `dry-run`: its block's own `mode`, or the file's where the block states none. |
 <!-- /generated -->
 
 ## 5. Which document rule maps to which code
@@ -98,7 +99,7 @@ The write rules the engine can decide from a single request. Rules 6–10 cannot
 
 | Rule | Code when it objects |
 |---|---|
-| 1 — the repository enabled the capability and an active mode | `capabilityDisabled`, `modeDisabled`, `modeRecordsOnly` |
+| 1 — the repository enabled the capability, and the capability's effective mode is active: its block's own `mode`, or the file's where the block states none | `capabilityDisabled`, `modeDisabled`, `modeRecordsOnly` |
 | 2 — the installation has the required permission | `permissionMissing` |
 | 3 — the capability supplied a dated cause and claimed state | `invalidTimestamp` |
 | 4 — mutable preconditions rechecked before the write | `preconditionStale` |
