@@ -26,9 +26,9 @@
     },
     "devDependencies": {
         "@vitest/coverage-v8": "^4.1.11",
-        "eslint": "^10.12.0",
+        "eslint": "^10.13.0",
         "prettier": "^3.9.10",
-        "typescript-eslint": "^8.71.1"
+        "typescript-eslint": "^8.71.2"
     },
     "pnpm": {
         "overrides": {
