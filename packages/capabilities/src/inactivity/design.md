@@ -120,14 +120,15 @@ Reminds and acts on contributor staleness only:
 Never acts on maintainer staleness or paused work:
 
 - a pull request in `needsReview`, or in ready-for-review mode without the `needsRevision` label —
-  that wait is the maintainers'
+  that wait is the maintainers'. Not once a review has requested changes: then the wait is the
+  author's whatever the label still says, and the review fact decides (D241)
 - anything carrying the `blocked` meaning
 - a closed issue or a merged pull request, which never reaches this capability at all: the platform
   wakes it for open items only, because it declares no `closed: true` (D59)
 
 ```mermaid
 flowchart LR
-    S["schedule → issue and pull-request facts"] --> X{"blocked, or PR in needsReview / ready-for-review without needsRevision?"}
+    S["schedule → issue and pull-request facts"] --> X{"blocked, or PR awaiting review: needsReview with no changes requested, or ready-for-review without needsRevision?"}
     X -->|yes| N["nothing"]
     X -->|no| C{"whose staleness?"}
     C -->|"issue, no open linked PR — per assignee"| I1["remind → release the stale assignee"]
@@ -187,6 +188,7 @@ close the same way a label somebody removed does. Protocol 8.3 ran the close pat
 | Draft PR marked ready for review between the warning and the close | the close is refused `preconditionStale` — the claimed mode no longer holds |
 | A later review lifts the change request between the warning and the close | the same refusal, on the reviews list the sweep itself folds |
 | PR stale for a year in `needsReview` | untouched — the wait is the maintainers' |
+| PR in `needsReview` after a review requested changes | the changes-requested ladder runs — the review fact outranks the label (D241) |
 | Stale draft PR with `reapWhen.draft` not enabled | untouched — reaping is opt-in per reason |
 | Ladder enabled with no `reap` block | reminded on its own clock, never released; the reminder promises no date |
 | A parked `reap` block beside an enabled ladder | the same: `enabled: false` is a release kept for later, not one running |

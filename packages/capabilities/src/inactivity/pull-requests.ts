@@ -70,8 +70,9 @@ export async function onPullRequest(
     if (!stillOnTheLadder(facts, context.settings)) return [];
     if (!pullRequests.enabled) return [];
 
-    // A pull request awaiting review is the maintainers' wait, not the contributor's.
-    if (meaningsOf(facts).includes("needsReview")) return [];
+    // A pull request awaiting review is the maintainers' wait, not the contributor's. One a reviewer
+    // sent back waits on its author whatever label it still carries: the fact decides (D241).
+    if (meaningsOf(facts).includes("needsReview") && !facts.review.changesRequested) return [];
 
     // In a reapable mode the repository opted into, or nothing to say.
     const reapable = reapableFor(facts, pullRequests);

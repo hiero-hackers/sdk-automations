@@ -321,6 +321,29 @@ describe("the pull-request ladder judges the contributor's wait", () => {
         expect(await decide(record)).toEqual([]);
     });
 
+    /** The label says the reviewers' wait; the review fact says the author's. The fact decides (D241). */
+    it("PR in `needsReview` after a review requested changes", async () => {
+        const sentBack = pullRecord(
+            { position: position({ meaning: "needsReview" }) },
+            {
+                draft: false,
+                changesRequested: true,
+                reapableSince: {
+                    needsRevision: ago(365),
+                    changesRequested: ago(70),
+                    draft: ago(365),
+                },
+            },
+        );
+
+        expect(await decide(sentBack)).toMatchObject([
+            {
+                operation: "closePullRequest",
+                claims: { meaningsPresent: ["needsReview"], pullRequestMode: "changesRequested" },
+            },
+        ]);
+    });
+
     /** The first diamond is the meaning, whatever mode the pull request is in. */
     it("leaves a draft carrying `needsReview` alone, mode or no mode", async () => {
         const awaited = pullRecord({ position: position({ meaning: "needsReview" }) });
