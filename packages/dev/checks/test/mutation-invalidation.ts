@@ -161,7 +161,9 @@ export function shouldForceMutation(
 export function gitChangedFiles(baseRef?: string): string[] {
     const ref = baseRef && baseRef.trim().length > 0 ? baseRef : "origin/main";
     try {
-        const output = execFileSync("git", ["diff", "--name-only", `${ref}...HEAD`], {
+        // Tree against tree: a seed newer than HEAD's base is no ancestor of it, and a
+        // merge-base diff would skip what changed between the two.
+        const output = execFileSync("git", ["diff", "--name-only", ref, "HEAD"], {
             cwd: repoRoot,
             encoding: "utf8",
         });
