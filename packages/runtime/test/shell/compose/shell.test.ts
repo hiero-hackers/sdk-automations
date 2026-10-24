@@ -52,7 +52,7 @@ mappings:
 const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
 
 /** The issue the fixture opens: every decision row below is about it. */
-const ITEM = { kind: "issue", number: 164 } as const;
+const ITEM = { kind: "issue", number: 37 } as const;
 
 const BASE = new Date("2026-08-07T10:00:00.000Z");
 

@@ -75,7 +75,7 @@ describe("the job summary", () => {
         expect(text).toContain("scrubbed-1/scrubbed-2");
         expect(text).toContain("issues");
         expect(text).toContain("delivery");
-        expect(text).toContain("issue#164");
+        expect(text).toContain("issue#37");
         expect(text.match(/modeRecordsOnly/g)).toHaveLength(2);
         expect(text).not.toContain("dry-run because");
         expect(text).not.toContain("Items decided with no rows");
@@ -115,7 +115,7 @@ describe("the job summary", () => {
             "| triageQueue | info | capabilitySkipped | Skipped: scripted. (line a; line b) |",
         );
         expect(text.match(/\| triageQueue \|/g)).toHaveLength(1);
-        const item = { kind: "issue", number: 164 } as const;
+        const item = { kind: "issue", number: 37 } as const;
         expect(explainItem(store, run.repository, item).lines).toContainEqual(
             expect.stringContaining("capabilitySkipped"),
         );
@@ -182,13 +182,13 @@ describe("the machine-readable rows", () => {
     it("prints one line per decision row on each decided item, in the store's order", async () => {
         const run = runOf();
         const { store, outcome } = await decided(run, "dry-run");
-        const item = { kind: "issue", number: 164 } as const;
+        const item = { kind: "issue", number: 37 } as const;
         const rows = store.ledger.decisionsOn(run.repository, item);
         const lines = rowLines(store, run.repository, outcome);
         expect(rows.length).toBeGreaterThan(1);
         expect(lines).toHaveLength(rows.length);
         expect(lines[0]).toMatch(
-            /^sdk-automations\.row \{"item":\{"kind":"issue","number":164\},"capability":"triageQueue","verdict":"info","code":"capabilityExplained","detail":"[^\n]*"\}$/,
+            /^sdk-automations\.row \{"item":\{"kind":"issue","number":37\},"capability":"triageQueue","verdict":"info","code":"capabilityExplained","detail":"[^\n]*"\}$/,
         );
         expect(lines.map(parsed)).toEqual(
             rows.map(({ capability, verdict, code, detail }) => ({

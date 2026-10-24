@@ -21,7 +21,7 @@ import {
 const temp = useTempDir("shell-recovery-");
 const BODY = capture("issues.opened.json").bytes();
 const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
-const ITEM = { kind: "issue", number: 164 } as const;
+const ITEM = { kind: "issue", number: 37 } as const;
 const GUID = asDeliveryGuid("83e4273f-dd89-22f4-92bc-5da478ed1a69")!;
 const OTHER_GUID = asDeliveryGuid("83e4273f-dd89-22f4-92bc-5da478ed1a6a")!;
 const LATER = new Date(BASE.getTime() + 60 * 60_000);

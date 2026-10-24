@@ -8,7 +8,7 @@
  * this file's subject; the routing and the shared preamble, including the
  * `mergedMissing` refusal's place in the code table, are `events.test.ts`'s.
  *
- * Every capture is a real delivery from the 2026-08-07 capture session
+ * Every capture is a real delivery from the 2026-10-24 capture session
  * (protocol 7.1), scrubbed and human-reviewed. No payload here was written
  * by hand, and that is the point: the assumptions worth testing are the ones
  * GitHub gets to falsify.
@@ -43,7 +43,7 @@ describe("pull requests, through the real payloads", () => {
     it("opened: no position, open, every group unread", () => {
         const o = observed("pull_request.opened.json");
         expect(o.kind).toBe("pullRequest");
-        expect(o.item).toEqual({ kind: "pullRequest", number: 165 });
+        expect(o.item).toEqual({ kind: "pullRequest", number: 38 });
         expect(o.position).toMatchObject({
             kind: "position",
             state: { meaning: null, closedBy: null },

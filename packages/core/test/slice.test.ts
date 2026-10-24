@@ -3,7 +3,7 @@
  * webhook-payload → normalize → capability → screen → safety → report,
  * entirely in pure logic, through `decide()` (D92). Zero network, zero
  * mocks of GitHub — the payload is the testkit's `issues.opened.json` from
- * the 2026-08-07 capture session.
+ * the 2026-10-24 capture session.
  *
  * Nothing here is synthetic until the capability speaks, which is the whole
  * point: when GitHub changes shape, this is the test that notices first. The
@@ -173,7 +173,7 @@ describe("one real delivery, end to end", () => {
             actionClass: INTENT_OPERATIONS[keyed.operation].actionClassFloor,
             requiredPermissions: [INTENT_OPERATIONS[keyed.operation].permission],
             target: {
-                item: "scrubbed-1/scrubbed-2#164",
+                item: "scrubbed-1/scrubbed-2#37",
                 change: "set mapped position awaitingTriage",
             },
         });

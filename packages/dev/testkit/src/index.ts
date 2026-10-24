@@ -68,11 +68,11 @@ function makeCapture(name: string, capturedAt: string): WebhookCapture {
  * quietly empty.
  */
 export const WEBHOOK_CAPTURES: readonly WebhookCapture[] = [
-    { name: "issues.opened.json", capturedAt: "2026-08-07" },
-    { name: "issues.labeled.json", capturedAt: "2026-08-07" },
-    { name: "issues.closed.json", capturedAt: "2026-08-07" },
-    { name: "pull_request.opened.json", capturedAt: "2026-08-07" },
-    { name: "pull_request.closed.json", capturedAt: "2026-08-07" },
+    { name: "issues.opened.json", capturedAt: "2026-10-24" },
+    { name: "issues.labeled.json", capturedAt: "2026-10-24" },
+    { name: "issues.closed.json", capturedAt: "2026-10-24" },
+    { name: "pull_request.opened.json", capturedAt: "2026-10-24" },
+    { name: "pull_request.closed.json", capturedAt: "2026-10-24" },
     { name: "issue_comment.created.json", capturedAt: "2026-10-02" },
 ].map(({ name, capturedAt }) => makeCapture(name, capturedAt));
 

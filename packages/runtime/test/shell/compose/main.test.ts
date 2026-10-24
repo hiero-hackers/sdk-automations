@@ -72,7 +72,7 @@ const READ_ONLY_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6c";
 const ACTIVE_GUID = "83e4273f-dd89-22f4-92bc-5da478ed1a6e";
 
 /** The issue `issues.opened.json` carries, which the write routes answer for. */
-const ISSUE_NUMBER = 164;
+const ISSUE_NUMBER = 37;
 /** The item every decision row this suite reads is about. */
 const ITEM_REF = { kind: "issue", number: ISSUE_NUMBER } as const;
 /** The App the child is told it is: the id it authenticates as, and its slug. */

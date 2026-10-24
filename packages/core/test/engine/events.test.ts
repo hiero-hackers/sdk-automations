@@ -10,7 +10,7 @@
  * what each family MAKES of a delivery it accepts belongs to the family's
  * own suite in `normalize/`.
  *
- * Every capture is a real delivery from the 2026-08-07 capture session
+ * Every capture is a real delivery from a capture session
  * (protocol 7.1), scrubbed and human-reviewed. No payload here was written
  * by hand, and that is the point: the assumptions worth testing are the ones
  * GitHub gets to falsify.

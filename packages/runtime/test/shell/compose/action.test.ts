@@ -254,14 +254,14 @@ describe("one run", () => {
         expect(outcome.kind).toBe("delivery");
         expect(outcome.exitCode).toBe(0);
         expect(outcome.modeLowered).toBe(false);
-        expect(outcome.items).toEqual([{ kind: "issue", number: 164 }]);
+        expect(outcome.items).toEqual([{ kind: "issue", number: 37 }]);
         expect(outcome.events.find((event) => event.event === "deliveryCompleted")).toMatchObject({
             kind: "decision",
         });
-        const rows = store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 164 });
+        const rows = store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 37 });
         // Two dry-run effects, each explained, would apply, and recorded only.
         expect(rows.filter((row) => row.code === "modeRecordsOnly")).toHaveLength(2);
-        expect(explainItem(store, REPOSITORY, { kind: "issue", number: 164 }).found).toBe(true);
+        expect(explainItem(store, REPOSITORY, { kind: "issue", number: 37 }).found).toBe(true);
         store.close();
     });
 
@@ -278,7 +278,7 @@ describe("one run", () => {
         expect(outcome.events.find((event) => event.event === "deliveryCompleted")).toMatchObject({
             kind: "decision",
         });
-        expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 164 })).toEqual([]);
+        expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 37 })).toEqual([]);
         store.close();
     });
 
@@ -294,9 +294,7 @@ describe("one run", () => {
         expect(outcome.exitCode).toBe(0);
         expect(outcome.modeLowered).toBe(true);
         expect(kinds(outcome.events)).not.toContain("effectApplied");
-        expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 164 })).not.toEqual(
-            [],
-        );
+        expect(store.ledger.decisionsOn(REPOSITORY, { kind: "issue", number: 37 })).not.toEqual([]);
         store.close();
     });
 
@@ -315,7 +313,7 @@ describe("one run", () => {
         expect(outcome.modeLowered).toBe(true);
         expect(kinds(outcome.events)).not.toContain("effectApplied");
         const codes = store.ledger
-            .decisionsOn(REPOSITORY, { kind: "issue", number: 164 })
+            .decisionsOn(REPOSITORY, { kind: "issue", number: 37 })
             .map((row) => row.code);
         expect(codes.filter((code) => code === "wouldApply")).toHaveLength(2);
         store.close();

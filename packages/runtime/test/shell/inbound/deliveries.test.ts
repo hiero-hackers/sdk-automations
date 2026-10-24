@@ -67,7 +67,7 @@ const FIXTURE = capture("issues.opened.json").bytes();
 const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
 
 /** The issue that fixture opens, which is what every decision row here is about. */
-const ITEM = { kind: "issue", number: 164 } as const;
+const ITEM = { kind: "issue", number: 37 } as const;
 
 // Maps awaitingTriage because triageQueue requires it: enabling without the
 // mapping is now a configRejected, which has its own coverage in core.

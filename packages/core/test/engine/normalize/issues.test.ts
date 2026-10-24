@@ -7,7 +7,7 @@
  * sandbox with the dependency. What an `issues` delivery BECOMES is this
  * file's subject; the routing and the shared preamble are `events.test.ts`'s.
  *
- * Every capture is a real delivery from the 2026-08-07 capture session
+ * Every capture is a real delivery from the 2026-10-24 capture session
  * (protocol 7.1), scrubbed and human-reviewed. No payload here was written
  * by hand, and that is the point: the assumptions worth testing are the ones
  * GitHub gets to falsify.
@@ -51,13 +51,13 @@ describe("issues, through the real payloads", () => {
          * a constant compared against itself proves nothing).
          */
         expect(o.repository).toEqual({ owner: "scrubbed-1", repo: "scrubbed-2" });
-        expect(o.item).toEqual({ kind: "issue", number: 164 });
+        expect(o.item).toEqual({ kind: "issue", number: 37 });
         expect(o.position).toEqual({
             kind: "position",
             state: { meaning: null, blocked: false, closedBy: null },
             ignored: [],
         });
-        expect(o.observedAt.toISOString()).toBe("2026-08-06T23:09:54.000Z");
+        expect(o.observedAt.toISOString()).toBe("2026-10-24T10:29:25.000Z");
         /**
          * facts.md §2 — a webhook reads the projection and marks the rest.
          * Marking rather than inventing is the load-bearing half: an empty
@@ -237,6 +237,6 @@ describe("the actor a delivery carries", () => {
         if (o.kind !== "facts") return;
         expect(o.facts.actor).toBeNull();
         // Still a readable delivery about a readable item.
-        expect(o.facts.item).toEqual({ kind: "issue", number: 164 });
+        expect(o.facts.item).toEqual({ kind: "issue", number: 37 });
     });
 });

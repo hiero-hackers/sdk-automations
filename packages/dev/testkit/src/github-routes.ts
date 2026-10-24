@@ -1,6 +1,6 @@
 /**
  * GitHub as a script: the open items, their timelines and reviews, the dashboard's pull request
- * 165 linked to issue 164, and the configuration file, each answered with rate-limit headers and
+ * 38 linked to issue 37, and the configuration file, each answered with rate-limit headers and
  * an ETag. One table behind both the in-process `fetch` script and the fake served over HTTP.
  * `calls` is what was charged.
  */
@@ -69,8 +69,8 @@ const ROUTES: Record<string, unknown> = {
     "/pulls/34": { draft: false, created_at: UPDATED },
     "/pulls/34/reviews": [],
     "/pulls/34/commits": [{ commit: { committer: { date: UPDATED } } }],
-    "/issues/164": {
-        number: 164,
+    "/issues/37": {
+        number: 37,
         state: "open",
         locked: false,
         updated_at: UPDATED,
@@ -79,11 +79,11 @@ const ROUTES: Record<string, unknown> = {
         assignees: [{ login: "scrubbed-1" }],
     },
     "/issues/197": { number: 197, assignees: [] },
-    "/issues/164/timeline": [],
-    "/issues/165/timeline": [],
-    "/pulls/165": { number: 165, mergeable: true, head: { sha: "a".repeat(40) } },
-    "/pulls/165/files": [{ filename: "sdk-automations.yml", status: "modified" }],
-    "/pulls/165/commits": [
+    "/issues/37/timeline": [],
+    "/issues/38/timeline": [],
+    "/pulls/38": { number: 38, mergeable: true, head: { sha: "a".repeat(40) } },
+    "/pulls/38/files": [{ filename: "sdk-automations.yml", status: "modified" }],
+    "/pulls/38/commits": [
         {
             sha: "a".repeat(40),
             parents: [],
@@ -99,11 +99,11 @@ const ROUTES: Record<string, unknown> = {
             repository: {
                 nameWithOwner: "scrubbed-1/scrubbed-2",
                 pullRequest: {
-                    number: 165,
+                    number: 38,
                     closingIssuesReferences: {
                         nodes: [
                             {
-                                number: 164,
+                                number: 37,
                                 repository: { nameWithOwner: "scrubbed-1/scrubbed-2" },
                             },
                         ],

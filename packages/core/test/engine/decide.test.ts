@@ -134,9 +134,9 @@ describe("the apply path, on a real delivery", () => {
             externals,
         );
         expect(decision.approved).toHaveLength(1);
-        expect(decision.item).toEqual({ kind: "issue", number: 164 });
+        expect(decision.item).toEqual({ kind: "issue", number: 37 });
         expect(decision.approved[0]).toMatchObject({
-            intent: { operation: "applyMappedLabel", item: { kind: "issue", number: 164 } },
+            intent: { operation: "applyMappedLabel", item: { kind: "issue", number: 37 } },
             // A label carries no comment identity, and minting one would be
             // an effect nobody asked for (D125).
             managedComment: null,
@@ -703,7 +703,7 @@ describe("paths the delivery tests never walk", () => {
                     resolve(q: string, i: unknown): Promise<{ ok: boolean; value?: unknown }>;
                 };
                 const answer = await handle.resolve("linkedIssues", {
-                    item: { kind: "issue", number: 164 },
+                    item: { kind: "issue", number: 37 },
                 });
                 expect(answer).toEqual({ ok: true, value: [] });
                 return [];
@@ -733,7 +733,7 @@ describe("paths the delivery tests never walk", () => {
                     resolve(q: string, i: unknown): Promise<{ ok: boolean; reason?: string }>;
                 };
                 const answer = await handle.resolve("linkedIssues", {
-                    item: { kind: "issue", number: 164 },
+                    item: { kind: "issue", number: 37 },
                 });
                 expect(answer).toMatchObject({
                     ok: false,

@@ -30,7 +30,7 @@ import {
 import { sweepScheduleId } from "../../../src/shell/decide/schedule.js";
 
 const REPOSITORY = { owner: "scrubbed-1", repo: "scrubbed-2" } as const;
-const ITEM = { kind: "issue", number: 164 } as const;
+const ITEM = { kind: "issue", number: 37 } as const;
 const SCHEDULE = sweepScheduleId(REPOSITORY);
 const GUID = "94f5384a-ee9a-33a5-a3cd-6eb589fe2b7a";
 const AT = "2026-08-07T10:00:01.000Z";
