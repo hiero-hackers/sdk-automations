@@ -26,7 +26,7 @@ export interface PoolStanding {
     readonly resetAt: string | null;
 }
 
-/** What a lane has spent and what it still may; the client's ledger adds the writing half. */
+/** Spent this window, charged in all (D238), and what a lane still may; the client's ledger adds the writing half. */
 export interface Allowance {
     spent(): Spent;
     charged(): Spent;
