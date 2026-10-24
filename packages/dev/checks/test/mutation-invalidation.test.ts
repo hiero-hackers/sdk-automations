@@ -159,6 +159,17 @@ describe("mutation invalidation policy guarantees safe incremental reuse", () =>
         });
     });
 
+    it("forces capabilities when the shipped examples its tests read change", () => {
+        const exampleChanged = ["docs/examples/full.yml"];
+        expect(shouldForceMutation("capabilities", exampleChanged, workspaceDeps)).toEqual({
+            force: true,
+            reason: "test input outside the package changed: docs/examples/full.yml",
+        });
+        expect(shouldForceMutation("core", exampleChanged, workspaceDeps)).toEqual({
+            force: false,
+        });
+    });
+
     it("forces all packages when global lockfile or root configuration changes", () => {
         for (const file of [
             "pnpm-lock.yaml",

@@ -38,6 +38,11 @@ const GLOBAL_INVALIDATION_FILES = new Set([
     "tsconfig.json",
 ]);
 
+/** Repository directories a package's tests read from outside the package. */
+const TEST_INPUTS: Readonly<Record<string, readonly string[]>> = {
+    capabilities: ["docs/examples/"],
+};
+
 export function discoverWorkspaceDependencies(
     workspaceDirs: readonly string[] = workspacePackages(),
     rootDir: string = repoRoot,
@@ -138,7 +143,15 @@ export function shouldForceMutation(
             };
         }
 
-        // 5. Documentation, lab, checks, or unrelated workspace packages
+        // 5. Repository files the package's tests read
+        if (TEST_INPUTS[packageName]?.some((dir) => file.startsWith(dir))) {
+            return {
+                force: true,
+                reason: `test input outside the package changed: ${file}`,
+            };
+        }
+
+        // 6. Documentation, lab, checks, or unrelated workspace packages
         // do not force a full mutation run on this package.
     }
 
