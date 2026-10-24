@@ -190,6 +190,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The invalidation step diffs from a main commit, so it needs main's history.
           fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -213,7 +214,8 @@ jobs:
       # toolchain must never be reused, so a dependency-bump PR misses the
       # cache and gets a full run instead of trusting results from other
       # dependencies.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: seed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/${{ matrix.package }}/reports/stryker-incremental.json
           key: mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
@@ -222,11 +224,18 @@ jobs:
       # On pull requests, evaluate whether changes to test helpers, fixtures,
       # configs, or workspace dependencies require forcing a full mutation run
       # instead of reusing incremental state.
+      #
+      # The diff starts at the main commit the seed was built from, the key's
+      # last segment, not at main's head: the seed lags main while main's own
+      # run is in flight or after it failed, and a helper change in that gap is
+      # one the seed never saw. With no seed there is nothing to reuse.
       - name: determine mutation invalidation
         id: mode
         if: github.event_name == 'pull_request'
+        env:
+          SEED_KEY: ${{ steps.seed.outputs.cache-matched-key }}
         run: |
-          FLAGS=$(node --experimental-strip-types packages/dev/checks/test/mutation-invalidation.ts ${{ matrix.package }} origin/${{ github.base_ref }})
+          FLAGS=$(node --experimental-strip-types packages/dev/checks/test/mutation-invalidation.ts ${{ matrix.package }} "${SEED_KEY##*-}")
           echo "flags=${FLAGS}" >> "$GITHUB_OUTPUT"
       # Each package owns its mutation scope and threshold; the checks package
       # locks this static matrix to the set of tracked Stryker configs.

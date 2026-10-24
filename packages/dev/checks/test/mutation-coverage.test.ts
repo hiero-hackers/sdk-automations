@@ -35,7 +35,15 @@ interface Job {
     readonly strategy?: {
         readonly matrix?: Readonly<Record<string, readonly string[] | undefined>>;
     };
-    readonly steps?: readonly { readonly if?: string; readonly run?: string }[];
+    readonly steps?: readonly Step[];
+}
+
+interface Step {
+    readonly id?: string;
+    readonly uses?: string;
+    readonly if?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly run?: string;
 }
 
 interface Workflow {
@@ -182,6 +190,15 @@ describe("mutation policy stays complete across packages and CI", () => {
                 matrixPackages(mutation),
             ),
         ).toEqual({ missing: [], extra: [] });
+    });
+
+    it("diffs a pull request from the main commit its restored seed was built from", () => {
+        const steps = mutation.steps ?? [];
+        const seed = steps.find(({ id }) => id === "seed");
+        const invalidation = steps.find(({ run }) => run?.includes("mutation-invalidation.ts"));
+        expect(seed?.uses).toMatch(/^actions\/cache\/restore@/);
+        expect(invalidation?.env?.["SEED_KEY"]).toBe("${{ steps.seed.outputs.cache-matched-key }}");
+        expect(invalidation?.run).toContain('"${SEED_KEY##*-}"');
     });
 
     it("keeps the store score at 96 in the runtime matrix row", () => {
