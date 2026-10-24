@@ -95,10 +95,6 @@ export const postManagedComment: OperationHandler<"postManagedComment"> = {
         return { verb: "postComment", kind, body };
     },
 
-    /**
-     * D12, in full: no match creates, a match with the same body is `already`, and a match
-     * with a different body is updated in place (D145). Nothing repairs a comment in the background — recovery's read-back matches on IDENTITY alone.
-     */
     /** The day's creations, counted only when this call would create rather than rewrite (D232). */
     async hold(call, pass) {
         const listed = await pass.reader.comments(pass.item);
@@ -111,6 +107,10 @@ export const postManagedComment: OperationHandler<"postManagedComment"> = {
         };
     },
 
+    /**
+     * D12, in full: no match creates, a match with the same body is `already`, and a match
+     * with a different body is updated in place (D145). Nothing repairs a comment in the background — recovery's read-back matches on IDENTITY alone.
+     */
     async send(call, pass) {
         const found = await matchedComment(pass, call.body);
         if (!found.ok) return { outcome: "retryLater", detail: found.detail };
