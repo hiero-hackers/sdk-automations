@@ -677,7 +677,7 @@ describe("the claim", () => {
         await sweep.settled();
 
         await first;
-        expect(sweep.settled()).resolves.toBeUndefined();
+        await expect(sweep.settled()).resolves.toBeUndefined();
         expect(events("sweepClaimed")).toHaveLength(1);
     });
 });
