@@ -93,7 +93,7 @@ and unquoted `no` is a YAML boolean rather than a mode — quote anything you ar
 | `disabled` | yes | findings plus `modeDisabled` refusals | no | no |
 | `observe` | yes | yes | yes—record-only | no |
 | `dry-run` | yes | yes | yes—record-only, plus a `wouldApply` line naming each change | no |
-| `active` | yes | yes | no—it applies each change; unarmed, it runs as `dry-run` | yes, where writes are armed |
+| `active` | yes | yes | no—it applies each change; unarmed, the Action runs it as `dry-run` and the hosted shell rejects it | yes, where writes are armed |
 
 Enabled capabilities and their declared resolvers run before the mode verdict, including in `disabled`.
 `observe` and `dry-run` refuse identically; the difference is what they say. For every effect that
