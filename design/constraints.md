@@ -89,15 +89,13 @@ until the review its notes name answers it.
 
 | Identifier | Question | Decision owner or evidence | What the answer blocks |
 |---|---|---|---|
-| Q1 | Which organization hosts and operates the GitHub App? | The Hiero or LFDT infrastructure owner must decide. | Production deployment is blocked. |
+| Q1 | Which organization hosts and operates the GitHub App? | The Hiero or LFDT infrastructure owner must decide. The Action needs no host: GitHub runs it in the repository's own workflow. | Production deployment of the hosted App is blocked. |
 | Q2 | Which maintainer problems become the first user-facing capabilities? | Maintainer demand and the capability review must decide. | The user-facing minimum viable product is blocked. |
 | Q3 | Do any repositories want the optional skill ladder, and what counts as a completion? | The affected repository maintainers must decide. | Skill-based assignment and progression are blocked. |
 | Q4 | Which human actions may automation ever refuse or reverse? | Maintainers must review the selected capability policies. | Manual-edit enforcement is blocked. |
-| Q5 | How does assignment behave with native assignment and multiple assignees? | The assignment specification and sandbox scenarios must decide. | The assignment capability is blocked. |
 | Q6 | Is review queue state stored, derived, or left to native GitHub review rules? | Repositories that request review routing must decide. | Review routing is blocked. |
 | Q7 | How are old labels, configuration, and writers migrated without two systems writing the same state? | A per-repository migration plan must decide. | Existing repository cutover is blocked. |
-| Q8 | Which repository volunteers for a read-only or reversible pilot? | Repository maintainers and the operator must decide. | Ring-one testing is blocked. |
-| Q11 | Is the App installed only on selected repositories or more broadly with repository configuration as a second gate? | Organization governance must decide. | Installation guidance is blocked. |
+| Q11 | Is the App installed only on selected repositories or more broadly with repository configuration as a second gate? | Organization governance must decide. The Action is adopted one repository at a time, by merging its workflow (`docs/installing.md`). | Installation guidance for the hosted App is blocked. |
 | Q12 | Which implementation documents should be written alongside working code? | The first implementation work packet must decide. | This question does not block feasibility work. |
 | Q13 | Who owns architecture review, the development App, the platform components, testing, and rollout? | Sophie and the project maintainers must name owners. | Committed dates and production work are blocked. |
 | Q14 | What path, strict YAML schema, and schema migration policy should the App use? | The path is decided: `sdk-automations.yml` at the repository root (D93, 2026-08-07) — the file configures the platform, not GitHub, so it does not live in `.github/`. Experiment 6.3 (2026-07-23) validated the mechanics (path-independent): strict parsing, unknown-key rejection, and `schemaVersion` rejection all fail closed, and a default-branch config change is event-observable within seconds. Inheritance is deferred from the first version. | Only the schema migration policy remains blocking. |
