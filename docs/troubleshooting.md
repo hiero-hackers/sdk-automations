@@ -66,7 +66,7 @@ your file has to move.
 | `writeUnknown` | Whether the call landed could not be established; nothing is resent until a read of GitHub settles it |
 | `writeUnsupported` | The platform has no confirmed endpoint for this write yet; the intent stands and is re-tried each sweep |
 | `postconditionUnconfirmed` | GitHub accepted the call, but the read-back did not confirm the state it should have left behind |
-| `commentBudget` | The App had already created three comments on this item in the last day, so this one was held back until tomorrow; a comment it rewrites in place never counts |
+| `commentBudget` | Three comments that count as the App's had already been created on this item in the last day, so this one was held back until tomorrow; a comment it rewrites in place never counts. Its own count, and so does any comment carrying its marker; under the Action's default token, so does every other workflow's `github-actions[bot]` comment ([Installing](installing.md#another-token)) |
 
 `pnpm shell:explain <effect-id>` prints one effect's whole history and where it stands, and
 `pnpm shell:explain --item issue#40 --repo owner/repo` prints an item's effects and its decisions; `pnpm shell:status`
