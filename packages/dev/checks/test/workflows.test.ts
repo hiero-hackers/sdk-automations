@@ -41,7 +41,7 @@ const WRITE_ALLOWLIST = new Set([
     ".github/workflows/release.yml:image:packages",
     ".github/workflows/release.yml:image:id-token",
     ".github/workflows/release.yml:image:attestations",
-    // The Action bundle is committed to `releases/v1` through the contents API
+    // The Action bundle is committed to `release/<tag>` through the contents API
     // and attested by the release job; nothing else in the workflow writes.
     ".github/workflows/release.yml:release:contents",
     ".github/workflows/release.yml:release:id-token",
@@ -494,5 +494,18 @@ describe("the conformance workflow keeps its credential boundary", () => {
         expect(script).toContain("contents/");
         expect(script).toContain("pr create");
         expect(script).toContain("Signed-off-by: github-actions[bot]");
+    });
+});
+
+describe("the release workflow keeps every published bundle", () => {
+    const script = steps(workflowText(".github/workflows/release.yml"))
+        .map((step) => (typeof step.run === "string" ? step.run : ""))
+        .join("\n");
+
+    /** Consumers pin a release SHA, so the branch holding it is never deleted. */
+    it("keeps each bundle commit on its own release branch", () => {
+        expect(script).toContain('TAG_BRANCH="release/${GITHUB_REF_NAME}"');
+        expect(script).toContain("branch:process.env.TAG_BRANCH");
+        expect(script).not.toContain("DELETE");
     });
 });

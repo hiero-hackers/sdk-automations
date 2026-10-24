@@ -54,7 +54,8 @@ release after it reads it.
 
 The major tag moves forward only. To go back, pin the previous release's SHA, which the
 [Releases page](https://github.com/hiero-hackers/sdk-automations/releases) lists, in place of the
-tag; it is a commit on the `releases/v<major>` branch.
+tag; it is the head of that release's own `release/<tag>` branch, which stays after the major moves
+on.
 
 ## Another token
 
