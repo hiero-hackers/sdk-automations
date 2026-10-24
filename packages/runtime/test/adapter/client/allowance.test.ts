@@ -393,3 +393,36 @@ describe("a window nobody will report the end of", () => {
         expect(unnamed.refuses("core", false)).toBe("core");
     });
 });
+
+/** What a firing diffs for its own spend: no roll of a window or a tick lowers it. */
+describe("everything the ledger has charged", () => {
+    it("counts on through a window a later reset opened", () => {
+        const allowance = createAllowance({ share: 1 });
+        allowance.observed("core", headers(resetIn(0)));
+        allowance.charge(exchange());
+        const before = allowance.charged();
+
+        allowance.observed("core", headers(resetIn(3_600)));
+        allowance.charge(exchange({ pool: "graphql", points: 3 }));
+        allowance.charge(exchange({ mutation: true }));
+
+        expect(allowance.spent()).toEqual({ core: 1, graphql: 3, mutations: 1 });
+        expect(before).toEqual({ core: 1, graphql: 0, mutations: 0 });
+        expect(allowance.charged()).toEqual({ core: 2, graphql: 3, mutations: 1 });
+    });
+
+    it("counts on through a window the clock rolled, and a tick that armed the mutations", () => {
+        let now = (1_787_300_000 + 30) * 1_000;
+        const allowance = createAllowance({ share: 1, clock: () => now });
+        allowance.observed("core", headers(resetIn(60)));
+        allowance.charge(exchange({ mutation: true }));
+
+        now = (1_787_300_000 + 60) * 1_000;
+        allowance.armMutations(2);
+        expect(allowance.refuses("core", false)).toBeNull();
+        allowance.charge(exchange());
+
+        expect(allowance.spent()).toEqual({ core: 1, graphql: 0, mutations: 0 });
+        expect(allowance.charged()).toEqual({ core: 2, graphql: 0, mutations: 1 });
+    });
+});

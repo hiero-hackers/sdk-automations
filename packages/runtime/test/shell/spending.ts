@@ -21,16 +21,22 @@ export interface Spending extends Allowance {
 /** A fake with everything to spend; a lane named in `caps` refuses once it reaches one. */
 export function spending(caps: Partial<Record<Lane, number>> = {}): Spending {
     const spent = { core: 0, graphql: 0, mutations: 0 };
+    const total = { core: 0, graphql: 0, mutations: 0 };
     let turnedAway = 0;
     let refusedLane: Lane | null = null;
     const atCap = (lane: Lane): boolean => {
         const cap = caps[lane];
         return cap !== undefined && spent[lane] >= cap;
     };
+    const debit = (lane: Lane): void => {
+        spent[lane] += 1;
+        total[lane] += 1;
+    };
     return {
         refusing: null,
         resetAt: null,
         spent: (): Spent => ({ ...spent }),
+        charged: (): Spent => ({ ...total }),
         exhausted(): Lane | null {
             if (this.refusing !== null) return this.refusing;
             return (["core", "graphql", "mutations"] as const).find(atCap) ?? null;
@@ -56,10 +62,10 @@ export function spending(caps: Partial<Record<Lane, number>> = {}): Spending {
                     refusedLane = lane;
                     return;
                 }
-                spent[lane] += 1;
+                debit(lane);
                 // A mutation is a core request too; the client charges both (D192).
 
-                if (lane === "mutations") spent.core += 1;
+                if (lane === "mutations") debit("core");
             }
         },
         openWindow(): void {

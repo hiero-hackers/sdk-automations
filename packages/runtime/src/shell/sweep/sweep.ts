@@ -114,7 +114,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 const NOTHING: Spent = { core: 0, graphql: 0, mutations: 0 };
 
-/** What one firing spent: the allowance's lanes, before against after. */
+/** What one firing spent: what the allowance charged, before against after. */
 const since = (before: Spent, after: Spent): Spent => ({
     core: after.core - before.core,
     graphql: after.graphql - before.graphql,
@@ -309,7 +309,7 @@ export function createSweep(options: SweepOptions): Sweep {
         processor: SweepProcessor,
         before: Spent,
     ): Promise<Swept> => {
-        const spent = (): Spent => since(before, allowance.spent());
+        const spent = (): Spent => since(before, allowance.charged());
         const groups = groupsFor(config);
         const reader = processor.facts(config, groups);
         const listed = await reader.openItems();
@@ -502,8 +502,8 @@ export function createSweep(options: SweepOptions): Sweep {
             return nothingRead(row);
         }
         if (allowance.exhausted() !== null) return deferred(row);
-        const before = allowance.spent();
-        const spent = (): Spent => since(before, allowance.spent());
+        const before = allowance.charged();
+        const spent = (): Spent => since(before, allowance.charged());
         try {
             const config = await processor.configuration();
             if (allowance.exhausted() !== null) return deferred(row, spent());

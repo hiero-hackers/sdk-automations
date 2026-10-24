@@ -5,7 +5,7 @@ export type Pool = "core" | "graphql";
 /** A pool, or the mutation lane that rides on `core` and is armed per tick. */
 export type Lane = Pool | "mutations";
 
-/** What has been spent this window; `graphql` counts points and the rest requests. */
+/** What has been spent, per lane; `graphql` counts points and the rest requests. */
 export interface Spent {
     readonly core: number;
     readonly graphql: number;
@@ -29,6 +29,7 @@ export interface PoolStanding {
 /** What a lane has spent and what it still may; the client's ledger adds the writing half. */
 export interface Allowance {
     spent(): Spent;
+    charged(): Spent;
     /** The lane at its cap — core, then graphql, then mutations — or `null`. */
     exhausted(): Lane | null;
     refusals(): number;

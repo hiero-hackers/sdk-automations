@@ -107,6 +107,8 @@ export function createAllowance({
     };
     let mutationCap = mutations ?? Number.POSITIVE_INFINITY;
     let mutationsSpent = 0;
+    // Never rolled: a firing diffs it, so a window that ends under one still counts every request.
+    const total = { core: 0, graphql: 0, mutations: 0 };
     let turnedAway = 0;
     let refusedLane: Lane | null = null;
 
@@ -145,6 +147,7 @@ export function createAllowance({
                 mutations: mutationsSpent,
             };
         },
+        charged: (): Spent => ({ ...total }),
         exhausted(): Lane | null {
             rollIfDue();
             if (atCap("core")) return "core";
@@ -177,6 +180,9 @@ export function createAllowance({
             pools.core.spent += cost.core;
             pools.graphql.spent += cost.graphql;
             mutationsSpent += cost.mutations;
+            total.core += cost.core;
+            total.graphql += cost.graphql;
+            total.mutations += cost.mutations;
         },
         /**
          * A reset past the slack is a new window: its spend starts again. Drift inside it only moves

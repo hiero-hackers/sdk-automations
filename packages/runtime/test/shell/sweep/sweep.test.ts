@@ -444,25 +444,32 @@ describe("a firing that reads nothing", () => {
         expect(events("sweepFinished")).toMatchObject([{ items: 0, decided: 0 }]);
     });
 
-    it("reads no item when the configuration could not be read", async () => {
+    it("reads no item when the configuration could not be read, and reports that read", async () => {
         armed();
         const reader = scriptedReader();
         const { processor, decided } = scriptedProcessor(null);
+        const allowance = spending();
+        const configuration = (): Promise<RepositoryConfig | null> => {
+            allowance.charge("core");
+            return processor.configuration();
+        };
         const sweep = createSweep({
             store,
             capabilities: CAPABILITIES,
-            processorFor: sweeping(processor, reader.facts),
+            processorFor: sweeping({ ...processor, configuration }, reader.facts),
             clock: () => NOW,
             cadenceMs: DAY_MS,
             writeCap: SWEEP_WRITE_CALLS,
-            allowance: spending(),
+            allowance,
             log,
         });
 
         await sweep.runDue();
 
         expect(decided).toEqual([]);
-        expect(events("sweepFinished")).toHaveLength(1);
+        expect(events("sweepFinished")).toMatchObject([
+            { items: 0, spent: { core: 1, graphql: 0, mutations: 0 } },
+        ]);
     });
 
     it("reads no item when the repository enables no clock-driven capability", async () => {
@@ -825,6 +832,9 @@ interface Budgeted {
     read(): number[];
     facts(): Array<IssueFacts | PullRequestFacts>;
     readonly cost: { item: number };
+    readonly allowance: Spending;
+    /** The issue after whose reads GitHub's window rolls, mid-firing; `null` rolls none. */
+    readonly window: { rollsAfter: number | null };
     /** What the next firing's list answers; a case may make it unreadable. */
     readonly listing: { items: SweptItems };
     /** Fire once, `days` cadences after the row was armed. */
@@ -836,6 +846,7 @@ function budgeted(coreCap: number, items: readonly SweptItem[] = FIVE): Budgeted
     const listing: { items: SweptItems } = { items: { ok: true, items } };
     const { processor, decided } = scriptedProcessor(configFrom(CONFIG_TEXT, CAPABILITIES));
     const cost = { item: ITEM_COST };
+    const window: { rollsAfter: number | null } = { rollsAfter: null };
     const allowance = spending({ core: coreCap });
     /** The scripted reader, charging what the live one's reads would cost. */
     const counted = (config: RepositoryConfig): SweepFacts => {
@@ -855,6 +866,7 @@ function budgeted(coreCap: number, items: readonly SweptItem[] = FIVE): Budgeted
             },
             issueFacts: (listed, links) => {
                 spend(cost.item);
+                if (listed.item.number === window.rollsAfter) allowance.openWindow();
                 return reader.issueFacts(listed, links);
             },
             pullRequestFacts: (listed, openIssues, closes) => {
@@ -878,6 +890,8 @@ function budgeted(coreCap: number, items: readonly SweptItem[] = FIVE): Budgeted
         read: () => decided.map(({ input }) => input.facts.item.number),
         facts: () => decided.map(({ input }) => input.facts),
         cost,
+        allowance,
+        window,
         listing,
         fire: (days) => {
             now = new Date(NOW.getTime() + days * DAY_MS);
@@ -989,6 +1003,19 @@ describe("the requests one firing may spend", () => {
             { items: 5, decided: 2, remaining: 3, resumeAfter: 12, spent: CORE(5) },
         ]);
         expect(cursorAfter(1)).toBe(12);
+    });
+
+    it("reports every request of a firing GitHub's window rolled under", async () => {
+        armed();
+        const firing = budgeted(100);
+        firing.allowance.charge("graphql", 7);
+        firing.window.rollsAfter = 13;
+
+        await firing.fire(0);
+
+        expect(events("sweepFinished")).toMatchObject([
+            { decided: 5, spent: CORE(LIST_COST + 5 * ITEM_COST) },
+        ]);
     });
 
     it("does not keep or skip an item whose reads crossed the cap", async () => {
