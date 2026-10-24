@@ -498,9 +498,18 @@ describe("the conformance workflow keeps its credential boundary", () => {
 });
 
 describe("the release workflow keeps every published bundle", () => {
-    const script = steps(workflowText(".github/workflows/release.yml"))
+    const text = workflowText(".github/workflows/release.yml");
+    const script = steps(text)
         .map((step) => (typeof step.run === "string" ? step.run : ""))
         .join("\n");
+
+    /** Two runs at once would race to move the major branch and tag. */
+    it("runs one release at a time and never cancels one", () => {
+        expect(workflowDocument(text)?.concurrency).toEqual({
+            group: "release",
+            "cancel-in-progress": false,
+        });
+    });
 
     /** Consumers pin a release SHA, so the branch holding it is never deleted. */
     it("keeps each bundle commit on its own release branch", () => {
