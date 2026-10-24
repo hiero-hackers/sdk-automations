@@ -81,18 +81,19 @@ The file's `mode` is two things at once: the mode every capability runs in unles
 otherwise, and the most any capability in the file may do. A block may state a lower mode — see
 [`capabilities.<name>.mode`](#capabilitiesnamemode) — never a higher one.
 
-Core recognizes all four values. Whether `active` is honoured depends on the composition the endpoint
-was started as: one that wires no write path — the shipped default — rejects it before a decision and
-records `modeUnsupported`, explained in
-[Troubleshooting](troubleshooting.md#it-never-got-as-far-as-deciding). Values are case-sensitive, and
-unquoted `no` is a YAML boolean rather than a mode — quote anything you are unsure of.
+Core recognizes all four values. `active` writes only where writes are armed. The Action arms them
+with `arm-writes: "true"`; until then it decides the file and every `active` block as `dry-run`, and
+the job summary says so ([Installing](installing.md#arming-writes)). The hosted shell arms them with
+`APP_SLUG`; without it, it rejects `active` before a decision and records `modeUnsupported`, explained
+in [Troubleshooting](troubleshooting.md#it-never-got-as-far-as-deciding). Values are case-sensitive,
+and unquoted `no` is a YAML boolean rather than a mode — quote anything you are unsure of.
 
 | Mode | Reads | Reports | Records what it would do | Writes |
 |---|---|---|---|---|
 | `disabled` | yes | findings plus `modeDisabled` refusals | no | no |
 | `observe` | yes | yes | yes—record-only | no |
 | `dry-run` | yes | yes | yes—record-only, plus a `wouldApply` line naming each change | no |
-| `active` | configuration only | unsupported-mode rejection | no | no |
+| `active` | yes | yes | no—it applies each change | yes, where writes are armed |
 
 Enabled capabilities and their declared resolvers run before the mode verdict, including in `disabled`.
 `observe` and `dry-run` refuse identically; the difference is what they say. For every effect that
@@ -100,9 +101,6 @@ reaches the mode rule, `dry-run` adds one `wouldApply` finding naming the capabi
 the item and the exact change — a rehearsal to read before promoting a repository to `active`. An
 effect an earlier rule refused is never rehearsed, and nothing is prepared: no comment marker is
 minted for a write that will not happen.
-
-`active` is rejected before a decision by any composition that wires no write path, which is the
-shipped default. See [Troubleshooting](troubleshooting.md#it-never-got-as-far-as-deciding).
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
 

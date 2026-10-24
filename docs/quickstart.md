@@ -2,8 +2,8 @@
 
 > The Action is pre-1.0 and running in a pilot. A repository adopts it with two files; these pages describe what it does today.
 
-Once an operator installs and starts the App for your repository, configure it with one file and
-one merge.
+Whether it runs as a GitHub Action in your repository or as an App an operator starts for you,
+configure it with one file and one merge.
 
 ## Add the file
 
@@ -45,10 +45,11 @@ per delivery naming every decision and why. Anything the App would close or rele
 first, and the warning is honoured. [Capabilities](capabilities.md) says what each automation does
 and what it may write.
 
-The App can write only when its operator arms the write path and the repository selects `active`.
-It is not hosted for general use yet. Use `observe` or `dry-run` until the operator has approved
-and rehearsed the writes in a sandbox. Without an armed write path, `active` is rejected before
-any decision is made.
+A write needs the repository to select `active` and writes to be armed: by the workflow's
+`arm-writes: "true"` under the Action ([Installing](installing.md#arming-writes)), by the operator
+under the App, which is not hosted for general use yet. Use `observe` or `dry-run` until the writes
+have been rehearsed. Unarmed, the Action decides `active` as `dry-run`, and the App rejects it
+before any decision is made.
 
 ## Choosing a mode
 
@@ -57,7 +58,7 @@ any decision is made.
 | `disabled` | You want every returned intent refused; enabled capability and resolver evaluation still runs |
 | `observe` | You want a non-writing decision record; today it includes record-only requested effects |
 | `dry-run` | You want the same non-writing record, plus a `wouldApply` line naming each change the App would make |
-| `active` | You want the armed App to apply approved changes after a sandbox rehearsal |
+| `active` | You want approved changes applied where writes are armed, after a rehearsal |
 
 `dry-run` is the rehearsal to read before `active`: nothing is written, and every effect that would
 be is named.
@@ -127,7 +128,7 @@ copy the one closest to what you want and edit the label names:
 |---|---|
 | [`full.yml`](examples/full.yml) | Every capability on, every mapping family filled, every option with a comment — the catalogue |
 | [`inactivity.yml`](examples/inactivity.yml) | The scheduled capability alone: reminders and releases, with the defaults |
-| [`active.yml`](examples/active.yml) | An active configuration, for the day writes are turned on; rejected until then |
+| [`active.yml`](examples/active.yml) | An active configuration; it writes only where writes are armed |
 | [`observe-only.yml`](examples/observe-only.yml) | The same repository, reporting instead of acting |
 | [`minimal.yml`](examples/minimal.yml) | Reports only, nothing enabled — the smallest useful file |
 | [`empty.yml`](examples/empty.yml) | Nothing at all, spelled out |

@@ -15,11 +15,10 @@ point a run uses on a real repository.
 | `observe-only.yml` | A real repository with mappings and a capability, still writing nothing. |
 | `full.yml` | Every shipped capability on, every mapping family filled, every option commented — the catalogue. The suite holds it to that: a capability the App gains and this file does not is a failing check. |
 | `inactivity.yml` | Schedule-driven capabilities only, at their defaults, with the two optional mappings `inactivity` reads. |
-| `active.yml` | An active configuration, for the day writes are turned on. Rejected until then. |
+| `active.yml` | An active configuration. It writes only where writes are armed. |
 
-`active.yml` remains parseable because active mode stays in Core's general vocabulary. The runnable shell
-records `modeUnsupported` before `decide()` unless it was started with an applier, which is not the default
-composition.
+Unarmed, the Action decides `active.yml` as `dry-run` (`arm-writes: "false"`), and the hosted shell
+records `modeUnsupported` before `decide()` unless it was started with `APP_SLUG`.
 
 ## Where the rejections live
 

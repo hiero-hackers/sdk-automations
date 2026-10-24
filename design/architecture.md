@@ -195,11 +195,12 @@ launch (D165); drift rejected by the fingerprint D110 established.*
 
 ## 7. What is not built
 
-Active mode runs only where the process was composed with the App's identity as well as its
-credentials; anything else records `modeUnsupported`. Every read and write with no cited row in
-[`findings/endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md) — two resolvers,
-four operations, three of the sweep's facts — is implemented and refuses at the send. Config schema
-migration is unbuilt: the live and local reads share today's schema deliberately. Nothing enumerates
-what an installation covers, so a repository that has never delivered is one this process has never
-heard of (D169). Everything else absent here is an open question in
+Active mode runs only where writes are armed. The hosted shell arms them when composed with the
+App's identity as well as its credentials, and otherwise records `modeUnsupported`; the Action arms
+them with `arm-writes: "true"`, and otherwise decides `active` as `dry-run`. Every read and write
+with no cited row in [`findings/endpoint-permission-matrix.md`](findings/endpoint-permission-matrix.md)
+— two resolvers, four operations, three of the sweep's facts — is implemented and refuses at the
+send. Config schema migration is unbuilt: the live and local reads share today's schema
+deliberately. Nothing enumerates what an installation covers, so a repository that has never
+delivered is one this process has never heard of (D169). Everything else absent here is an open question in
 [`constraints.md`](constraints.md), deliberately not drawn.

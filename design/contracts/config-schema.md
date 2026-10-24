@@ -161,7 +161,7 @@ stops every capability until the block is lowered too. The rows below describe a
 | `disabled` | Core still evaluates enabled capabilities and declared resolvers, then refuses every screened intent with `modeDisabled`; it approves no effect. |
 | `observe` | Core records findings and record-only intent explanations, never an effect to apply. This is the safe default. |
 | `dry-run` | The same record-only decision path as `observe`, plus a `wouldApply` finding naming each effect that reached the mode rule. No identity is minted and nothing is prepared. |
-| `active` | A valid core mode the shell honours only when it was composed with a write path: the shipped default records `modeUnsupported` before `decide()` whenever an enabled capability's effective mode is `active`, while a process started with `APP_SLUG` beside the credential triad applies effects, behind the standing gate — App-owned comment identity (D125) and the armed FX-gate protocol (`packages/dev/lab/protocols/8.2-first-effects.md`). |
+| `active` | A valid core mode, honoured only where writes are armed. The hosted shell started without `APP_SLUG` records `modeUnsupported` before `decide()` whenever an enabled capability's effective mode is `active`, while one started with `APP_SLUG` beside the credential triad applies effects, behind the standing gate — App-owned comment identity (D125) and the armed FX-gate protocol (`packages/dev/lab/protocols/8.2-first-effects.md`). The Action decides the file and every `active` block as `dry-run` until `arm-writes` is `"true"`, then applies (`packages/runtime/src/shell/compose/action/run.ts`). |
 
 For modes that reach `decide()`, the process kill switch is the first safety verdict for each returned
 intent. It does not prevent capability or resolver evaluation, and the shell intercepts `active` before
@@ -180,9 +180,9 @@ The following mitigations named by D38 are **not built yet**:
 - a repository-visible effective-configuration or health report;
 - permission diagnostics before capability evaluation.
 
-`active` no longer waits on them: the default composition records `modeUnsupported` before `decide()`, and
-the applier composition honours `active` when `APP_SLUG` arms it, behind the standing gate (D125,
-protocol 8.2).
+`active` no longer waits on them. Unarmed, the hosted shell records `modeUnsupported` before `decide()`
+and the Action decides it as `dry-run`. The hosted shell honours `active` when `APP_SLUG` arms it,
+behind the standing gate (D125, protocol 8.2), and the Action when `arm-writes` is `"true"`.
 
 ## 6. Rejection codes
 
@@ -221,7 +221,7 @@ protocol 8.2).
 - Decide deprecation, retention and rollback policy for a future format (Q14); absence being the current version is decided (D222).
 - Add inheritance between files only if repeated repository demand justifies it; the current version
   has none. A block inheriting its file's `mode` is §4's ceiling, not this.
-- Keep `active` unsupported in every composition that wires no write path, and keep the armed one behind
+- Keep `active` writing nothing in every composition that wires no write path, and keep the armed one behind
   the standing gate (D125, protocol 8.2) until that protocol has been re-run against the operations as
   they stand.
 

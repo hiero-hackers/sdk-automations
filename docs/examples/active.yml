@@ -1,8 +1,6 @@
-# A reserved active configuration.
-#
-# Core retains active in its configuration vocabulary, but the runnable shell
-# records `modeUnsupported` and rejects this mode before deciding. It performs
-# no GitHub effect.
+# An active configuration. It writes only where writes are armed: unarmed, the
+# Action decides it as `dry-run`, and the hosted shell records
+# `modeUnsupported` before deciding.
 #
 # `inactivity` shows a nested block while disabled — two ladders and a
 # per-reason clock. The shared parser confirms only that the block is a
