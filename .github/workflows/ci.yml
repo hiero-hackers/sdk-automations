@@ -36,6 +36,7 @@ jobs:
   test:
     name: typecheck and tests (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +64,7 @@ jobs:
   repository:
     name: repository invariants
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,6 +84,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,6 +103,7 @@ jobs:
   format:
     name: format check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,6 +119,7 @@ jobs:
   coverage:
     name: line coverage (${{ matrix.package }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -146,6 +151,7 @@ jobs:
   audit:
     name: dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # A new advisory reads as "main is red", not "this PR is bad";
     # `dependency-review` answers the PR question.
     if: github.event_name == 'push'
@@ -164,6 +170,7 @@ jobs:
   dependency-review:
     name: dependency review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Only a pull request HAS a base to diff against; on push there is no
     # "what did this change introduce" question to ask.
     if: github.event_name == 'pull_request'
@@ -182,6 +189,8 @@ jobs:
   mutation:
     name: mutation testing (${{ matrix.package }})
     runs-on: ubuntu-latest
+    # runtime's forced run on main takes about two hours.
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -266,6 +275,7 @@ jobs:
   smoke:
     name: action smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -287,6 +297,7 @@ jobs:
   container:
     name: container smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

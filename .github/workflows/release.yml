@@ -18,6 +18,7 @@ jobs:
   image:
     name: publish image
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The one job that writes: the image push, the OIDC token and the attestation it signs.
     permissions:
       contents: read
@@ -58,6 +59,7 @@ jobs:
   release:
     name: build and publish the action
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The one job that writes: the branch and tag moves, the OIDC token and the attestation it signs.
     permissions:
       contents: write

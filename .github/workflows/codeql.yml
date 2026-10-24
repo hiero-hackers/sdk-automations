@@ -32,6 +32,7 @@ jobs:
   analyze:
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       # The SARIF upload, and nothing else. Scoped to this job rather than
       # the workflow so no other step ever inherits a write.
