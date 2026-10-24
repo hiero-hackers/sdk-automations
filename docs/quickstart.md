@@ -21,8 +21,9 @@ mappings:
     awaitingTriage: "status: triage"
 ```
 
-**2.** Edit the label name on the right to match your repository's triage label. Only labels you
-list here are ever touched; the [common setups](#common-setups) below map more as they need them.
+**2.** Edit the label name on the right to match your repository's triage label. A meaning you do not
+list keeps its [default spelling](configuration.md#label-mappings), and a label the repository lacks is
+defined when first needed; the [common setups](#common-setups) below map more as they need them.
 
 **3.** Merge to your default branch; a config in an open pull request does not take effect. With App
 credentials the shell reads that branch. Credential-free development and CI may point `CONFIG_FILE`

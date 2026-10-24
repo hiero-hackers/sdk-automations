@@ -53,7 +53,7 @@ const aboutTheCapability = (
 ): finding is Finding & { readonly subject: CapabilitySubject } =>
     finding.subject.kind === "capability";
 
-/** The reason, then its lines, in the one detail column. */
+/** The reason, then its lines, in the one detail column: a check's outcomes, an idle time, a skip's causes. */
 const reasonOf = (finding: Finding): string =>
     finding.detail.length === 0
         ? finding.summary
@@ -80,7 +80,7 @@ export function decisionsOf(pass: DecidedPass): Decision[] {
                 capability: finding.subject.capability,
                 verdict: finding.severity,
                 code: finding.code,
-                detail: finding.summary,
+                detail: reasonOf(finding),
             };
         }
         if (pass.item === null || !aboutTheCapability(finding)) return null;

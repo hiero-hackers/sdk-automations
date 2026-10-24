@@ -284,7 +284,7 @@ function outcomeOf(
         verdict.outcome === "record-only" &&
         verdict.code === "modeRecordsOnly"
     ) {
-        findings.push(wouldApplyFinding(intent, effectSubject));
+        findings.push(wouldApplyFinding(intent, effectSubject, config.mappings.labels));
     }
     return {
         findings,

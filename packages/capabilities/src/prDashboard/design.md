@@ -80,9 +80,10 @@ capabilities:
 ```
 
 All five checks and `applyLabels` are in the shipped spec. `applyLabels` lists the positions the
-verdict may set: a listed position the file has not mapped is refused with the file, and one
-prDashboard never sets (anything but the two) is reported on the operator surface at every
-evaluation. `docs/capabilities.md` is generated from the spec and is always the shipped list.
+verdict may set: a listed position is written at the file's spelling, the default where the file
+maps none, and defined in the repository when it lacks the label; one prDashboard never sets
+(anything but the two) is reported on the operator surface at every evaluation.
+`docs/capabilities.md` is generated from the spec and is always the shipped list.
 
 Rules: a check runs only when its `enabled` is explicitly `true` — the platform's own consent rule,
 one level down; omitted or `false` means off, and a kept block with `enabled: false` is a check
@@ -180,5 +181,6 @@ outright (D198).
 | A position the map cannot move | left alone; the operator is told |
 | Maintainer moved it to `readyToMerge`, every check passes | left alone; a failure still moves it to `needsRevision` |
 | Assignee login differs from the author's in case | counted as assigned |
-| `applyLabels` names an unmapped position | the file is refused |
+| `applyLabels` names a position the file does not map | set at its default spelling (D203) |
+| `applyLabels` names no meaning | the file is refused |
 | `applyLabels` names a position never set | reported; the listed ones still set |

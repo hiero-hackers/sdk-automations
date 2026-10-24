@@ -98,7 +98,8 @@ and unquoted `no` is a YAML boolean rather than a mode — quote anything you ar
 Enabled capabilities and their declared resolvers run before the mode verdict, including in `disabled`.
 `observe` and `dry-run` refuse identically; the difference is what they say. For every effect that
 reaches the mode rule, `dry-run` adds one `wouldApply` finding naming the capability, the operation,
-the item and the exact change — a rehearsal to read before promoting a repository to `active`. An
+the item and the exact change, a label by its spelling — a rehearsal to read before promoting a
+repository to `active`. An
 effect an earlier rule refused is never rehearsed, and nothing is prepared: no comment marker is
 minted for a write that will not happen.
 

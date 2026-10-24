@@ -231,7 +231,7 @@ describe("dry-run rehearses, observe records", () => {
         ]);
         const rehearsed = decision.report.findings.filter((f) => f.code === "wouldApply");
         expect(rehearsed.map((f) => f.summary)).toEqual([
-            "dry-run: triage would applyMappedLabel on o/r#7 — set mapped position awaitingTriage. Nothing was written.",
+            "dry-run: triage would applyMappedLabel on o/r#7 — set mapped position awaitingTriage, the label `status: triage`. Nothing was written.",
             "dry-run: triage would postManagedComment on o/r#7 — managed notice comment from triage. Nothing was written.",
         ]);
         // The subject is the effect arm, so an operator surface groups a

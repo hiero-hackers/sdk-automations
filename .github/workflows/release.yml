@@ -11,7 +11,8 @@ permissions:
   contents: read
 
 # One group for every tag, so two releases never move the major branch and tag at once. GitHub
-# keeps one run waiting: a third tag pushed meanwhile cancels the waiting one, never a running one.
+# keeps one run waiting and a third tag pushed meanwhile cancels the waiting one, never a running
+# one: push one tag at a time, and re-run a release that was cancelled.
 concurrency:
   group: release
   cancel-in-progress: false

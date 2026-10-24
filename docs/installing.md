@@ -50,6 +50,13 @@ The editor schema is served from the default branch, so it can accept a key the 
 does not read yet. A block's own `mode` is one: `v0.1.0` refuses it as `unknownKey`, and the first
 release after it reads it.
 
+## Going active with a backlog
+
+The first active sweep acts on everything already open, not only on what arrives next: the
+dashboard comments on and labels every open pull request, defining any label the repository lacks
+at the spelling in force, and the inactivity ladders start on every stale assignment and every
+reapable pull request at once.
+
 ## Rolling back
 
 The major tag moves forward only. To go back, pin the previous release's SHA, which the

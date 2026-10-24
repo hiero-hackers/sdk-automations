@@ -45,7 +45,7 @@ const recorded: Finding = {
     severity: "notice",
     code: "modeRecordsOnly",
     summary: "recorded only",
-    detail: ["dropped from the row"],
+    detail: ["dcoSignoff: pass"],
     subject: { kind: "item", capability: "triageQueue", item: ITEM },
 };
 
@@ -71,11 +71,18 @@ const shape = ({
     [item, capability, verdict, code, detail, effectId] as const;
 
 describe("the rows one pass writes", () => {
-    it("writes a skip on the item it decided, the lines folded into the reason, in report order", () => {
+    it("writes each item finding with its lines folded into the reason, in report order", () => {
         const rows = decisionsOf(pass([skip(["a: 1", "b: 2"]), recorded]));
         expect(rows.map(shape)).toEqual([
             [ITEM, "triageQueue", "info", SKIPPED, "Skipped: nothing applies. (a: 1; b: 2)", null],
-            [ITEM, "triageQueue", "notice", "modeRecordsOnly", "recorded only", null],
+            [
+                ITEM,
+                "triageQueue",
+                "notice",
+                "modeRecordsOnly",
+                "recorded only (dcoSignoff: pass)",
+                null,
+            ],
         ]);
         expect(rows[0]).toMatchObject({
             passId: "pass-1",
