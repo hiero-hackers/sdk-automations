@@ -182,18 +182,18 @@ describe("the ladder at its limits", () => {
     /**
      * The consequence of both floors living on the level that consents: a
      * reminder LONGER than the release clock the root offers is a file about
-     * reminders. Nothing here consents to reap, so the `21d` default is a
+     * reminders. Nothing here consents to reap, so the `60d` default is a
      * number waiting for a taker rather than a promise to break, and the file
      * means "remind at 30d, release never" — which is a thing to want.
      */
     it("a reminder past the default release parses while nothing consents to reap", () => {
-        const read = readBlock({ remindAfter: "30d" });
+        const read = readBlock({ remindAfter: "90d" });
         expect(said(read)).toEqual([]);
-        expect(read.settings).toMatchObject({ remindAfter: 30 * 24, reap: { after: 21 * 24 } });
+        expect(read.settings).toMatchObject({ remindAfter: 90 * 24, reap: { after: 60 * 24 } });
     });
 
     /**
-     * The same file the moment a ladder says yes to that same default. `21d`
+     * The same file the moment a ladder says yes to that same default. `60d`
      * is now a clock something will act on, and it would release nine days
      * before the reminder it is meant to follow — so it is refused at the
      * LADDER's path, where the consent is, and not at the root that merely
@@ -201,11 +201,11 @@ describe("the ladder at its limits", () => {
      */
     it("the same default is refused the moment a ladder consents to it", () => {
         const read = readBlock({
-            remindAfter: "30d",
+            remindAfter: "90d",
             issues: { enabled: true, reap: { enabled: true } },
         });
         expect(said(read)).toEqual([
-            `${ISSUES_REAP} :: ${ISSUES_REAP}: must be at least 1h above remindAfter (30d)`,
+            `${ISSUES_REAP} :: ${ISSUES_REAP}: must be at least 1h above remindAfter (90d)`,
         ]);
         expect(read.errors.map((error) => error.code)).toEqual(["settingInvalid"]);
     });
@@ -402,8 +402,8 @@ describe("what a maintainer who wants no close can write", () => {
         expect(read.settings).toMatchObject({
             issues: {
                 enabled: true,
-                remindAfter: 14 * 24,
-                reap: { enabled: true, after: 21 * 24 },
+                remindAfter: 30 * 24,
+                reap: { enabled: true, after: 60 * 24 },
             },
         });
     });

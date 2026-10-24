@@ -7,31 +7,31 @@
             "enabled": true,
             "settings": {
                 "exemptBlocked": true,
-                "remindAfter": 336,
+                "remindAfter": 720,
                 "reap": {
-                    "after": 504
+                    "after": 1440
                 },
                 "issues": {
                     "enabled": true,
-                    "remindAfter": 336,
+                    "remindAfter": 720,
                     "reap": {
                         "enabled": true,
-                        "after": 504
+                        "after": 1440
                     }
                 },
                 "pullRequests": {
                     "enabled": true,
-                    "remindAfter": 336,
+                    "remindAfter": 720,
                     "reap": {
-                        "after": 504
+                        "after": 1440
                     },
                     "reapWhen": {
                         "draft": {
                             "enabled": true,
-                            "remindAfter": 336,
+                            "remindAfter": 720,
                             "reap": {
                                 "enabled": true,
-                                "after": 504
+                                "after": 1440
                             }
                         },
                         "changesRequested": {

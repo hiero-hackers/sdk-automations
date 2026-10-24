@@ -108,11 +108,11 @@ describe("the seeds' specs", () => {
         });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
             exemptBlocked: true,
-            // Hours: a duration is written `14d` and resolves to 336.
-            remindAfter: 14 * 24,
+            // Hours: a config with no clocks resolves to 30d (720) and 60d (1440).
+            remindAfter: 720,
             // The root's release clock is a section, so it is always read: it
             // is the default every level inherits, never consent of its own.
-            reap: { after: 21 * 24 },
+            reap: { after: 1440 },
             // Both ladders are opt-in, so a repository that states nothing
             // gets a capability with nothing switched on.
             issues: { enabled: false },

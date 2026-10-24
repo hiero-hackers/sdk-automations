@@ -83,39 +83,39 @@ applyLabels: [] # none — The positions the dashboard may set: needsRevision on
 enabled: true
 # mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 exemptBlocked: true # default — Leave anything carrying the blocked meaning alone — no reminder, no release
-remindAfter: 14d # default — Silence before a reminder, for every ladder and reason that sets none of its own
+remindAfter: 30d # default — Silence before a reminder, for every ladder and reason that sets none of its own
 reap: # default — The release clock every ladder and reason inherits — consent is each acting level's own
-  after: 21d # default — Silence before release — an issue is unassigned, a pull request closed
+  after: 60d # default — Silence before release — an issue is unassigned, a pull request closed
 issues: # off until enabled — Run the ladder on assigned issues that have no open pull request
   enabled: true
-  remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
+  remindAfter: 30d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
   reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act
     enabled: true
-    after: 21d # inherited from the level above — Silence before this level's release, taken from the level above when unset
+    after: 60d # inherited from the level above — Silence before this level's release, taken from the level above when unset
 pullRequests: # off until enabled — Run the ladder on pull requests, linked to an issue or not
   enabled: true
-  remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
+  remindAfter: 30d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
   reap: # default — The release clock every reason below inherits — consent is each reason's own
-    after: 21d # inherited from the level above — The release clock this ladder's reasons inherit, taken from the capability default when unset
+    after: 60d # inherited from the level above — The release clock this ladder's reasons inherit, taken from the capability default when unset
   reapWhen: # default — The pull-request states the ladder applies in — one outside them is left alone
     draft: # off until enabled — Pull requests GitHub is holding as drafts — no mapping needed
       enabled: true
-      remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
+      remindAfter: 30d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
       reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act
         enabled: true
-        after: 21d # inherited from the level above — Silence before this level's release, taken from the level above when unset
+        after: 60d # inherited from the level above — Silence before this level's release, taken from the level above when unset
     changesRequested: # off until enabled — Pull requests a reviewer asked for changes on, with no commit since — no mapping needed
       enabled: true
-      remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
+      remindAfter: 30d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
       reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act
         enabled: true
-        after: 21d # inherited from the level above — Silence before this level's release, taken from the level above when unset
+        after: 60d # inherited from the level above — Silence before this level's release, taken from the level above when unset
     needsRevision: # off until enabled — Pull requests carrying your needsRevision label, where a quality failure moves fast
       enabled: true
-      remindAfter: 14d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
+      remindAfter: 30d # inherited from the level above — Silence before this level's reminder, taken from the level above when unset
       reap: # off until enabled — Release what this level reminded about — absent or off means remind and never act
         enabled: true
-        after: 21d # inherited from the level above — Silence before this level's release, taken from the level above when unset
+        after: 60d # inherited from the level above — Silence before this level's release, taken from the level above when unset
 ```
 
 ### `configReport`

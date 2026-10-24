@@ -315,7 +315,7 @@ describe("docs/capabilities.md", () => {
         const [tree] = renderSettingsTrees();
         const markdown = tree?.markdown ?? "";
         expect(markdown).toContain("    needsRevision: # off until enabled —");
-        expect(markdown).toContain("        after: 21d # inherited from the level above —");
+        expect(markdown).toContain("        after: 60d # inherited from the level above —");
         expect(markdown).not.toMatch(/: # inherited/);
     });
 

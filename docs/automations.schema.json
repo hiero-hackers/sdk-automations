@@ -294,7 +294,7 @@
                             "type": "string",
                             "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
                             "description": "Silence before a reminder, for every ladder and reason that sets none of its own. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
-                            "default": "14d"
+                            "default": "30d"
                         },
                         "reap": {
                             "type": "object",
@@ -304,7 +304,7 @@
                                     "type": "string",
                                     "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",
                                     "description": "Silence before release — an issue is unassigned, a pull request closed. A length of time: a whole number and a unit, `4h` or `14d`. No minutes, no weeks, no mixed units.",
-                                    "default": "21d"
+                                    "default": "60d"
                                 }
                             },
                             "description": "The release clock every ladder and reason inherits — consent is each acting level's own."

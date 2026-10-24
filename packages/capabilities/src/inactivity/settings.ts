@@ -47,13 +47,13 @@ export const INACTIVITY_SETTINGS = spec({
         doc: "Leave anything carrying the blocked meaning alone — no reminder, no release",
     }),
     remindAfter: duration({
-        default: "14d",
+        default: "30d",
         doc: "Silence before a reminder, for every ladder and reason that sets none of its own",
     }),
     reap: section(
         {
             after: duration({
-                default: "21d",
+                default: "60d",
                 doc: "Silence before release — an issue is unassigned, a pull request closed",
             }),
         },

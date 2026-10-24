@@ -8,23 +8,23 @@ One reminder, one action; each names the reason, the fix, and the date.
 
 Issue reminder:
 
-> ⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 14 days. Still
+> ⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 30 days. Still
 > working on it? Comment `/working` to let us know development is active, otherwise this
 > assignment will be released on **2026-09-21**.
 
 Issue release:
 
-> This assignment was released after 21 days of inactivity. The issue is open for anyone to pick
+> This assignment was released after 60 days of inactivity. The issue is open for anyone to pick
 > up — you are welcome to `/assign` it again when you have capacity.
 
 Pull request reminder, naming its reason (one per reapable state):
 
 > ⏰ Hi @alice — this pull request has had **changes requested** without development activity for
-> 14 days. Push a commit or comment `/working` to let us know you are working on it, otherwise
+> 30 days. Push a commit or comment `/working` to let us know you are working on it, otherwise
 > the pull request will be closed on **2026-11-07**.
 
 > ⏰ Hi @alice — this pull request has carried the **status: changes requested** label without
-> development activity for 14 days. Push a commit or comment `/working` to let us know you are
+> development activity for 30 days. Push a commit or comment `/working` to let us know you are
 > working on it, otherwise the pull request will be closed on
 > **2026-11-07**.
 
@@ -35,7 +35,7 @@ Pull request close:
 A level with no `reap` block reminds in the same words and promises nothing, because nothing
 follows:
 
-> ⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 14 days. Still
+> ⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 30 days. Still
 > working on it? Comment `/working` to let us know development is active.
 
 ## What the config looks like
@@ -45,9 +45,9 @@ capabilities:
   inactivity:
     enabled: true
     exemptBlocked: true # the blocked mapping skips every warning and action
-    remindAfter: 14d # default — any ladder or reason may override
+    remindAfter: 30d # default — any ladder or reason may override
     reap: # the release clock every level inherits; consent is each acting level's own
-      after: 21d # reap = release the assignment (issues) · close (PRs)
+      after: 60d # reap = release the assignment (issues) · close (PRs)
     issues: # warns, then unassigns assigned issues with no open PR
       enabled: true
       reap: # omit this block and the ladder reminds and never releases
