@@ -9,9 +9,10 @@ on:
 permissions:
   contents: read
 
-# Two tags pushed together publish in order; a release is never cancelled mid-push.
+# One group for every tag, so two releases never move the major branch and tag at once. GitHub
+# keeps one run waiting: a third tag pushed meanwhile cancels the waiting one, never a running one.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
