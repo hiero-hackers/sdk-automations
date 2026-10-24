@@ -4,7 +4,7 @@ Every file here is parsed by the test suite. They are not illustrations of the s
 schema's only worked examples, and a change that breaks one fails the build.
 
 `packages/dev/checks/test/examples.test.ts` reads this directory through `parseConfigDocument`, the same entry
-point the shell will use on a real repository.
+point a run uses on a real repository.
 
 ## The valid ones
 
@@ -34,7 +34,8 @@ testing. As files here they ran, passed, and measured nothing.
 ## What is deliberately not decided here
 
 These files show the SHAPE of a configuration at the decided repository-root path, `sdk-automations.yml`.
-They do not implement the future default-branch fetch. A capability's own keys — everything in its
-block beside `enabled` — are opaque to the shared parser, which checks the key names against each
-capability's declaration and nothing more; the values are read by the capability's own spec, and
-`packages/capabilities/test/examples.test.ts` holds every file here to those specs, enabled or not.
+A run reads that file from the default branch (`packages/runtime/src/adapter/reads/config.ts`).
+A capability's own keys — everything in its block beside `enabled` — are opaque to the shared
+parser, which checks the key names against each capability's declaration and nothing more; the
+values are read by the capability's own spec, and `packages/capabilities/test/examples.test.ts`
+holds every file here to those specs, enabled or not.
