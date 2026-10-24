@@ -146,8 +146,8 @@ export function shouldForceMutation(
 }
 
 export function gitChangedFiles(baseRef?: string): string[] {
+    const ref = baseRef && baseRef.trim().length > 0 ? baseRef : "origin/main";
     try {
-        const ref = baseRef && baseRef.trim().length > 0 ? baseRef : "origin/main";
         const output = execFileSync("git", ["diff", "--name-only", `${ref}...HEAD`], {
             cwd: repoRoot,
             encoding: "utf8",
@@ -157,7 +157,8 @@ export function gitChangedFiles(baseRef?: string): string[] {
             .map((l) => l.trim())
             .filter((l) => l.length > 0);
     } catch {
-        // Fall back safely to empty list if git diff fails
+        // git has already written its own reason to the inherited stderr.
+        console.error(`[mutation-invalidation] git diff against ${ref} failed`);
         return [];
     }
 }
@@ -174,6 +175,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const changed = gitChangedFiles(baseRef);
     // If git changed files is empty (e.g. unknown diff base), fail-safe to force
     if (changed.length === 0) {
+        console.error(`[mutation-invalidation] ${pkg}: forcing full run (no changed files found)`);
         console.log(" --force");
         process.exit(0);
     }
