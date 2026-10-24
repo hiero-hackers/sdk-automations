@@ -54,8 +54,9 @@ release after it reads it.
 
 The major tag moves forward only. To go back, pin the previous release's SHA, which the
 [Releases page](https://github.com/hiero-hackers/sdk-automations/releases) lists, in place of the
-tag; it is the head of that release's own `release/<tag>` branch, which stays after the major moves
-on.
+tag. From v0.1.2 on it is the head of that release's own `release/<tag>` branch, which stays after
+the major moves on. Re-running a release's workflow commits a fresh bundle there, and the Releases
+page then names the new SHA.
 
 ## Another token
 

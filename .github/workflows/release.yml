@@ -81,12 +81,12 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/runtime/dist/action.js
-      # The bundle goes through the contents API, which GitHub signs, onto `release/<tag>`, cut
-      # (or on a re-run reset) at the tagged commit and kept, so each release SHA a consumer pins
-      # stays on a branch after the major moves on. The release branch and the major tag move only
-      # once it has landed, so a failed publish strips nothing. The body travels as a file: a
-      # bundle is larger than one argument may be. No `git push`, and no credential is ever written
-      # to the checkout.
+      # The bundle goes through the contents API, which GitHub signs, onto `release/<tag>`, cut at
+      # the tagged commit and kept, so each release SHA a consumer pins stays on a branch after the
+      # major moves on. A re-run resets that branch and publishes a fresh SHA, which the notes below
+      # then name. The release branch and the major tag move only once it has landed, so a failed
+      # publish strips nothing. The body travels as a file: a bundle is larger than one argument may
+      # be. No `git push`, and no credential is ever written to the checkout.
       - name: publish the bundle and move the major tag
         env:
           GH_TOKEN: ${{ github.token }}
