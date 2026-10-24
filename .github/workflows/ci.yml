@@ -31,7 +31,7 @@ concurrency:
 # `repository` answers "did a document, table or artifact drift". Mixing them
 # in one job made every red run ambiguous until someone opened the log. The
 # split also stops the repository invariants running once per Node version —
-# they do not vary by runtime, and `git ls-files` is not faster on 25.
+# they do not vary by runtime, and `git ls-files` is not faster on 26.
 jobs:
   test:
     name: typecheck and tests (node ${{ matrix.node }})
@@ -40,11 +40,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 24 is the LTS floor we support; 25 is what development happens on.
+        # 24 is the LTS floor we support; 26 is the newest Node major.
         # The matrix is not ceremony: `packages/runtime/src/store/` uses `node:sqlite`, which is
         # still experimental and still emits a warning on 24 — an API that
         # can change between majors is one worth testing on both.
-        node: [24, 25]
+        node: [24, 26]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
