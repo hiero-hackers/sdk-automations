@@ -207,7 +207,7 @@ function fieldSchema(field: FieldDescription): Subschema {
  * has to carry away.
  */
 const DISCLAIMER = [
-    "Every key the Hiero SDK automations App reads, with the sentence each capability's own",
+    "Every key the sdk-automations engine reads, with the sentence each capability's own",
     "settings spec carries. Shape and spelling only: that label, command, skill and alert",
     "mappings are injective and share one namespace, that a settings value naming a meaning or",
     "a principal names one this same file maps, that a `duration` is inside the platform's",
@@ -215,15 +215,15 @@ const DISCLAIMER = [
     "a capability is only enabled once the meanings it requires are mapped, and that a",
     "capability's `mode` is no higher than the file's — none of those",
     "are questions JSON Schema can ask. The",
-    "App's parser is the authority; this schema catches shape and spelling.",
+    "engine's parser is the authority; this schema catches shape and spelling.",
 ].join(" ");
 
 /** One sentence per top-level key, for the maintainer hovering over it. */
 const TOP_LEVEL_NOTES: { readonly [K in TopLevelKey]: string } = {
     schemaVersion: "The configuration format's version. Optional; the only value is 2.",
-    mode: "How far the App may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
+    mode: "How far the engine may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
     capabilities:
-        "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
+        "One block per automation. A capability the engine does not ship is rejected whether it is enabled or not.",
     mappings: "The words this repository spells each meaning with.",
     principals: "The names a capability may address, one handle or team slug each.",
 };

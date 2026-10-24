@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://raw.githubusercontent.com/hiero-hackers/sdk-automations/main/docs/automations.schema.json",
     "title": "Hiero SDK automations configuration",
-    "description": "Every key the Hiero SDK automations App reads, with the sentence each capability's own settings spec carries. Shape and spelling only: that label, command, skill and alert mappings are injective and share one namespace, that a settings value naming a meaning or a principal names one this same file maps, that a `duration` is inside the platform's century ceiling and sits the required distance above the one it is measured against, that a capability is only enabled once the meanings it requires are mapped, and that a capability's `mode` is no higher than the file's — none of those are questions JSON Schema can ask. The App's parser is the authority; this schema catches shape and spelling.",
+    "description": "Every key the sdk-automations engine reads, with the sentence each capability's own settings spec carries. Shape and spelling only: that label, command, skill and alert mappings are injective and share one namespace, that a settings value naming a meaning or a principal names one this same file maps, that a `duration` is inside the platform's century ceiling and sits the required distance above the one it is measured against, that a capability is only enabled once the meanings it requires are mapped, and that a capability's `mode` is no higher than the file's — none of those are questions JSON Schema can ask. The engine's parser is the authority; this schema catches shape and spelling.",
     "type": "object",
     "additionalProperties": false,
     "properties": {
@@ -17,12 +17,12 @@
                 "dry-run",
                 "active"
             ],
-            "description": "How far the App may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
+            "description": "How far the engine may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
             "default": "observe"
         },
         "capabilities": {
             "type": "object",
-            "description": "One block per automation. A capability this App does not ship is rejected whether it is enabled or not.",
+            "description": "One block per automation. A capability the engine does not ship is rejected whether it is enabled or not.",
             "additionalProperties": false,
             "properties": {
                 "triageQueue": {
