@@ -1,22 +1,23 @@
 # Security
 
-SDK Automations is a configuration-driven GitHub Action, pre-1.0 and in a pilot. It runs inside
-each consuming repository's own workflow, with the token that workflow grants. This document
-states the current posture honestly rather than aspirationally.
+SDK Automations is a configuration-driven automation engine, pre-1.0 and in a pilot. It runs as a
+GitHub Action inside a consuming repository's own workflow, or as a hosted App shell; the pilot
+uses the Action. This document states the current posture honestly rather than aspirationally.
 
 ## Key posture
 
-- A run can write only what its workflow's `permissions:` block grants; the documented block is
-  `contents: read`, `issues: write`, `pull-requests: write` ([`docs/installing.md`](docs/installing.md)).
-  It writes nothing unless the configuration says `active` and the workflow sets `arm-writes: "true"`.
-- The workflow has no checkout step, so a `pull_request_target` run never executes a pull
+- As an Action, a run can write only what its workflow's `permissions:` block grants; the documented
+  block is `contents: read`, `issues: write`, `pull-requests: write`
+  ([`docs/installing.md`](docs/installing.md)). It writes nothing unless the configuration says
+  `active` and the workflow sets `arm-writes: "true"`.
+- The Action's workflow has no checkout step, so a `pull_request_target` run never executes a pull
   request's code; the configuration is read through the API from the default branch only.
 - Configuration is fail-closed: a rejected file decides nothing, and the engine never runs with a
   partial or fallback configuration.
 - No production credentials live in tracked code. `packages/dev/lab/` keeps credentials and
   raw evidence in local-only, untracked paths, and `.env` is never tracked.
 - `packages/core/` is pure logic: no I/O and no clock reads; the runtime supplies observations.
-- The hosted shell, which predates the Action, verifies webhook signatures in
+- The hosted App shell verifies webhook signatures in
   [`packages/core/src/github/signatures.ts`](packages/core/src/github/signatures.ts).
 
 ## Supply chain
@@ -40,8 +41,8 @@ states the current posture honestly rather than aspirationally.
 | `main` | Yes |
 | Older releases | No — move to the latest |
 
-A vulnerability here can affect every repository whose workflow runs the Action, within the
-permissions that workflow grants.
+A vulnerability here can affect every repository that runs it, within the permissions its token
+grants.
 
 ## Reporting a vulnerability
 

@@ -6,10 +6,10 @@
 <p align="center"><a href="docs/installing.md">Install</a> · <a href="docs/README.md">Docs</a> · <a href="docs/capabilities.md">Capabilities</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a></p>
 
 Hiero SDK repositories repeat the same contributor-facing work: triage, pull-request checks,
-workflow labels, stalled work, claiming issues. SDK Automations does it as a GitHub Action in each
-repository's own workflow, from one reviewed `sdk-automations.yml` on the default branch. It decides
-one issue or pull request at a time, writes nothing until a maintainer arms it, and records every
-decision with its reason. It is pre-1.0, in a pilot on [hiero-hackers/analytics](https://github.com/hiero-hackers/analytics).
+workflow labels, stalled work, claiming issues. SDK Automations does it from one reviewed
+`sdk-automations.yml` on the default branch, as a GitHub Action or a hosted App. It decides one
+issue or pull request at a time, writes nothing until a maintainer arms it, and records every
+decision with its reason. It is pre-1.0, piloting as an Action on [hiero-hackers/analytics](https://github.com/hiero-hackers/analytics).
 
 <p align="center"><img src="design/readme-dashboard.png" alt="A prDashboard comment on a pull request: merge conflicts pass, the issue link check fails" width="760"></p>
 

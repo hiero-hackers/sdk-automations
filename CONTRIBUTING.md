@@ -1,8 +1,9 @@
 # Contributing
 
-Thanks for being here. This repository builds a GitHub Action for contributor-facing automation, and
-it is deliberately test-heavy: most rules you meet are enforced by a check rather than by review, so
-the suite tells you when something is wrong faster than a maintainer can.
+Thanks for being here. This repository builds contributor-facing automation that runs as a GitHub
+Action or a hosted App, and it is deliberately test-heavy: most rules you meet are enforced by a
+check rather than by review, so the suite tells you when something is wrong faster than a maintainer
+can.
 
 ## Setup
 

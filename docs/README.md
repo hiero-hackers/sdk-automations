@@ -7,4 +7,4 @@
 - **[Capabilities](capabilities.md)** — what each automation does, what it needs mapped, what it may write
 - **[Configuration](configuration.md)** — every key, every meaning, every error
 - **[Troubleshooting](troubleshooting.md)** — every code a run reports, in plain terms
-- **[Running the shell](running.md)** — for an operator of the hosted shell that predates the Action
+- **[Running the shell](running.md)** — for an operator of the hosted App shell: the environment, the switches, the commands
