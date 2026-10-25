@@ -1,6 +1,12 @@
 blank_issues_enabled: true # Blank issues are the norm here; templates are optional scaffolding.
 
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/hiero-hackers/sdk-automations/security/advisories/new
+    about: Privately, through GitHub's vulnerability reporting. Never in a public issue.
+  - name: Documentation
+    url: https://github.com/hiero-hackers/sdk-automations/blob/main/docs/README.md
+    about: Installing, configuration, and every refusal code a run can report.
   - name: Contributor guide
     url: https://github.com/hiero-hackers/sdk-automations/blob/main/CONTRIBUTING.md
     about: Setup, DCO sign-off, difficulty ladder, and ground rules.

@@ -1,0 +1,43 @@
+name: Feature request
+description: Ask for a capability, a setting, or a change to how one behaves
+labels: [ enhancement ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Search existing issues first, and read
+        [the capabilities](https://github.com/hiero-hackers/sdk-automations/blob/main/docs/capabilities.md):
+        what you need may be one setting away.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What repetitive or error-prone work should this take off a maintainer or contributor? Name the repository if it is a real one.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What it should do
+      description: What the automation should read, decide, and write. Say what it must never do, too.
+    validations:
+      required: true
+  - type: dropdown
+    id: capability
+    attributes:
+      label: Where it belongs
+      options:
+        - triageQueue
+        - prDashboard
+        - inactivity
+        - assignment
+        - configReport
+        - A new capability
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways to get this today, and why they fall short.

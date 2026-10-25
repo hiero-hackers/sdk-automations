@@ -1,27 +1,23 @@
 # Security
 
-This repository is the design and in-progress implementation of a hosted,
-configuration-driven GitHub App. It is pre-ratification: the packages are
-candidates pending stage-four review, and no hosted service or production
-installation exists yet. This document states the current posture honestly
-rather than aspirationally.
+SDK Automations is a configuration-driven GitHub Action, pre-1.0 and in a pilot. It runs inside
+each consuming repository's own workflow, with the token that workflow grants. This document
+states the current posture honestly rather than aspirationally.
 
 ## Key posture
 
+- A run can write only what its workflow's `permissions:` block grants; the documented block is
+  `contents: read`, `issues: write`, `pull-requests: write` ([`docs/installing.md`](docs/installing.md)).
+  It writes nothing unless the configuration says `active` and the workflow sets `arm-writes: "true"`.
+- The workflow has no checkout step, so a `pull_request_target` run never executes a pull
+  request's code; the configuration is read through the API from the default branch only.
+- Configuration is fail-closed: a rejected file decides nothing, and the engine never runs with a
+  partial or fallback configuration.
 - No production credentials live in tracked code. `packages/dev/lab/` keeps credentials and
   raw evidence in local-only, untracked paths, and `.env` is never tracked.
-- `packages/core/` is pure logic: no I/O and no clock reads; the shell supplies
-  observations. The owned operational store lives in `packages/runtime/src/store/`, beside the
-  GitHub adapter and the transport shell, and `packages/capabilities/` holds the capabilities
-  the shell composes, one folder each.
-- GitHub remains authoritative for visible repository facts. Configuration is fail-closed: the shell
-  persists one `configRejected` record, completes that delivery, and never calls the decision engine with a
-  partial or fallback configuration.
-- Webhook signature verification is implemented and tested in
+- `packages/core/` is pure logic: no I/O and no clock reads; the runtime supplies observations.
+- The hosted shell, which predates the Action, verifies webhook signatures in
   [`packages/core/src/github/signatures.ts`](packages/core/src/github/signatures.ts).
-- The store schema contains effect claims and a journal for future recovery. No effect executor is wired
-  today; the overlap contract and retention windows are still open decisions in
-  [`design/constraints.md`](design/constraints.md) (D41, Q17).
 
 ## Supply chain
 
@@ -40,11 +36,12 @@ rather than aspirationally.
 
 | Version | Supported |
 |---|---|
-| `main` | Yes — the only supported branch |
-| Tagged releases | None exist yet; there is no published package or hosted service |
+| The latest release, behind the `v0` tag | Yes — a fix ships as a new release and `v0` moves to it |
+| `main` | Yes |
+| Older releases | No — move to the latest |
 
-No hosted service or production installation exists, so a vulnerability here
-affects contributors and anyone running the code locally, not end users.
+A vulnerability here can affect every repository whose workflow runs the Action, within the
+permissions that workflow grants.
 
 ## Reporting a vulnerability
 

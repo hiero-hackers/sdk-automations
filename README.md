@@ -2,58 +2,59 @@
   <img src="design/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
 </p>
 
-[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml) [![CodeQL](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations)
+[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml) [![CodeQL](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations) [![Release](https://img.shields.io/github/v/release/hiero-hackers/sdk-automations?include_prereleases&sort=semver)](https://github.com/hiero-hackers/sdk-automations/releases) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-Repository-owned configuration. Durable, explainable decisions. No server to host.
+**Repository-owned configuration. Durable, explainable decisions. No server to host.**
 
-Hiero SDK repositories repeat the same contributor-facing work: intake, triage, workflow labels,
-pull-request checks, status reporting. This engine does it from a reviewed `sdk-automations.yml`
-on a repository's default branch, decides one issue or pull request at a time, and writes down what
-it decided and why. It runs as a GitHub Action inside the repository's own workflow
-([`docs/installing.md`](docs/installing.md)); the hosted App shape remains for an organisation that
-wants central operation. It is pre-1.0 and in a pilot.
+Hiero SDK repositories repeat the same contributor-facing work: triage, pull-request checks,
+workflow labels, stalled work, claiming issues. SDK Automations does it as a GitHub Action in each
+repository's own workflow, from one reviewed `sdk-automations.yml` on the default branch. It decides
+one issue or pull request at a time, writes nothing until a maintainer arms it, and records every
+decision with its reason. It is pre-1.0, in a pilot on [hiero-hackers/analytics](https://github.com/hiero-hackers/analytics).
 
-## Who it is for
+## Capabilities
 
-- **The maintainer** who writes `sdk-automations.yml` — [`docs/`](docs/README.md).
-- **The operator** who runs the hosted shell — [`docs/running.md`](docs/running.md).
-- **The contributor** who changes the platform — [`CONTRIBUTING.md`](CONTRIBUTING.md).
+| Capability | What a repository gets |
+|---|---|
+| `triageQueue` | new issues labelled for triage, with an optional welcome and a lock until triaged |
+| `prDashboard` | one comment per pull request saying what stops it being ready to review, and optionally a label |
+| `inactivity` | a reminder on stalled assignments and pull requests, then, where enabled, their release |
+| `assignment` | contributors claim and release issues with a comment |
+| `configReport` | a comment on any pull request that changes `sdk-automations.yml`, saying what it would mean |
 
-## What one delivery does
+Every capability is off until enabled. [What each one reads and may write →](docs/capabilities.md)
 
-1. **Receive** — a workflow run starts with the event; the hosted shell instead verifies the HMAC
-   and stores the delivery before its 202.
-2. **Read** — the engine reads `sdk-automations.yml` at the default branch, never at a pull request's head.
-3. **Decide** — each enabled capability judges one item and asks for outcomes; the safety ladder
-   gates every one of them, and a refusal carries a code an operator can look up.
-4. **Apply** — an approved effect is journalled before it is sent, re-checked against a live read,
-   sent, and confirmed by reading GitHub back. Writes need the mode `active` and the Action's
-   `arm-writes` switch; otherwise the pass records what it would do.
-5. **Record** — the run's job summary lists each decision and effect; the hosted shell keeps them in
-   its store for `pnpm shell:explain`.
+## Quick start
 
-## Read next
+Add the workflow from [`docs/installing.md`](docs/installing.md), then merge this file:
 
-- [`docs/installing.md`](docs/installing.md) — add the Action: two files and the switch that arms writes.
-- [`docs/`](docs/README.md) — use it: the quickstart, every key, every code, and how to run it.
-- [`design/trace.md`](design/trace.md) — one label from the webhook to the API call, then
-  [`design/architecture.md`](design/architecture.md) for what each piece is and which rule holds it.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — change it, and pick up a
-  [good first issue](https://github.com/hiero-hackers/sdk-automations/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
-- [`SECURITY.md`](SECURITY.md) — report a vulnerability privately.
+```yaml
+# sdk-automations.yml — observe records what would happen; dry-run also names each change
+mode: observe
 
-## Run the tests
-
-[Node.js](https://nodejs.org/) 24 or newer and [pnpm](https://pnpm.io/) 10.29.1.
-
-```bash
-pnpm install
-pnpm -r test
+capabilities:
+  triageQueue:
+    enabled: true
+  configReport:
+    enabled: true
 ```
 
-Every tracked test runs offline: no GitHub credentials, no network, no App configuration.
+Each run's job summary lists its decisions. Nothing changes on GitHub until the file says `active`
+and the workflow sets `arm-writes: "true"`.
+
+## Safe by construction
+
+- The configuration is read from the default branch; a run never checks out a contributor's code.
+- Every outcome passes one safety ladder; a refusal carries a [code](docs/troubleshooting.md) that explains it.
+- A write is re-checked against a live read, then confirmed by reading GitHub back.
+- A release or a close comes only after a public warning and its grace period.
+
+## Learn more
+
+- [Documentation](docs/README.md) — quickstart, every configuration key, every refusal code.
+- [Architecture](design/architecture.md), starting from [one label's trace](design/trace.md).
+- [Contributing](CONTRIBUTING.md) — setup, the house rules, and [good first issues](https://github.com/hiero-hackers/sdk-automations/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+- [Security](SECURITY.md) — report a vulnerability privately.
 
 ---
-
-Apache-2.0 licensed · [Code of Conduct](CODE_OF_CONDUCT.md) · Developer Certificate of Origin
-required for contributions
+Apache-2.0 · [Code of Conduct](CODE_OF_CONDUCT.md) · [AI policy](AI_POLICY.md) · DCO sign-off required
