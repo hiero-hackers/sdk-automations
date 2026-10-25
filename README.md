@@ -1,16 +1,17 @@
 <p align="center">
   <img src="design/readme-wordmark.png" alt="SDK AUTOMATIONS" width="100%">
 </p>
-
-[![CI](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml) [![CodeQL](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg)](https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge)](https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations) [![Release](https://img.shields.io/github/v/release/hiero-hackers/sdk-automations?include_prereleases&sort=semver)](https://github.com/hiero-hackers/sdk-automations/releases) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-
-**Repository-owned configuration. Durable, explainable decisions. No server to host.**
+<p align="center"><b>Repository-owned configuration. Durable, explainable decisions. No server to host.</b></p>
+<p align="center"><a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/hiero-hackers/sdk-automations/actions/workflows/codeql.yml/badge.svg"></a> <a href="https://scorecard.dev/viewer/?uri=github.com/hiero-hackers/sdk-automations"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/hiero-hackers/sdk-automations/badge"></a> <a href="https://github.com/hiero-hackers/sdk-automations/releases"><img alt="Release" src="https://img.shields.io/github/v/release/hiero-hackers/sdk-automations?include_prereleases&sort=semver"></a> <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"></a> <a href="https://discord.com/invite/hyperledger"><img alt="Discord" src="https://img.shields.io/badge/Discord-Hiero%20on%20LFDT-5865F2?logo=discord&logoColor=white"></a></p>
+<p align="center"><a href="docs/installing.md">Install</a> · <a href="docs/README.md">Docs</a> · <a href="docs/capabilities.md">Capabilities</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a></p>
 
 Hiero SDK repositories repeat the same contributor-facing work: triage, pull-request checks,
 workflow labels, stalled work, claiming issues. SDK Automations does it as a GitHub Action in each
 repository's own workflow, from one reviewed `sdk-automations.yml` on the default branch. It decides
 one issue or pull request at a time, writes nothing until a maintainer arms it, and records every
 decision with its reason. It is pre-1.0, in a pilot on [hiero-hackers/analytics](https://github.com/hiero-hackers/analytics).
+
+<p align="center"><img src="design/readme-dashboard.png" alt="A prDashboard comment on a pull request: merge conflicts pass, the issue link check fails" width="760"></p>
 
 ## Capabilities
 
@@ -54,7 +55,6 @@ and the workflow sets `arm-writes: "true"`.
 - [Documentation](docs/README.md) — quickstart, every configuration key, every refusal code.
 - [Architecture](design/architecture.md), starting from [one label's trace](design/trace.md).
 - [Contributing](CONTRIBUTING.md) — setup, the house rules, and [good first issues](https://github.com/hiero-hackers/sdk-automations/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
-- [Security](SECURITY.md) — report a vulnerability privately.
 
 ---
 Apache-2.0 · [Code of Conduct](CODE_OF_CONDUCT.md) · [AI policy](AI_POLICY.md) · DCO sign-off required
