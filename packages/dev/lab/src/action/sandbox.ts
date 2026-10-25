@@ -35,6 +35,11 @@ const CLOSE_PACE_MS = 800;
 
 const BULK_CLOSES = 20;
 
+/** A contents read can lag its write, so a read-back tries this many times before it disagrees. */
+const READ_BACK_TRIES = 5;
+
+const READ_BACK_PACE_MS = 1_000;
+
 /** A file on a branch: its blob sha, and its text. */
 export interface File {
     readonly sha: string;
@@ -126,6 +131,16 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         return { sha, text: Buffer.from(content, "base64").toString("utf8") };
     };
 
+    /** The config once `holds` accepts it, or the last read when the tries run out. */
+    const readConfigUntil = async (holds: (file: File | null) => boolean): Promise<File | null> => {
+        let file = await fileAt(CONFIG_PATH);
+        for (let tried = 1; tried < READ_BACK_TRIES && !holds(file); tried++) {
+            await delay(READ_BACK_PACE_MS);
+            file = await fileAt(CONFIG_PATH);
+        }
+        return file;
+    };
+
     const put = async (
         path: string,
         text: string,
@@ -211,8 +226,10 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
                 ...(current === null ? {} : { sha: current.sha }),
             });
         }
-        const after = await fileAt(CONFIG_PATH);
-        if ((after?.sha ?? null) !== (originalConfig?.sha ?? null)) {
+        const restored = (file: File | null) =>
+            (file?.sha ?? null) === (originalConfig?.sha ?? null);
+        const after = await readConfigUntil(restored);
+        if (!restored(after)) {
             throw new Halt(`${CONFIG_PATH} reads back as ${after?.sha ?? "absent"}`);
         }
     };
@@ -253,10 +270,9 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         const current = await fileAt(CONFIG_PATH);
         configChanged = true;
         await put(CONFIG_PATH, text, message, current === null ? {} : { sha: current.sha });
-        const after = await fileAt(CONFIG_PATH);
-        if (after === null || after.text !== text) {
-            throw new Halt(`${CONFIG_PATH} does not read back as written`);
-        }
+        const written = (file: File | null): file is File => file?.text === text;
+        const after = await readConfigUntil(written);
+        if (!written(after)) throw new Halt(`${CONFIG_PATH} does not read back as written`);
         return after.sha;
     };
 
