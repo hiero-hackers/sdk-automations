@@ -495,6 +495,14 @@ describe("the conformance workflow keeps its credential boundary", () => {
         expect(script).toContain("pr create");
         expect(script).toContain("Signed-off-by: github-actions[bot]");
     });
+
+    /** The publisher checks nothing out, so `gh pr` has no git remote to find the repository by. */
+    it("names the repository for gh", () => {
+        const proposer = stepsOf(publish).find(
+            (step) => typeof step.run === "string" && step.run.includes("pr create"),
+        );
+        expect(proposer?.env?.["GH_REPO"]).toBe("${{ github.repository }}");
+    });
 });
 
 describe("the release workflow keeps every published bundle", () => {

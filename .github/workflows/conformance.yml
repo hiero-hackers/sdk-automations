@@ -114,9 +114,11 @@ jobs:
           path: stamp
       # The commit goes through the contents API, which GitHub signs (main
       # requires signatures); a person reviews and squash-merges the result.
+      # Nothing is checked out here, so `gh pr` learns the repository from GH_REPO.
       - name: propose the stamp
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           FILE: packages/dev/lab/probe-results.json
           BRANCH: conformance/stamp
         run: |
