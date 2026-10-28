@@ -4,7 +4,7 @@
  * alongside the value it contributes: `check*` problems only, `read*` both.
  */
 
-import { readSettings, type SettingsView } from "./spec.js";
+import { readSettings, type SettingsView, type Spec } from "./spec.js";
 import { checked, err, type Checked, type ConfigError, type ConfigErrorCode } from "./results.js";
 import { labelKey } from "./labels.js";
 import { isAbove } from "./mode.js";
@@ -92,6 +92,26 @@ function admissionsOf(known: readonly AdmittedCapability[]): Map<string, Admitte
     const admitted = new Map<string, AdmittedCapability>();
     for (const entry of known) admitted.set(entry.name, entry);
     return admitted;
+}
+
+/** Every meaning the resolved settings name through a `meanings` field, in meaning order; a parked block names none (D244). */
+function meaningsNamedIn(
+    spec: Spec,
+    resolved: Readonly<Record<string, unknown>>,
+): readonly MappableMeaning[] {
+    const named = new Set<unknown>();
+    const walk = (fields: Spec, values: Readonly<Record<string, unknown>>): void => {
+        for (const [key, field] of Object.entries(fields)) {
+            const value = values[key];
+            if (field.within !== undefined) {
+                if (isPlainObject(value)) walk(field.within, value);
+            } else if (field.describe().kind === "meanings" && Array.isArray(value)) {
+                for (const meaning of value) named.add(meaning);
+            }
+        }
+    };
+    walk(spec, resolved);
+    return MAPPABLE_MEANINGS.filter((meaning) => named.has(meaning));
 }
 
 /**
@@ -259,6 +279,10 @@ export function readCapabilities(
                 : readCapabilitySettings(name, declared, names, stated, `capabilities.${name}`);
         if (read !== null && !read.ok) errors.push(...read.errors);
         const labels = declared?.labels ?? [];
+        const consults =
+            declared !== undefined && read?.ok === true
+                ? meaningsNamedIn(declared.settings, read.value).filter((m) => !labels.includes(m))
+                : [];
         entries.push([
             name,
             {
@@ -266,6 +290,7 @@ export function readCapabilities(
                 ...(mode.ok && mode.value !== undefined ? { mode: mode.value } : {}),
                 settings: read?.ok === true ? read.value : stated,
                 ...(labels.length === 0 ? {} : { labels }),
+                ...(consults.length === 0 ? {} : { consults }),
             },
         ]);
     }

@@ -97,16 +97,18 @@ function declaring(
     needs: readonly FactGroup[],
     facts: readonly FactKind[] = FACT_KINDS,
     triggers: readonly DeclaredTrigger[] = HOURLY,
+    wants: readonly FactGroup[] = [],
 ): DeclaringCapability {
     // As `declareCapability` fills a list: each declared kind that carries the group.
-    const perKind = (kind: FactKind) =>
-        facts.includes(kind) ? needs.filter((group) => carriesFactGroup(kind, group)) : [];
+    const perKind = (groups: readonly FactGroup[], kind: FactKind) =>
+        facts.includes(kind) ? groups.filter((group) => carriesFactGroup(kind, group)) : [];
     return {
         declaration: {
             name,
             triggers,
             facts,
-            needs: { issue: perKind("issue"), pullRequest: perKind("pullRequest") },
+            needs: { issue: perKind(needs, "issue"), pullRequest: perKind(needs, "pullRequest") },
+            wants: { issue: perKind(wants, "issue"), pullRequest: perKind(wants, "pullRequest") },
         },
     };
 }
@@ -116,6 +118,7 @@ const SHIPPED = [
     declaring("stale", ["assignees", "links"]),
     declaring("prOnly", ["assignees"], ["pullRequest"]),
     declaring("onComment", ["review"], FACT_KINDS, [{ kind: "event", event: "pull_request" }]),
+    declaring("dash", ["readiness"], ["pullRequest"], HOURLY, ["review"]),
 ];
 
 const enabling = (...names: readonly string[]) =>
@@ -145,6 +148,14 @@ describe("the groups a repository's enabled set needs", () => {
             "review",
         ]);
         expect(groupsNeeded(config, SHIPPED, "issue")).toEqual(["assignees", "links"]);
+    });
+
+    /** A want is a paid read too (D245): a capability enabled alone has its wanted group on the sweep. */
+    it("reads a want as it reads a need, on the want's own account", () => {
+        expect(groupsNeeded(enabling("dash"), SHIPPED, "pullRequest")).toEqual([
+            "review",
+            "readiness",
+        ]);
     });
 
     it("takes nothing from a capability with no schedule trigger", () => {

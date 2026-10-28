@@ -113,26 +113,28 @@ function derivedClaims(facts: Facts, desired: DesiredSpec<IntentOperation>): Cla
     };
 }
 
-/** The desired payload with a label's cause chosen from the map, or `null` off it. */
+/** The desired payload with a label's cause chosen from the map among `owned`, or `null` off it. */
 function desiredOf<K extends IntentOperation>(
     facts: Facts,
     desired: DesiredSpec<K>,
+    owned?: readonly TransitionCause[],
 ): IntentCatalogue[K] | null {
     if (!("meaning" in desired)) return desired as IntentCatalogue[K];
-    const cause = desired.cause ?? moveTo(facts, desired.meaning);
+    const cause = desired.cause ?? moveTo(facts, desired.meaning, owned);
     return cause === null ? null : ({ meaning: desired.meaning, cause } as IntentCatalogue[K]);
 }
 
 /**
  * Build one intent from the record it is about. `null` when a label has no
- * edge to move along, which the handle reports and the map refuses anyway.
+ * edge to move along that the capability owns, which the handle reports and the screen refuses anyway.
  */
 export function buildIntent<K extends IntentOperation>(
     capability: string,
     facts: Facts,
     request: IntentRequest<K>,
+    owned?: readonly TransitionCause[],
 ): Intent<K> | null {
-    const desired = desiredOf(facts, request.desired);
+    const desired = desiredOf(facts, request.desired, owned);
     if (desired === null) return null;
     const derived = derivedClaims(facts, request.desired);
     const explain =

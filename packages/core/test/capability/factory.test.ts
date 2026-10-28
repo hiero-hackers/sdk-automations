@@ -28,7 +28,7 @@ const declaration = declareCapability({
     facts: ["issue"],
     needs: [],
     resolvers: [],
-    labels: ["awaitingTriage"],
+    moves: ["intakeObserved"],
     intents: ["applyMappedLabel"],
 });
 

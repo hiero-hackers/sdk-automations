@@ -13,7 +13,7 @@ spelling), its own block's keys, and nothing another capability was given.
 | Capability | What it does | Wakes on | Needs mapped | Settings keys | May write | Design |
 |---|---|---|---|---|---|---|
 | `triageQueue` | put a new issue in the triage queue: label it, welcome its author, hold it until triaged | the `issues` webhook | `labels.awaitingTriage` | `welcome`, `lockUntilTriaged`, `confirmUnlock`, `requirements` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date; a lock on an issue; an unlock | [design page](../packages/capabilities/src/triageQueue/design.md) |
-| `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
+| `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsReview`, `needsRevision` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
 | `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
 | `configReport` | one comment on a pull request that changes `sdk-automations.yml`, saying what the App would read from it | the `pull_request` webhook | nothing required | none | a comment it keeps up to date | [design page](../packages/capabilities/src/configReport/design.md) |
 | `assignment` | let a contributor claim work, and release it again | the `issue_comment` webhook | nothing required | `autoAssign`, `unassign` | a comment it keeps up to date; an assignment; an unassignment | [design page](../packages/capabilities/src/assignment/design.md) |
@@ -25,8 +25,8 @@ Three things to read off the table:
   labelled as later phases. A key outside the list is refused as `unknownKey` with the exact path,
   whether the capability is enabled or not — see [configuration](configuration.md).
 - **Needs mapped** is what the parser insists on before the capability may be enabled. A capability
-  may read other meanings when you map them (`inactivity` reads `blocked` and `needsRevision`, and
-  the `working` command), and says on its design page which rule each one unlocks.
+  may read other positions (`inactivity` reads `needsReview` and `needsRevision`, and the `working`
+  command); its declaration names them, and its design page says which rule each one unlocks.
 - **A warning always comes first.** Any write marked "after a warning" is never done on first sight:
   the App posts the warning, waits out exactly the grace it announced, and cancels itself if the
   person acts in the meantime. Those outcomes are `graceRunning` and `activityCancelled` in
@@ -74,7 +74,7 @@ checks: # default — The quality checks this repository runs — each one off u
     assignedIssues: # off until enabled — Say so when the author is not assigned to every linked issue
       enabled: true
       # guide: "…" — optional; A page explaining how to get assigned, shown to the contributor when this check fails
-applyLabels: [] # none — The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review
+applyLabels: [] # none — The positions the dashboard may set: needsRevision on any failure, or when a review's change request is outstanding; needsReview when every check passes on a ready pull request the sweep read clear of outstanding change requests
 ```
 
 ### `inactivity`

@@ -172,6 +172,7 @@ left alone.
 | `facts` / `needs` | `issue` needing `assignees` (each with `assignedAt` and last `/working`) and `links`; `pullRequest` needing `assignees`, `review` (the newest standing change request, `reapableSince`, last commit) and `readiness` (draft) — the pull-request ladder never reads `links` (D214). A producer that reads less — a webhook — is a `factsUnread` skip |
 | `resolvers` | `isAutomationActor` — the entry carries the links, so no per-item question is asked; quality-failure detection is pr-dashboard's job, arriving as `needsRevision` |
 | `intents` | `postManagedComment` · `releaseAssignment` · `closePullRequest`. Every act claims what it saw: the assignee ladder and the label reason claim meanings and closure, and each mode reason claims its own `pullRequestMode` |
+| `reads` | `needsReview`, which it steps aside for, and `needsRevision`, a reap reason — both prDashboard's; `blocked` is the platform's pause |
 | `requiredMappings` | none — the label reason demands `needsRevision` in a guard, only where it is switched on |
 | Permissions | repository: `issues:read`, `pull_requests:read`, `issues:write`, `pull_requests:write` — the close's own, and the only write on the pull surface · organization: none |
 

@@ -60,6 +60,37 @@ const pullRequest = (state: Partial<WorkItemState<PrMeaning>> = {}, draft = fals
         }),
     );
 
+const REVIEWED_AT = new Date("2026-07-01T00:00:00.000Z");
+
+/** A pull request as the sweep reads it: review state known, clear unless said otherwise. */
+const swept = (
+    state: Partial<WorkItemState<PrMeaning>> = {},
+    draft = false,
+    changesRequestedAt: Date | null = null,
+    lastCommitAt: Date | null = null,
+) =>
+    factsFor(
+        prDashboard.declaration,
+        sweptPullRequest({
+            item: ITEM,
+            readiness: { draft },
+            review: {
+                changesRequestedAt,
+                reapableSince: {
+                    needsRevision: REVIEWED_AT,
+                    changesRequested: REVIEWED_AT,
+                    draft: REVIEWED_AT,
+                },
+                lastCommitAt,
+            },
+            position: {
+                kind: "position",
+                state: { meaning: null, blocked: false, closedBy: null, ...state },
+                ignored: [],
+            } satisfies Projection<PrMeaning>,
+        }),
+    );
+
 const commit = (sha: string, summary: string, over: Partial<Commit> = {}): Commit => ({
     sha,
     summary,
@@ -535,19 +566,85 @@ describe("prDashboard", () => {
             );
         });
 
-        it("asks for needsReview when every check passes on a pull request that is ready", async () => {
+        it("asks for needsReview when every check passes on a ready pull request the sweep read clear", async () => {
             const { label } = await evaluate(
                 labelling(BOTH, LINKS),
                 answers({ linkedIssues: [ISSUE_11] }),
+                swept(),
             );
             expect(label).toEqual({ meaning: "needsReview", cause: "checksPassed" });
         });
 
-        it("resolves a revision when the checks pass again", async () => {
+        /** A webhook record carries no review state (D245): the dashboard posts, the sweep asks for the label. */
+        it("asks no needsReview on a webhook run, whose record holds the review state unread", async () => {
+            const { intents, label, handle } = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+            );
+            expect(intents).toHaveLength(1);
+            expect(label).toBeNull();
+            expect(handle.explanations).toEqual([]);
+        });
+
+        it("moves needsReview to needsRevision when a review requested changes, by that cause", async () => {
+            const { intents, label } = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+                swept({ meaning: "needsReview" }, false, REVIEWED_AT),
+            );
+            expect(label).toEqual({ meaning: "needsRevision", cause: "reviewRequestedChanges" });
+            expect(intents[1]?.explanation.summary).toBe(
+                "Set the position to needsRevision: a review requested changes.",
+            );
+        });
+
+        /** The map draws `reviewRequestedChanges` from `needsReview` alone. */
+        it("leaves a changes-requested pull request alone from no position or readyToMerge", async () => {
+            const fresh = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+                swept({}, false, REVIEWED_AT),
+            );
+            expect(fresh.label).toBeNull();
+            const approved = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+                swept({ meaning: "readyToMerge" }, false, REVIEWED_AT),
+            );
+            expect(approved.label).toBeNull();
+        });
+
+        it("lets a failing check speak before the review", async () => {
+            const { label } = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [] }),
+                swept({ meaning: "needsReview" }, false, REVIEWED_AT),
+            );
+            expect(label).toEqual({ meaning: "needsRevision", cause: "checksFailed" });
+        });
+
+        /** A newer commit answers the request (D241), as inactivity reads it. */
+        it("treats a change request answered by a newer commit as no longer standing", async () => {
+            const answered = new Date(REVIEWED_AT.getTime() + 60_000);
+            const kept = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+                swept({ meaning: "needsReview" }, false, REVIEWED_AT, answered),
+            );
+            expect(kept.label).toBeNull();
+            const resolved = await evaluate(
+                labelling(BOTH, LINKS),
+                answers({ linkedIssues: [ISSUE_11] }),
+                swept({ meaning: "needsRevision" }, false, REVIEWED_AT, answered),
+            );
+            expect(resolved.label).toEqual({ meaning: "needsReview", cause: "revisionResolved" });
+        });
+
+        it("resolves a revision when the checks pass again and no review stands against it", async () => {
             const { label } = await evaluate(
                 labelling(BOTH, LINKS),
                 answers({ linkedIssues: [ISSUE_11] }),
-                pullRequest({ meaning: "needsRevision" }),
+                swept({ meaning: "needsRevision" }),
             );
             expect(label).toEqual({ meaning: "needsReview", cause: "revisionResolved" });
         });
@@ -556,7 +653,7 @@ describe("prDashboard", () => {
             const { intents, label } = await evaluate(
                 labelling(BOTH, LINKS),
                 answers({ linkedIssues: [ISSUE_11] }),
-                pullRequest({}, true),
+                swept({}, true),
             );
             expect(intents).toHaveLength(1);
             expect(label).toBeNull();
@@ -567,6 +664,7 @@ describe("prDashboard", () => {
             const undetermined = await evaluate(
                 labelling(BOTH, checks),
                 answers({ linkedIssues: [ISSUE_11] }),
+                swept(),
             );
             expect(undetermined.label).toBeNull();
             const failing = await evaluate(labelling(BOTH, checks), answers({ linkedIssues: [] }));
@@ -578,7 +676,7 @@ describe("prDashboard", () => {
             const ready = await evaluate(
                 labelling(BOTH, LINKS),
                 answers({ linkedIssues: [ISSUE_11] }),
-                pullRequest({ meaning: "readyToMerge" }),
+                swept({ meaning: "readyToMerge" }),
             );
             expect(ready.label).toBeNull();
             expect(ready.handle.explanations).toEqual([]);
@@ -607,7 +705,7 @@ describe("prDashboard", () => {
             );
             expect(already.label).toBeNull();
             expect(already.handle.explanations.map((e) => e.summary)).toEqual([
-                "Left the position alone: no edge on the workflow map moves this pull request to needsRevision.",
+                "Left the position alone: no edge prDashboard owns moves this pull request to needsRevision.",
             ]);
             const conflicted = factsFor(
                 prDashboard.declaration,

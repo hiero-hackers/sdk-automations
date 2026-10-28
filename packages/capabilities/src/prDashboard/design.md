@@ -89,12 +89,16 @@ Rules: a check runs only when its `enabled` is explicitly `true` — the platfor
 one level down; omitted or `false` means off, and a kept block with `enabled: false` is a check
 parked, not a check running. `assignedIssues` nests inside `linkedIssues`, so its dependency is
 structural — anywhere else it is an unknown key. A missing guide renders without the link.
-`needsRevision` follows any failure; `needsReview` only when every enabled check passes on a pull
-request marked ready for review — never on a draft, never while a check is undetermined. The label
-moves along the workflow map's edge; a pull request the map cannot move (already there,
-a conflicted position) keeps its position, and the operator is told. `needsReview` is asked only
-from no position or `needsRevision`: a pull request a maintainer moved to `readyToMerge` is theirs,
-and passing checks never pull it back.
+`needsRevision` follows any failure, and an outstanding change request, from `needsReview` alone
+(the map's `reviewRequestedChanges` edge, D245). A request is outstanding until a commit newer than
+it answers it — core's `changesOutstanding`, the rule inactivity reads too (D241). `needsReview` only
+when every enabled check passes on a pull request marked ready for review whose review state is read
+and clear of outstanding requests — never on a draft, never while a check is undetermined, never
+on a webhook run, which reads no review state: the hourly sweep asks. The label moves along the
+workflow map's edge; a pull request the map cannot move (already there, a conflicted position) keeps
+its position, and the operator is told. `needsReview` is asked only from no position or
+`needsRevision`: a pull request a maintainer moved to `readyToMerge` is theirs, and passing checks
+never pull it back.
 
 ## How it works
 
@@ -114,7 +118,7 @@ flowchart LR
     R --> S["each check: pass · fail · undetermined"]
     S -->|"no check determined"| N1["skipped, with the operator told why"]
     S --> I["postManagedComment — update in place"]
-    S -->|"applyLabels lists it"| L["needsRevision on any fail · needsReview when all pass and ready for review"]
+    S -->|"applyLabels lists it"| L["needsRevision on any fail, or on an outstanding change request from needsReview · needsReview when all pass, ready, and the sweep read none outstanding"]
 ```
 
 One guard is the platform's: a closed or merged item never reaches a capability that has not
@@ -136,9 +140,10 @@ outright (D198).
 | Declaration | Value |
 |---|---|
 | `triggers` | `pull_request` (opened, edited, synchronize, reopened, ready_for_review) · `schedule` — the hourly sweep re-evaluates every open pull request; the sweep's own reads are shared, and each pull request costs the resolvers it asks (commits, mergeability, links, one read per linked issue), bounded by the sweep's allowance |
-| `facts` / `needs` | a `pullRequest` record with the `readiness` group (draft or ready), which the `pull_request` producer reads |
+| `facts` / `needs` / `wants` | a `pullRequest` record with the `readiness` group (draft or ready), which the `pull_request` producer reads; `review` wanted, which only the sweep reads — a webhook record carries it unread and earns no `needsReview` |
 | `resolvers` | `isAutomationActor` (the author; no request) · `linkedIssues` · `commitAttestations` (read once for both commit checks) · `mergeability` · `assigneesOf` (one read per linked issue; an ISSUE number) — every read a confirmed matrix row (protocol 6.9) |
 | `intents` | `postManagedComment` (`summary`) · `applyMappedLabel` (`needsReview`/`needsRevision`) |
+| `moves` / `reads` | owns `checksPassed`, `checksFailed`, `revisionResolved` and `reviewRequestedChanges`, so sets `needsReview` and `needsRevision`; reads `readyToMerge`, a person's position it leaves alone |
 | `requiredMappings` | none — `applyLabels` demands the mapping of each position it lists |
 | Permissions | repository: `pull_requests:read`, `issues:read`, `issues:write` · organization: none |
 
@@ -177,7 +182,12 @@ outright (D198).
 | Sweep and delivery both evaluate one pull request | one dashboard: the managed identity is per item, and a matching body is `already` |
 | An issue linked twice, or a pull request among the links | one assignee read per issue; nothing read for the pull request |
 | Any check fails, `needsRevision` listed | the position moves to `needsRevision` along the map's edge |
-| Every check passes on a ready pull request | `needsReview`; from `needsRevision`, by `revisionResolved` |
+| Every check passes on a ready pull request, review state read and clear | `needsReview`; from `needsRevision`, by `revisionResolved` |
+| Every check passes on a webhook run | dashboard posts; no `needsReview` — the review state is unread, and the sweep asks within the hour |
+| A review requested changes, every check passes, at `needsReview` | `needsRevision` by `reviewRequestedChanges`, and the explanation says a review earned it |
+| A review requested changes from no position or `readyToMerge` | left alone — the map draws that edge from `needsReview` only |
+| A review requested changes and a check fails | `needsRevision` by `checksFailed` — the checks speak first |
+| A review requested changes, then a newer commit, every check passes | the request is answered: `needsReview` stays, and `needsRevision` resolves to `needsReview` |
 | A position the map cannot move | left alone; the operator is told |
 | Maintainer moved it to `readyToMerge`, every check passes | left alone; a failure still moves it to `needsRevision` |
 | Assignee login differs from the author's in case | counted as assigned |

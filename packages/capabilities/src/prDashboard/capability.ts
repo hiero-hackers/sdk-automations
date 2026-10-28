@@ -4,7 +4,13 @@
  * verdict earns. The rows are `rows.ts`, the judgements `checks.ts`, the words `messages.ts`.
  */
 
-import { moveTo, type Capability, type IntentFor } from "@hiero-hackers/automation-core/author";
+import {
+    changesOutstanding,
+    moveTo,
+    UNREAD,
+    type Capability,
+    type IntentFor,
+} from "@hiero-hackers/automation-core/author";
 import {
     determined,
     positionFor,
@@ -42,22 +48,29 @@ function labelIntent(
         });
     }
     const current = facts.position.kind === "position" ? facts.position.state.meaning : null;
-    const target = positionFor(rows, facts.readiness.draft, current);
+    const outstanding = facts.review === UNREAD ? null : changesOutstanding(facts.review);
+    const target = positionFor(rows, facts.readiness.draft, current, outstanding);
     if (target === null || !applyLabels.includes(target)) return null;
-    if (moveTo(facts, target) === null) {
+    // The review earned the verdict, not the checks: the cause says so, and the map draws that edge from needsReview alone.
+    const byReview = target === "needsRevision" && !rows.some((row) => row.outcome === "fail");
+    if (moveTo(facts, target, prDashboardDeclaration.moves) === null) {
         // Already there, off the map, or a conflicted position: the engine would refuse, so nothing is asked.
         platform.explain({
             capability: prDashboardDeclaration.name,
-            summary: `Left the position alone: no edge on the workflow map moves this pull request to ${target}.`,
+            summary: `Left the position alone: no edge prDashboard owns moves this pull request to ${target}.`,
             detail: [],
         });
         return null;
     }
     return platform.intent({
         operation: "applyMappedLabel",
-        desired: { meaning: target },
+        desired: byReview
+            ? { meaning: target, cause: "reviewRequestedChanges" }
+            : { meaning: target },
         cause: "pullRequestChecked",
-        explain: `Set the position to ${target} from the checks' verdict.`,
+        explain: byReview
+            ? "Set the position to needsRevision: a review requested changes."
+            : `Set the position to ${target} from the checks' verdict.`,
     });
 }
 

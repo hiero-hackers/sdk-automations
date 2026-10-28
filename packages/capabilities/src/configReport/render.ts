@@ -86,6 +86,30 @@ function labelsSetBy(
     ];
 }
 
+/** The meanings an enabled block's settings name and does not set, and who may set each: an enabled capability, or a person (D244). */
+function positionsNamedBy(
+    config: RepositoryConfig,
+    consulted: readonly MappableMeaning[],
+    setters: ReadonlyMap<MappableMeaning, readonly string[]>,
+): readonly string[] {
+    if (consulted.length === 0) return [];
+    return [
+        bullet(1, "positions its settings name"),
+        ...consulted.map((meaning) => {
+            const spelling = config.mappings.labels[meaning] ?? LABEL_DEFAULTS[meaning].name;
+            if (meaning === "blocked") {
+                return bullet(2, `${inert(spelling)} — blocked, a marker; only a person sets it`);
+            }
+            const by = setters.get(meaning) ?? [];
+            const who =
+                by.length === 0
+                    ? "no enabled capability sets it, so a person must"
+                    : `may be set by ${by.map(inert).join(", ")}`;
+            return bullet(2, `${inert(spelling)} — ${meaning}; ${who}`);
+        }),
+    ];
+}
+
 /** The mode one capability runs in and where it came from, so no reader resolves the inheritance. */
 function modeLine(config: RepositoryConfig, name: string): string {
     const { mode, source } = effectiveMode(config, name);
@@ -106,13 +130,20 @@ function capabilities(config: RepositoryConfig): readonly string[] {
         })
         .map(inert);
 
+    const setters = new Map<MappableMeaning, readonly string[]>();
+    for (const [name, block] of on) {
+        for (const meaning of block.labels ?? []) {
+            setters.set(meaning, [...(setters.get(meaning) ?? []), name]);
+        }
+    }
     const lines = on.flatMap(([name, block]) => {
         const settings = tree(block.settings, 1);
         const labels = labelsSetBy(config, block.labels ?? []);
+        const named = positionsNamedBy(config, block.consults ?? [], setters);
         const heading = `${inert(name)} — on, ${modeLine(config, name)}`;
         return settings.length === 0 && labels.length === 0
             ? [bullet(0, `${heading}, no settings`)]
-            : [bullet(0, heading), ...settings, ...labels];
+            : [bullet(0, heading), ...settings, ...labels, ...named];
     });
     return [
         "**Capabilities**",
