@@ -530,6 +530,28 @@ describe("appendSummary", () => {
         store.close();
     });
 
+    it("says a sweep could not read the open items, in a line and a warning", () => {
+        const store = runStore();
+        const outcome: RunOutcome = {
+            kind: "sweep",
+            events: [{ event: "sweepUnreadable", scheduleId: "s", detail: "502" }],
+            items: [],
+            effects: [],
+            modeLowered: false,
+            configAbsent: false,
+            exitCode: 0,
+        };
+        const repository = { owner: "o", repo: "r" } as const;
+        const text = renderSummary(
+            store,
+            { repository, eventName: "schedule", runUrl: null },
+            outcome,
+        );
+        expect(text).toContain("No decision: `sweepUnreadable`, 502.");
+        expect(annotations(outcome)).toEqual(["::warning::sweepUnreadable 502"]);
+        store.close();
+    });
+
     it("says why a delivery completed with no decision, in a line and a warning", () => {
         const store = runStore();
         const outcome: RunOutcome = {

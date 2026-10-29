@@ -60,14 +60,15 @@ function failures(events: readonly ShellEvent[]): ShellEvent[] {
     );
 }
 
-/** Nothing was decided and the configuration, or the mode, said why. */
+/** Nothing was decided and the configuration, the mode, or an unreadable open-item list said why. */
 function undecided(events: readonly ShellEvent[]): ShellEvent[] {
     return events.filter(
         (event) =>
             (event.event === "deliveryCompleted" &&
                 event.kind !== "decision" &&
                 event.kind !== "repositoryMismatch") ||
-            (event.event === "configurationUnavailable" && event.reason === "rejected"),
+            (event.event === "configurationUnavailable" && event.reason === "rejected") ||
+            event.event === "sweepUnreadable",
     );
 }
 
@@ -143,7 +144,7 @@ const effectLine = (effect: EffectOutcome): string =>
     `${effect.capability} ${effect.operation} ${spelled(effect.item)} ${effect.outcome}` +
     (effect.code === null ? "" : ` ${effect.code}`);
 
-/** One command per applied or refused effect, per failure and per undecided delivery; one for a lowered mode or an absent file. */
+/** One command per applied or refused effect, per failure and per reason nothing was decided; one for a lowered mode or an absent file. */
 export function annotations(outcome: RunOutcome): string[] {
     const detail = (event: ShellEvent): string =>
         detailOf(event) === "" ? "" : ` ${detailOf(event)}`;
