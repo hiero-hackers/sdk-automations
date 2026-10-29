@@ -97,5 +97,5 @@ and their codes. [Troubleshooting](troubleshooting.md) explains every code. A ru
 names the event that failed, and the job turns red. GitHub emails a scheduled run's failure to
 whoever last edited the workflow file, so that person should be someone who will read it.
 
-GitHub switches off `schedule` workflows in a repository with no commits for 60 days. The hourly
-sweep then stops without a failed run; re-enable the workflow from the Actions tab.
+GitHub switches off `schedule` workflows in a public repository with no activity for 60 days. The
+hourly sweep then stops without a failed run; re-enable the workflow from the Actions tab.

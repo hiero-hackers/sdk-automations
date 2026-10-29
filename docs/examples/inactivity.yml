@@ -7,7 +7,7 @@
 # `blocked`, because exemptBlocked is on by default, and the `working`
 # command, the one way a contributor resets their own clock without pushing.
 # Every clock is per assignee, and every unstated clock is the default: remind
-# at 14d, release at 21d. A clock is written as a whole number with a unit —
+# at 30d, release at 60d. A clock is written as a whole number with a unit —
 # `4h` or `14d`. On every level that ACTS — the issue ladder and each reason
 # below — the release is an enabled-block of its own: drop a `reap:` and that
 # level reminds and never acts.
@@ -17,7 +17,7 @@ mode: dry-run
 capabilities:
   inactivity:
     enabled: true
-    issues: # assigned, no open pull request: remind at 14d, release at 21d
+    issues: # assigned, no open pull request: remind at 30d, release at 60d
       enabled: true
       reap:
         enabled: true

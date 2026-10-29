@@ -43,9 +43,9 @@ capabilities:
     enabled: true
     mode: observe # optional — this capability's own mode, at most the file's; absent, it inherits it
     exemptBlocked: true # default: true — an item carrying `blocked` is never reminded or reaped
-    remindAfter: 14d # default: 14d — the capability-wide reminder …
+    remindAfter: 14d # default: 30d — the capability-wide reminder …
     reap: # … and the capability-wide release clock, which every level inherits
-      after: 21d # default: 21d — consent to act belongs to each level that acts
+      after: 21d # default: 60d — consent to act belongs to each level that acts
     issues: # assigned issues with no open pull request
       enabled: true
       remindAfter: 21d # ladder override

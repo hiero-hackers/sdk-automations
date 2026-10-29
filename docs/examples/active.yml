@@ -22,7 +22,7 @@ capabilities:
   inactivity:
     enabled: false
     exemptBlocked: true # the blocked mapping skips every warning and action
-    remindAfter: 14d # default — any ladder or reason may override
+    remindAfter: 14d # the capability-wide reminder — any ladder or reason may override
     reap:
       after: 21d # the release clock every level inherits; consent is each acting level's own
     issues: # warns, then releases assigned issues with no open PR

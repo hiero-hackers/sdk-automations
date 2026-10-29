@@ -21,11 +21,14 @@ One comment per pull request, updated in place. When the file parses:
 > - inactivity — on, observe (stated on its block)
 >   - exemptBlocked: true
 >   - remindAfter: 336
->   - reapAfter: 504
+>   - reap
+>     - after: 504
 >   - issues
 >     - enabled: true
 >     - remindAfter: 504
->     - reapAfter: 720
+>     - reap
+>       - enabled: true
+>       - after: 720
 >
 > **Mappings**
 >

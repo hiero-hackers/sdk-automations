@@ -18,7 +18,7 @@ payload end to end.
 
 Node 24 or newer — every package's `engines` floor. `node:sqlite` (which the store depends on) only
 needs 23.4 unflagged, but Node 23 was never an LTS release and is past its own end of life, so the
-floor tracks the oldest runtime CI actually tests: both 24 and 25, because that API is still
+floor tracks the oldest runtime CI actually tests: both 24 and 26, because that API is still
 experimental and can change between majors.
 
 Useful while working:
@@ -149,9 +149,9 @@ is a rule rather than a habit.
 - **Journal rows are pinned as bytes.** Every operation spells its call one way in
   `packages/runtime/test/shell/effects.test.ts`, because a resend reads those bytes back and an
   operator greps them. A new operation adds a row pin.
-- **Coverage and mutation are gates, not reports.** CI runs the suite on Node 24 and 25, line coverage
+- **Coverage and mutation are gates, not reports.** CI runs the suite on Node 24 and 26, line coverage
   for every package that declares a threshold, and Stryker per owning package.
-- **The checks read the working tree, not the index.** A file is judged before it is committed (D143),
+- **The checks read the working tree, not the index.** A file is judged before it is committed (D144),
   so a new module is cited, placed and covered on the run that introduces it.
 
 What each ring owes before the App touches a repository it does not own: **every pull request** — the

@@ -160,7 +160,7 @@ instead. [Troubleshooting](troubleshooting.md) lists every code a report can car
 capabilities:
   triageQueue:
     enabled: true             # consent — literally true, nothing that looks like it
-    announce: true            # this capability's own keys, from the table above
+    welcome: true             # this capability's own keys, from the table above
 ```
 
 Then map the meanings its row needs. A block the capability cannot read — a number where a boolean

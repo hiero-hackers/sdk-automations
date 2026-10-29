@@ -28,7 +28,7 @@ uses the Action. This document states the current posture honestly rather than a
   code executes with a read-only token and no secrets.
 - `pnpm install --frozen-lockfile` keeps dependency resolution reproducible;
   `pnpm audit --audit-level moderate` runs on every push and pull request.
-- The test pipeline runs typecheck and tests on Node 24 and 25, plus line and mutation gates for the
+- The test pipeline runs typecheck and tests on Node 24 and 26, plus line and mutation gates for the
   packages that declare them (`capabilities`, `core`, and `runtime` currently).
 - Contributions are signed off with `git commit -s`; maintainers enforce the
   DCO.
