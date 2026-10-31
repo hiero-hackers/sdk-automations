@@ -1,5 +1,10 @@
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
-import type { DeclaredTrigger, RequiredMappings, Spec } from "@hiero-hackers/automation-core";
+import type {
+    DeclaredTrigger,
+    MappableMeaning,
+    RequiredMappings,
+    Spec,
+} from "@hiero-hackers/automation-core";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeNewlines, repoRoot, repositoryFiles } from "./repository.js";
@@ -11,7 +16,9 @@ export interface ShippedCapability {
     readonly settings: Spec;
     readonly requiredMappings: RequiredMappings;
     readonly intents: readonly string[];
-    readonly labels: readonly string[];
+    readonly labels: readonly MappableMeaning[];
+    readonly moves: readonly string[];
+    readonly reads: readonly string[];
     /** The design page's first line, exactly as written. */
     readonly title: string;
     /** The half after the em-dash — the whole line when the title is not in shape. */
@@ -46,6 +53,8 @@ export function shippedCapabilities(): readonly ShippedCapability[] {
             settings: declaration.settings,
             requiredMappings: declaration.requiredMappings,
             labels: declaration.labels,
+            moves: declaration.moves,
+            reads: declaration.reads,
             intents: declaration.intents,
             title,
             purpose: DESIGN_TITLE.exec(title)?.[1] ?? title,

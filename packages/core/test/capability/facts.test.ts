@@ -501,6 +501,19 @@ describe("moveTo (D5)", () => {
         expect(moveTo(pullAt(edge.from), edge.to!)).toBe(edge.causes[0]);
     });
 
+    /** Ownership is per cause (D243): the owned cause on a shared edge wins, and owning none is no edge. */
+    it("picks the first cause the caller owns, and null when it owns none on the edge", () => {
+        const sentBack = pullAt("needsReview");
+        expect(moveTo(sentBack, "needsRevision", ["reviewRequestedChanges"])).toBe(
+            "reviewRequestedChanges",
+        );
+        expect(moveTo(sentBack, "needsRevision", ["checksFailed", "reviewRequestedChanges"])).toBe(
+            "checksFailed",
+        );
+        expect(moveTo(sentBack, "needsRevision", ["revisionResolved"])).toBeNull();
+        expect(moveTo(sentBack, "needsRevision", [])).toBeNull();
+    });
+
     it("answers null where the map draws no edge", () => {
         // prDashboard's own defect, as the design page wrote it: "needsRevision
         // on fail" from a position with no such edge is refused

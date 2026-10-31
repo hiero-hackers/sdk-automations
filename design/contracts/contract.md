@@ -18,9 +18,12 @@ interface CapabilityDeclaration {
   readonly closed?: boolean;                     // also woken for a closed item; absent is open only (D59)
   readonly settings: Spec;                       // the settings toolkit's spec; its keys are the legal names
   readonly requiredMappings: DeclaredMappings;
-  readonly labels: readonly string[];            // the label meanings it may set; non-empty iff intents holds applyMappedLabel (D204)
+  readonly labels: readonly string[];            // the positions its moves enter (D204)
+  readonly moves: readonly string[];             // the transition causes it owns; non-empty iff intents holds applyMappedLabel (D243)
+  readonly reads: readonly string[];             // the positions it consults and does not set; never `blocked`
   readonly facts: readonly string[];
   readonly needs: Readonly<Record<string, readonly string[]>>; // per kind (D214)
+  readonly wants: Readonly<Record<string, readonly string[]>>; // per kind: read when the producer has it, "unread" otherwise, never a skip (D245)
   readonly resolvers: readonly string[];
   readonly intents: readonly string[];
 }
@@ -42,10 +45,11 @@ interface DeclaredMappings {
   producer yields one kind; a schedule trigger states its kinds), `needs` may be one list — each group
   reaches every declared kind that carries it — or a list per kind, and `requiredMappings` defaults to
   empty. The filled declaration, `needs` per kind, is what everything below reads.
-- `labels` names the meanings a capability may set, checked against the labels family and against
-  `intents`: a capability that may set a position names which, and one that names them declares the
-  intent. The parser copies it onto the enabled block, so the configuration report can tell a file's
-  reviewers which labels the App will use, and define if missing (D204).
+- `moves` names the transition causes a capability owns, checked against the map and against `intents`:
+  one that may set a position owns an edge, and one that owns edges declares the intent. No cause has two
+  owners. `labels`, the positions those edges enter, follows from it and is never written. The parser copies `labels` onto the enabled block, so the configuration report can tell a file's
+  reviewers which labels the App will use, and define if missing (D204). `reads` names the positions it
+  consults and does not set, for taxonomy §2.1's tables; `blocked` is the platform's and is never listed.
 - `settings` and `requiredMappings` are the two fields the CONFIGURATION layer reads: the first is the
   spec every capability block is read against — its keys are the legal names a block may carry beside
   `enabled`, and its fields judge the values, at parse time, with the rest of the file — and the
@@ -56,6 +60,9 @@ interface DeclaredMappings {
 - `facts` and `needs` are the two the ENGINE reads ([`facts.md`](facts.md) §3): which item kinds this
   capability is handed a record for, and which groups of each kind's record it reads. A need on a kind
   it does not declare, or a group that kind does not carry — `review` on an issue — is a boot error (D214).
+  `wants` names groups the capability reads when the producer has them: a want arrives `"unread"` on a
+  producer that does not read it, and the capability is still invoked; one no trigger's producer reads,
+  or one the capability already needs, is a boot error (D245).
 - `TypedDeclaration` narrows mapping, fact, group, resolver, and intent names to the closed platform
   catalogues, which is also what lets a declaration serve as an `AdmittedCapability` uncast.
 - `declareCapability<const D>` preserves those lists as literal tuples so the boundary can project exact
@@ -157,11 +164,14 @@ interface Intent<K extends IntentOperation> {
   is the safe side, and the next delivery re-evaluates.
 - **The cause defaults to the trigger** (the event name, or `sweep`) and is part of the idempotency key, so a
   capability that already states one keeps it: the key is the store's `effect_id` (D65).
-- **A label's transition cause comes from the map** (`moveTo`) when the request leaves it out; no edge from the
-  item's position ends the evaluation as skipped.
+- **A label's transition cause comes from the map** (`moveTo`) when the request leaves it out: the edge's
+  first cause the capability owns. No edge from the item's position, or none it owns, ends the evaluation as
+  skipped.
 - `screenIntent` judges what the compiler cannot: capability identity, declared operation, dated cause,
-  the re-derived key, the grace terms, entity/meaning compatibility, pause authority, position conflicts,
-  and transition legality. The intent's shape is the compiler's (D209); the engine contains a non-object
+  the re-derived key, the grace terms, then for a label move pause authority first (no edge enters
+  `blocked`, so the ownership screens would hide it), the meaning's and the cause's ownership
+  (`undeclaredMeaning`, `undeclaredCause`), entity/meaning compatibility, position conflicts, and
+  transition legality. The intent's shape is the compiler's (D209); the engine contains a non-object
   entry as `malformedIntent` and reads nothing else defensively.
 - The engine derives action class and required permission from `INTENT_OPERATIONS`, then derives an
   unforgeable safety world from the record's own projection and the intent's claims.

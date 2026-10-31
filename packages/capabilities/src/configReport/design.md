@@ -102,6 +102,12 @@ does not judge.
 
 ## How it works
 
+A block whose settings name meanings it does not itself set — `claimableOnlyWhen`,
+`notClaimableWhen`, `capIgnores`, `onlyWhen` — gets one more list, "positions its settings name":
+each at the spelling in force, with the enabled capability that may set it, or the note that none
+does and a person must; `blocked` is named as the marker it is (D244). A mapping alone silences
+nothing; this is where a file's reviewers see which handoff rests on a human.
+
 Acts on: pull requests that are open and that change `sdk-automations.yml` at the repository root.
 Never acts on: closed or merged pull requests, which the platform withholds from a capability that
 did not declare `closed: true` (D59); pull requests that leave the file alone; and the file itself —

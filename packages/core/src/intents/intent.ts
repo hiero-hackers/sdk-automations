@@ -87,6 +87,7 @@ export const INTENT_SCREEN_REFUSAL_CODES = [
     "foreignCapability",
     "undeclaredIntent",
     "undeclaredMeaning",
+    "undeclaredCause",
     "invalidCause",
     "idempotencyKeyMismatch",
     "authoritativePositionUnavailable",

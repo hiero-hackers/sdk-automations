@@ -43,21 +43,55 @@ conflict, which would silence observation on exactly the items most worth report
 
 ### 2.1 Current capability interactions
 
-Positions are shared workflow facts, not private capability state. This is the current ownership:
+Positions are shared workflow facts, not private capability state. An edge is owned by the capability
+whose declaration names its cause in `moves`; a position is read by the capabilities whose declarations
+name it in `reads`. `ownership-drift.test.ts` holds both tables to the shipped declarations.
 
-| Meaning | Writer | Used by |
+| From | To | Cause | Owner |
+|---|---|---|---|
+| ∅ | `awaitingTriage` | `intakeObserved` | `triageQueue` |
+| `awaitingTriage` | `ready` | `triageCompleted` | A person |
+| `ready` | `inProgress` | `contributorAssigned` | None |
+| `inProgress` | `ready` | `lastContributorUnassigned` | None |
+| `inProgress` | `ready` | `reclaimCompleted` | None |
+| ∅ | `needsReview` | `checksPassed` | `prDashboard` |
+| ∅ | `needsRevision` | `checksFailed` | `prDashboard` |
+| `needsReview` | `needsRevision` | `checksFailed` | `prDashboard` |
+| `needsReview` | `needsRevision` | `reviewRequestedChanges` | `prDashboard` |
+| `needsRevision` | `needsReview` | `revisionResolved` | `prDashboard` |
+| `needsReview` | `readyToMerge` | `reviewPolicySatisfied` | A person |
+| `readyToMerge` | `needsReview` | `approvalInvalidated` | A person |
+| `readyToMerge` | `needsRevision` | `checksFailed` | `prDashboard` |
+
+Edges to closed are left out: closure is read from GitHub and never written (D47). "A person" is an
+edge a maintainer walks by hand today; "None" is one nobody walks yet.
+
+| Position | Read by |
+|---|---|
+| `awaitingTriage` | — |
+| `ready` | `triageQueue` |
+| `inProgress` | — |
+| `needsReview` | `inactivity` |
+| `needsRevision` | `inactivity` |
+| `readyToMerge` | `prDashboard` |
+
+A capability reads the positions it sets by right, so they are not listed again. `assignment` reads
+whatever meanings its `claimableOnlyWhen` and `notClaimableWhen` settings name: that dependency is the
+repository's file's to declare, not the capability's.
+
+**Markers** sit beside a position and never replace it (D28, D35):
+
+| Marker | Writer | Read by |
 |---|---|---|
-| `awaitingTriage` | `triageQueue` | `triageQueue` |
-| `ready` | A person | `triageQueue` |
-| `inProgress` | None | None |
-| `needsReview` | `prDashboard` | `prDashboard`, `inactivity` |
-| `needsRevision` | `prDashboard` | `prDashboard`, `inactivity` |
-| `readyToMerge` | A person | `prDashboard` |
-| `blocked` | A person | Core safety, `inactivity` |
+| `blocked` | A person | The platform, for every capability: clocks pause and writes wait |
+
+A marker a capability writes, such as the `communityReviewWelcome` the reviews design proposes, takes
+an owner the same way an edge does. **Skill tiers** (§8) are a ladder a person writes; a capability
+reads them through the `skills` group, and one that writes a tier owns that step.
 
 `prDashboard` writes positions only when `applyLabels` includes them. Phase 3 may give `triageQueue`
-the `awaitingTriage → ready` edge. A future assignment capability must own both assignment and any
-move into or out of `inProgress`.
+`triageCompleted`; assignment's phase 3 owns `contributorAssigned` and `lastContributorUnassigned`,
+and an approved reclaim owns `reclaimCompleted`, when built.
 
 `configReport` has no position dependency. `inactivity` can release an assignment or close a pull request,
 but it does not rewrite a workflow-position label. Closing preserves the existing position as §5.1 describes.
@@ -77,11 +111,12 @@ produce the same transition. Cross-capability handoffs use positions already pre
 capabilities do not call one another. More than one mapped position remains a conflict that no capability
 repairs automatically.
 
-The rule is enforced for moves INTO a position, which covers every edge ending there: a capability sets only
-the meanings its declaration's `labels` names (`undeclaredMeaning` otherwise), no meaning may be declared by
-two capabilities, and the Writer column must name exactly those writers (D220). Moving an item OUT of a
-position needs no ownership: `prDashboard` may move a person's `readyToMerge` to `needsRevision`. The
-`inProgress` rule above is documentation until an assignment capability exists.
+The rule is enforced per edge: a capability sets only the positions its `moves` enter
+(`undeclaredMeaning` otherwise), along a cause it owns (`undeclaredCause`), no cause may be owned by two
+capabilities, and the Owner column must name exactly those owners (D220, D243). Two capabilities may
+enter one position by different edges. Moving an item OUT of a position needs no ownership of it:
+`prDashboard` may move a person's `readyToMerge` to `needsRevision` along `checksFailed`. A position a
+capability consults and does not set is named in its `reads`, and the Read-by column must name it.
 
 ## 3. Example Hiero mappings
 

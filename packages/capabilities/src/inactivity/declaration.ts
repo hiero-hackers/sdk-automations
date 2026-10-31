@@ -16,6 +16,7 @@ export const inactivityDeclaration = declareCapability({
         issue: ["assignees", "links"],
         pullRequest: ["assignees", "review", "readiness"],
     },
+    reads: ["needsReview", "needsRevision"],
     resolvers: ["isAutomationActor"],
     intents: ["postManagedComment", "releaseAssignment", "closePullRequest"],
 });

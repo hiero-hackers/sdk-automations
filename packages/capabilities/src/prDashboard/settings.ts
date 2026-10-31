@@ -43,6 +43,6 @@ export const PR_DASHBOARD_SETTINGS = spec({
         { doc: "The quality checks this repository runs — each one off until it is enabled" },
     ),
     applyLabels: meanings({
-        doc: "The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review",
+        doc: "The positions the dashboard may set: needsRevision on any failure, or when a review's change request is outstanding; needsReview when every check passes on a ready pull request the sweep read clear of outstanding change requests",
     }),
 });

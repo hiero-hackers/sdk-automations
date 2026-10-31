@@ -54,13 +54,14 @@ export const RESERVED_BLOCK_KEYS = {
 
 // ─── The shape of a document ─────────────────────────────────────────
 
-/** One capability's block. `settings` is spec-resolved (§3); no document writes that key. */
+/** One capability's block. `settings` is spec-resolved (§3); `labels` and `consults` (the meanings its settings name and it does not set) are copied in, never written (D204, D244). */
 export interface CapabilityConfig {
     readonly enabled: boolean;
     /** The mode the block STATED, never above the file's; absent inherits it (`effectiveMode`). */
     readonly mode?: CapabilityMode;
     readonly settings: Readonly<Record<string, unknown>>;
     readonly labels?: readonly MappableMeaning[];
+    readonly consults?: readonly MappableMeaning[];
 }
 
 /** Each meaning → this repository's spelling. First three families CLOSED, `alerts` OPEN. */

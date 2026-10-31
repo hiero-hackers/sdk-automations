@@ -132,11 +132,16 @@ export class EngineHandle {
     }
 
     intent(request: IntentRequest<IntentOperation>): AnyIntent {
-        const built = buildIntent(this.declaration.name, this.facts, request);
+        const built = buildIntent(
+            this.declaration.name,
+            this.facts,
+            request,
+            this.declaration.moves,
+        );
         if (built !== null) return built as AnyIntent;
         const meaning = "meaning" in request.desired ? request.desired.meaning : "";
         return this.stop(
-            `Skipped: no edge on the workflow map moves this item to ${meaning}.`,
+            `Skipped: no edge this capability owns moves this item to ${meaning}.`,
             `from ${this.facts.position.kind === "conflict" ? "a conflicted position" : (this.facts.position.state.meaning ?? "no position")}`,
         );
     }
@@ -197,15 +202,6 @@ function screenTransition(
             ok: false,
             code: "positionConflict",
             reason: `the observed item holds ${projection.positions.join(" and ")}; a conflicted position has no edge to move along`,
-        };
-    }
-
-    // `blocked` is a pause flag, not a position, and only a human may set it (D28, D79).
-    if (intent.desired.meaning === "blocked") {
-        return {
-            ok: false,
-            code: "pauseNotCapabilityWritable",
-            reason: "pausing an item withholds it from every capability, so only a human may set `blocked` (D79); a capability that must stop work needs the immediatePreventive gate (D54)",
         };
     }
 
@@ -324,11 +320,27 @@ export function screenIntent(
     const grace = screenGrace(intent);
     if (!grace.ok) return grace;
     if (intent.operation === "applyMappedLabel") {
+        // `blocked` is a pause flag, not a position, and only a human may set it (D28, D79). First,
+        // because no edge enters it: derived `labels` never hold it, so the ownership screens would hide this.
+        if (intent.desired.meaning === "blocked") {
+            return {
+                ok: false,
+                code: "pauseNotCapabilityWritable",
+                reason: "pausing an item withholds it from every capability, so only a human may set `blocked` (D79); a capability that must stop work needs the immediatePreventive gate (D54)",
+            };
+        }
         if (!declaration.labels.includes(intent.desired.meaning)) {
             return {
                 ok: false,
                 code: "undeclaredMeaning",
                 reason: `"${declaration.name}" did not declare label meaning "${intent.desired.meaning}"`,
+            };
+        }
+        if (!declaration.moves.includes(intent.desired.cause)) {
+            return {
+                ok: false,
+                code: "undeclaredCause",
+                reason: `"${declaration.name}" does not own the cause "${intent.desired.cause}"`,
             };
         }
         if (projection === null) {

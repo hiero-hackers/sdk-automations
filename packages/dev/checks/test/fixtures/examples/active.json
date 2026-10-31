@@ -12,7 +12,10 @@
                 "requirements": {
                     "skill": false
                 }
-            }
+            },
+            "labels": [
+                "awaitingTriage"
+            ]
         },
         "prDashboard": {
             "enabled": true,
@@ -36,7 +39,11 @@
                     }
                 },
                 "applyLabels": []
-            }
+            },
+            "labels": [
+                "needsReview",
+                "needsRevision"
+            ]
         },
         "inactivity": {
             "enabled": false,
