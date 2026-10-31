@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { type Answer, type Call } from "../src/github.js";
-import { ARM_VARIABLE, CONFIG_PATH, createSandbox } from "../src/action/sandbox.js";
+import { ARM_VARIABLE, CONFIG_PATH, createSandbox, REF_VARIABLE } from "../src/action/sandbox.js";
 
 vi.mock("node:timers/promises", () => ({ setTimeout: () => Promise.resolve() }));
 
@@ -67,6 +67,7 @@ function variableWithLag() {
     let staleReads = 0;
     const github = { lag: 0 };
     const call: Call = async (method, path, options) => {
+        if (method === "POST") return answer(409);
         if (!path.endsWith(`/actions/variables/${ARM_VARIABLE}`)) return answer(404);
         if (method === "PATCH") {
             previous = current;
@@ -80,7 +81,7 @@ function variableWithLag() {
         }
         return answer(200, { value: current });
     };
-    return { sandbox: createSandbox(call, "me", "sandbox"), github };
+    return { sandbox: createSandbox(call, "me", "sandbox"), github, held: () => current };
 }
 
 describe("the sandbox's variable read-back", () => {
@@ -99,5 +100,78 @@ describe("the sandbox's variable read-back", () => {
         await expect(sandbox.setVariable(ARM_VARIABLE, "true")).rejects.toThrow(
             `${ARM_VARIABLE} does not read back`,
         );
+    });
+
+    it("writes the restore even when a lagging read already shows it", async () => {
+        const { sandbox, github, held } = variableWithLag();
+        github.lag = Number.POSITIVE_INFINITY;
+        await expect(sandbox.setVariable(ARM_VARIABLE, "true")).rejects.toThrow();
+
+        await sandbox.restore();
+        expect(held()).toBe("false");
+    });
+});
+
+/** One sandbox whose variables read as written, answered as GitHub answers and as `accept` allows. */
+function variableStore() {
+    const held = new Map<string, string>();
+    const reply = (method: string, path: string, body?: { name: string; value: string }) => {
+        const name = body?.name ?? path.split("/").at(-1) ?? "";
+        const exists = held.has(name);
+        if (method === "GET") return exists ? answer(200, { value: held.get(name) }) : answer(404);
+        if (method === "POST" && !path.endsWith("/actions/variables")) return answer(404);
+        if (method === "POST" && exists) return answer(409);
+        if (method !== "POST" && !exists) return answer(404);
+        if (method === "DELETE") held.delete(name);
+        else if (body !== undefined) held.set(name, body.value);
+        return answer(method === "POST" ? 201 : 204);
+    };
+    const call: Call = async (method, path, options) => {
+        const answered = reply(method, path, options?.body as { name: string; value: string });
+        if (!(options?.accept ?? [200]).includes(answered.status)) throw new Error("not accepted");
+        return answered;
+    };
+    return { sandbox: createSandbox(call, "me", "sandbox"), held };
+}
+
+describe("the sandbox's variable writes", () => {
+    it("creates a variable the sandbox lacks", async () => {
+        const { sandbox, held } = variableStore();
+
+        await sandbox.setVariable(REF_VARIABLE, "abc");
+        expect(held.get(REF_VARIABLE)).toBe("abc");
+    });
+
+    it("updates a variable the sandbox has", async () => {
+        const { sandbox, held } = variableStore();
+        await sandbox.setVariable(REF_VARIABLE, "abc");
+
+        await sandbox.setVariable(REF_VARIABLE, "def");
+        expect(held.get(REF_VARIABLE)).toBe("def");
+    });
+
+    it("deletes on restore a variable the sandbox lacked", async () => {
+        const { sandbox, held } = variableStore();
+        await sandbox.setVariable(REF_VARIABLE, "abc");
+
+        expect(await sandbox.restore()).toEqual([]);
+        expect(held.has(REF_VARIABLE)).toBe(false);
+    });
+
+    it("restores to unset a variable already gone", async () => {
+        const { sandbox, held } = variableStore();
+        await sandbox.setVariable(REF_VARIABLE, "abc");
+        held.delete(REF_VARIABLE);
+
+        expect(await sandbox.restore()).toEqual([]);
+    });
+
+    it("restores ARM_WRITES to false even when it read true before the run", async () => {
+        const { sandbox, held } = variableStore();
+        held.set(ARM_VARIABLE, "true");
+        await sandbox.setVariable(ARM_VARIABLE, "true");
+
+        await sandbox.restore();
+        expect(held.get(ARM_VARIABLE)).toBe("false");
     });
 });

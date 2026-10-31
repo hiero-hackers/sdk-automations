@@ -112,7 +112,7 @@ async function main(argv: readonly string[]): Promise<number> {
     if (!facts.workflowPresent)
         throw new Halt(`${WORKFLOW_PATH} is absent from ${facts.defaultBranch}`);
     if (options.disarm) {
-        if (facts.armWrites !== "false") await sandbox.setVariable(ARM_VARIABLE, "false");
+        await sandbox.setVariable(ARM_VARIABLE, "false");
         const config = facts.configMode === "active" ? await sandbox.fileAt(CONFIG_PATH) : null;
         if (config !== null)
             await sandbox.switchConfig(withMode(config.text, "dry-run"), "lab: disarm");
