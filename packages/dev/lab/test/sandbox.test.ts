@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { type Answer, type Call } from "../src/github.js";
-import { CONFIG_PATH, createSandbox } from "../src/action/sandbox.js";
+import { ARM_VARIABLE, CONFIG_PATH, createSandbox } from "../src/action/sandbox.js";
 
 vi.mock("node:timers/promises", () => ({ setTimeout: () => Promise.resolve() }));
 
@@ -57,5 +57,47 @@ describe("the sandbox's config read-back", () => {
         expect(await sandbox.restore()).toEqual([
             `restore ${CONFIG_PATH} on the default branch: ${CONFIG_PATH} reads back as blob:mode: active\n`,
         ]);
+    });
+});
+
+/** One sandbox whose ARM_WRITES reads show the value before each write for `lag` reads after it. */
+function variableWithLag() {
+    let current = "false";
+    let previous = "false";
+    let staleReads = 0;
+    const github = { lag: 0 };
+    const call: Call = async (method, path, options) => {
+        if (!path.endsWith(`/actions/variables/${ARM_VARIABLE}`)) return answer(404);
+        if (method === "PATCH") {
+            previous = current;
+            current = (options?.body as { value: string }).value;
+            staleReads = github.lag;
+            return answer(204);
+        }
+        if (staleReads > 0) {
+            staleReads--;
+            return answer(200, { value: previous });
+        }
+        return answer(200, { value: current });
+    };
+    return { sandbox: createSandbox(call, "me", "sandbox"), github };
+}
+
+describe("the sandbox's variable read-back", () => {
+    it("accepts a set and a restore that GitHub shows only on the fifth try", async () => {
+        const { sandbox, github } = variableWithLag();
+        github.lag = 4;
+
+        await sandbox.setVariable(ARM_VARIABLE, "true");
+        expect(await sandbox.restore()).toEqual([]);
+    });
+
+    it("still halts on a variable that reads back only after the five tries", async () => {
+        const { sandbox, github } = variableWithLag();
+        github.lag = 5;
+
+        await expect(sandbox.setVariable(ARM_VARIABLE, "true")).rejects.toThrow(
+            `${ARM_VARIABLE} does not read back`,
+        );
     });
 });
