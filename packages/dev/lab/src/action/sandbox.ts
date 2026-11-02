@@ -35,7 +35,7 @@ const CLOSE_PACE_MS = 800;
 
 const BULK_CLOSES = 20;
 
-/** A contents read can lag its write, so a read-back tries this many times before it disagrees. */
+/** A read can lag its write, so a read-back tries this many times before it disagrees. */
 const READ_BACK_TRIES = 5;
 
 const READ_BACK_PACE_MS = 1_000;
@@ -131,14 +131,17 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         return { sha, text: Buffer.from(content, "base64").toString("utf8") };
     };
 
-    /** The config once `holds` accepts it, or the last read when the tries run out. */
-    const readConfigUntil = async (holds: (file: File | null) => boolean): Promise<File | null> => {
-        let file = await fileAt(CONFIG_PATH);
-        for (let tried = 1; tried < READ_BACK_TRIES && !holds(file); tried++) {
+    /** What `read` answers once `holds` accepts it, or its last answer when the tries run out. */
+    const readUntil = async <T>(
+        read: () => Promise<T>,
+        holds: (value: T) => boolean,
+    ): Promise<T> => {
+        let value = await read();
+        for (let tried = 1; tried < READ_BACK_TRIES && !holds(value); tried++) {
             await delay(READ_BACK_PACE_MS);
-            file = await fileAt(CONFIG_PATH);
+            value = await read();
         }
-        return file;
+        return value;
     };
 
     const put = async (
@@ -187,7 +190,9 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         } else if (held !== value) {
             await call("PATCH", path, { body: { name, value }, accept: [204] });
         }
-        if ((await variableAt(name)) !== value) throw new Halt(`${name} does not read back`);
+        const readsBack = (seen: string | null) => seen === value;
+        const after = await readUntil(() => variableAt(name), readsBack);
+        if (!readsBack(after)) throw new Halt(`${name} does not read back`);
     };
 
     const restoreVariables = async (): Promise<void> => {
@@ -228,7 +233,7 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         }
         const restored = (file: File | null) =>
             (file?.sha ?? null) === (originalConfig?.sha ?? null);
-        const after = await readConfigUntil(restored);
+        const after = await readUntil(() => fileAt(CONFIG_PATH), restored);
         if (!restored(after)) {
             throw new Halt(`${CONFIG_PATH} reads back as ${after?.sha ?? "absent"}`);
         }
@@ -271,7 +276,7 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
         configChanged = true;
         await put(CONFIG_PATH, text, message, current === null ? {} : { sha: current.sha });
         const written = (file: File | null): file is File => file?.text === text;
-        const after = await readConfigUntil(written);
+        const after = await readUntil(() => fileAt(CONFIG_PATH), written);
         if (!written(after)) throw new Halt(`${CONFIG_PATH} does not read back as written`);
         return after.sha;
     };
