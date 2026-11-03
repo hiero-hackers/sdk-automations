@@ -68,40 +68,68 @@ export function createProvoker(options: ProvokerOptions): Provoker {
     };
 
     /** One commit on a fresh branch: the config file touched, or a file of its own added. */
-    const commitOn = async (branch: string, name: string, editsConfig: boolean): Promise<void> => {
+    const commitOn = async (
+        branch: string,
+        name: string,
+        editsConfig: boolean,
+        trailer: string,
+    ): Promise<void> => {
         if (!editsConfig) {
-            await sandbox.put(`rehearsal/${name}.md`, `# ${name}\n`, `${name}: one commit`, {
-                branch,
-            });
+            await sandbox.put(
+                `rehearsal/${name}.md`,
+                `# ${name}\n`,
+                `${name}: one commit${trailer}`,
+                {
+                    branch,
+                },
+            );
             return;
         }
         const config = await sandbox.fileAt(CONFIG_PATH, branch);
         if (config === null) throw new Halt(`${CONFIG_PATH} is absent on ${branch}`);
-        await sandbox.put(CONFIG_PATH, `${config.text}# ${name}\n`, `${name}: touch the config`, {
-            branch,
-            sha: config.sha,
-        });
+        await sandbox.put(
+            CONFIG_PATH,
+            `${config.text}# ${name}\n`,
+            `${name}: touch the config${trailer}`,
+            { branch, sha: config.sha },
+        );
     };
 
     const openPull = async (
         subject: Subject,
         name: string,
-        editsConfig: boolean,
-        draft: boolean,
+        action: {
+            readonly editsConfig: boolean;
+            readonly draft?: boolean;
+            readonly signedOff?: boolean;
+            readonly fixes?: number;
+        },
     ): Promise<Answer> => {
         const branch = `rehearsal/${name}`;
         const base = await call("GET", `${repository}/git/ref/heads/${defaultBranch}`);
         const sha = field(field(base.body, "object"), "sha");
         if (typeof sha !== "string") throw new Halt(`${defaultBranch} reads back without a commit`);
+        const trailer =
+            action.signedOff === true
+                ? `\n\nSigned-off-by: ${owner} <${owner}@users.noreply.github.com>`
+                : "";
+        const body =
+            action.fixes === undefined ? BODY : `${BODY}\n\nFixes #${String(action.fixes)}`;
         // Marked before sending: a write whose answer is lost may still have landed.
         sandbox.adoptBranch(branch);
         await call("POST", `${repository}/git/refs`, {
             body: { ref: `refs/heads/${branch}`, sha },
             accept: [201],
         });
-        await commitOn(branch, name, editsConfig);
+        await commitOn(branch, name, action.editsConfig, trailer);
         const created = await call("POST", `${repository}/pulls`, {
-            body: { title: name, head: branch, base: defaultBranch, body: BODY, draft },
+            body: {
+                title: name,
+                head: branch,
+                base: defaultBranch,
+                body,
+                draft: action.draft === true,
+            },
             accept: [201],
         });
         subject.pull = numberOf(created, "the pull request");
@@ -149,12 +177,7 @@ export function createProvoker(options: ProvokerOptions): Provoker {
                     return stamped(answer, { kind: "issue", number: issue });
                 }
                 case "openPull": {
-                    const answer = await openPull(
-                        subject,
-                        name,
-                        action.editsConfig,
-                        action.draft === true,
-                    );
+                    const answer = await openPull(subject, name, action);
                     return stamped(answer, { kind: "pullRequest", number: pullOf(subject) });
                 }
                 case "closePull": {

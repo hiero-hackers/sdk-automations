@@ -89,10 +89,13 @@ async function claim(context: Context, run: Run, ready: number): Promise<void> {
     run.differences.push(
         ...(await actionWrites(context, item, assigned, { assigned: 1, commented: 1 })),
     );
+    // The release notice rewrites the claim notice in place (R2): no new comment appears.
     const released = await said(context, run, ready, "/unassign");
-    run.differences.push(
-        ...(await actionWrites(context, item, released, { unassigned: 1, commented: 1 })),
+    run.differences.push(...(await actionWrites(context, item, released, { unassigned: 1 })));
+    const history = (await botComments(context, ready)).some((comment) =>
+        comment.body.includes("unassigned"),
     );
+    if (!history) run.differences.push("release: no notice reads as unassigned after /unassign");
     const waiting = await opened(context, run, "awaiting");
     const refused = await said(context, run, waiting.number, "/assign");
     run.differences.push(
@@ -104,7 +107,13 @@ async function pullRequests(context: Context, run: Run, ready: number): Promise<
     const { provoker, person, sandbox, watch, tag } = context;
     const subject: Subject = { issue: null, pull: null };
     const name = `lab-${tag}-9.9-dashboard`;
-    const open = await provoker.provoke({ kind: "openPull", editsConfig: false }, subject, name);
+    // Signed off and linked from the start: the open run fails only on the unassigned issue,
+    // and the flip to needsReview is reachable once the issue is claimed again.
+    const open = await provoker.provoke(
+        { kind: "openPull", editsConfig: false, signedOff: true, fixes: ready },
+        subject,
+        name,
+    );
     const settled = await watch.settle(open.since, ["pull_request_target"]);
     if ("failed" in settled) run.differences.push(`the dashboard: ${settled.failed}`);
     else run.texts.push(...(await watch.read(settled.runs)).texts);
@@ -116,6 +125,11 @@ async function pullRequests(context: Context, run: Run, ready: number): Promise<
     if (!(await person.labelsOf(pull.number)).includes(NEEDS_REVISION_LABEL)) {
         run.differences.push(`dashboard: ${NEEDS_REVISION_LABEL} is absent`);
     }
+
+    const reclaimed = await said(context, run, ready, "/assign");
+    run.differences.push(
+        ...(await actionWrites(context, issueRef(ready), reclaimed, { assigned: 1 })),
+    );
 
     const branch = `rehearsal/${name}`;
     const file = await sandbox.fileAt(`rehearsal/${name}.md`, branch);
