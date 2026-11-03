@@ -25,9 +25,10 @@ import {
     type WorkItemState,
 } from "@hiero-hackers/automation-core";
 import { configReport, configReportDeclaration } from "./capability.js";
-import { renderConfiguration, renderRejection, renderReport } from "./render.js";
+import { DESCRIBED, renderConfiguration, renderRejection, renderReport } from "./render.js";
 import { CONFIG_REPORT_SETTINGS } from "./settings.js";
 import { triageQueueDeclaration } from "../triageQueue/capability.js";
+import { CAPABILITIES } from "../index.js";
 import { prDashboardDeclaration } from "../prDashboard/capability.js";
 import { inactivityDeclaration } from "../inactivity/capability.js";
 import {
@@ -557,6 +558,40 @@ mappings:
         // A list entry is the one place a non-scalar reaches the scalar arm.
         expect(body).toContain("  - nested: \\[object Object\\]");
         expect(body).toContain("**Mappings** — none.");
+    });
+
+    /** A duration is held in hours but read by a maintainer: it prints with its unit. */
+    it("prints a duration in the maintainer's spelling", () => {
+        const body = renderConfiguration("sha256:clocks", {
+            revision: "sha256:clocks",
+            schemaVersion: 2,
+            mode: "active",
+            capabilities: {
+                inactivity: {
+                    enabled: true,
+                    settings: {
+                        remindAfter: 720,
+                        reap: { after: 1440 },
+                        issues: { enabled: true, remindAfter: 1, reap: { after: 2 } },
+                    },
+                },
+            },
+            mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
+            principals: {},
+        });
+
+        expect(body).toContain("- remindAfter: 30d");
+        expect(body).toContain("  - after: 60d");
+        expect(body).toContain("  - remindAfter: 1h");
+        expect(body).toContain("    - after: 2h");
+        expect(body).not.toContain("remindAfter: 720");
+    });
+
+    /** A capability the registry ships is one the report can describe. */
+    it("describes every shipped capability", () => {
+        for (const capability of CAPABILITIES) {
+            expect(Object.keys(DESCRIBED)).toContain(capability.declaration.name);
+        }
     });
 
     /** The three ranks of `ConfigError`, in the order a reader meets them. */
