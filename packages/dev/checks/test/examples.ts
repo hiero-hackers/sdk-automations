@@ -33,7 +33,13 @@ export function snapshotPath(file: string): string {
 export function admittedCapabilities(): readonly AdmittedCapability[] {
     return (
         shippedCapabilities()
-            .map(({ name, settings, requiredMappings }) => ({ name, settings, requiredMappings }))
+            // With `labels`, as the shell admits them: the block copies rest on it (D204, D244).
+            .map(({ name, settings, requiredMappings, labels }) => ({
+                name,
+                settings,
+                requiredMappings,
+                labels,
+            }))
             // Code-point order, the same `.sort()` `declaredCapabilityNames` uses, so
             // the two lists never disagree about where a capital letter sorts.
             .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

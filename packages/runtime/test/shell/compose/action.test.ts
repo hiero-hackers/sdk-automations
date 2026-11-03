@@ -76,6 +76,23 @@ function runOf(overrides: Partial<ActionRun> = {}): ActionRun {
 
 const kinds = (events: readonly ShellEvent[]): string[] => events.map(({ event }) => event);
 
+describe("the capability set", () => {
+    /** The same refusal the hosted shell makes at boot (D243): before any read of GitHub. */
+    it("refuses a set in which one cause has two owners", async () => {
+        const owner = CAPABILITIES.find(({ declaration }) => declaration.moves.length > 0);
+        if (owner === undefined) throw new Error("no shipped capability owns an edge");
+        const twin = { ...owner, declaration: { ...owner.declaration, name: "twin" } };
+        await expect(
+            runAction(runOf(), {
+                payload: Buffer.from("{}"),
+                store: runStore(),
+                log: () => undefined,
+                capabilities: [owner, twin as typeof owner],
+            }),
+        ).rejects.toThrow(/is owned by more than one capability/);
+    });
+});
+
 describe("the runner's environment", () => {
     it("refuses an empty one, naming every missing piece", () => {
         const parsed = parseActionEnvironment({});

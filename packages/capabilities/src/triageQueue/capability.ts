@@ -19,7 +19,8 @@ export const triageQueueDeclaration = declareCapability({
     needs: ["locked", "skills"],
     settings: TRIAGE_QUEUE_SETTINGS,
     requiredMappings: { labels: ["awaitingTriage"] },
-    labels: ["awaitingTriage"],
+    moves: ["intakeObserved"],
+    reads: ["ready"],
     resolvers: ["isAutomationActor"],
     intents: ["applyMappedLabel", "postManagedComment", "lockIssue", "unlockIssue"],
 });

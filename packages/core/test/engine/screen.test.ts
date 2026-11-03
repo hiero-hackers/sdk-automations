@@ -5,11 +5,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    CLOSURE_CAUSES,
     declareCapability,
     deriveIdempotencyKey,
     flag,
     intentFactoryFor,
-    MAPPABLE_MEANINGS,
+    ISSUE_CAUSES,
+    PR_CAUSES,
     spec,
     type AnyIntent,
 } from "../../src/index.js";
@@ -26,8 +28,13 @@ const FIXTURE = {
     intents: ["applyMappedLabel", "unassign"],
 } as const;
 
-/** Declares every meaning, so the screens below reach the transition map. */
-const declaration = declareCapability({ ...FIXTURE, labels: MAPPABLE_MEANINGS });
+/** Owns every automatic edge, so the screens below reach the transition map. */
+const declaration = declareCapability({
+    ...FIXTURE,
+    moves: [...ISSUE_CAUSES, ...PR_CAUSES].filter(
+        (cause) => !CLOSURE_CAUSES.some((closing) => closing === cause),
+    ),
+});
 
 const AT = new Date("2026-08-05T09:00:00.000Z");
 
@@ -111,11 +118,22 @@ describe("screenIntent", () => {
 
     /** `labels` bounds what a capability may set, so a position has only its declared writers. */
     it("refuses a position the capability did not declare", () => {
-        const readyOnly = declareCapability({ ...FIXTURE, labels: ["ready"] });
+        const readyOnly = declareCapability({ ...FIXTURE, moves: ["triageCompleted"] });
         expect(screenIntent(intent(), readyOnly, position())).toMatchObject({
             ok: false,
             code: "undeclaredMeaning",
             reason: expect.stringContaining('"awaitingTriage"'),
+        });
+    });
+
+    /** Ownership is per edge: a position's writer along one cause does not own its other edges (D243). */
+    it("refuses an edge into a declared position that the capability does not own", () => {
+        const triage = declareCapability({ ...FIXTURE, moves: ["triageCompleted"] });
+        const reclaim = intent({ desired: { meaning: "ready", cause: "reclaimCompleted" } });
+        expect(screenIntent(reclaim, triage, position())).toMatchObject({
+            ok: false,
+            code: "undeclaredCause",
+            reason: expect.stringContaining('"reclaimCompleted"'),
         });
     });
 

@@ -89,6 +89,7 @@ export interface DeclaringCapability {
         readonly triggers: readonly { readonly kind: string }[];
         readonly facts: readonly FactKind[];
         readonly needs: { readonly [K in FactKind]: readonly FactGroup[] };
+        readonly wants: { readonly [K in FactKind]: readonly FactGroup[] };
     };
 }
 
@@ -96,8 +97,8 @@ export interface DeclaringCapability {
 export type NeededGroups = { readonly [K in FactKind]: readonly FactGroup[] };
 
 /**
- * The groups this repository's enabled schedule capabilities need on `kind`, of
- * those the sweep's row reads. A need declared is a read paid for (D195).
+ * The groups this repository's enabled schedule capabilities need or want on `kind`, of
+ * those the sweep's row reads. A need or a want declared is a read paid for (D195, D245).
  */
 export function groupsNeeded(
     config: RepositoryConfig,
@@ -110,19 +111,22 @@ export function groupsNeeded(
         if (!declaration.triggers.some((trigger) => trigger.kind === "schedule")) continue;
         if (!declaration.facts.includes(kind)) continue;
         for (const need of declaration.needs[kind]) needed.add(need);
+        for (const want of declaration.wants[kind]) needed.add(want);
     }
     // `PRODUCERS`, not `ROWS`: the sweep's row makes both kinds, so there is no null arm.
 
     return PRODUCERS.sweep[kind].filter((group) => needed.has(group));
 }
 
-/** One record with the named groups read, every other group `Unread` — facts.md §3. */
-export type ReadGroups<F extends Facts, N extends FactGroup> = {
+/** One record with the needed groups read, the wanted ones as the producer left them, every other group `Unread` — facts.md §3. */
+export type ReadGroups<F extends Facts, N extends FactGroup, W extends FactGroup = never> = {
     readonly [K in keyof F]: K extends N
         ? Exclude<F[K], Unread>
-        : K extends FactGroup
-          ? Unread
-          : F[K];
+        : K extends W
+          ? F[K]
+          : K extends FactGroup
+            ? Unread
+            : F[K];
 };
 
 /** The record shape producer `P` may build for kind `K`; the row it omits is `Unread`. */

@@ -15,7 +15,7 @@
 | 3 | The delivery becomes facts: the normalizer reads the payload's labels and state, projects them through the repository's mappings into a `Projection`, and marks `unread` every fact group its row in `PRODUCERS` does not name | `packages/core/src/engine/normalize/pull-request.ts`; `packages/core/src/workflow/project.ts` → `projectPullRequest`; `packages/core/src/capability/producers.ts` → `PRODUCERS`; `design/contracts/facts.md` | a capability never sees a label string, and never sees a group nobody read |
 | 4 | `decide()` finds the enabled capabilities whose declaration reads this fact kind and whose needed groups were read, projects each a view of its own settings and the mapped names, and calls `evaluate` | `packages/core/src/engine/decide.ts` → `decide`, `intentsFrom`; `packages/core/src/capability/boundary.ts` | isolation: a capability sees its block, the names of the mappings, and its declared resolvers — nothing else (P3, P4) |
 | 5 | The capability returns intents: "set `awaitingTriage`, because `issueWithoutPosition`, claiming the item is open and the meaning absent" | `packages/capabilities/src/triageQueue/capability.ts`; `packages/core/src/capability/factory.ts` → `buildIntent`, behind `platform.intent` | an intent is a request, dated by its occasion, with a stable identity |
-| 6 | The screen checks the intent names its own capability, a declared operation, its own item, and a legal transition on the workflow map | `packages/core/src/engine/invoke.ts` → `screenIntent` | a capability cannot act as another, on another item, or off the map |
+| 6 | The screen checks the intent names its own capability, a declared operation, its own item, a cause it owns, and a legal transition on the workflow map | `packages/core/src/engine/invoke.ts` → `screenIntent` | a capability cannot act as another, on another item, or off the map |
 | 7 | The world is derived from the facts, not asserted: do the intent's claims hold against the projection the delivery carried? | `packages/core/src/safety/world.ts` → `deriveWorld` | a caller cannot assert a precondition its own delivery contradicts (D77) |
 | 8 | The safety ladder judges the write request: kill switch, mode, capability enabled, grant present, item open and unpaused, precondition holding, no newer human change | `packages/core/src/safety/write.ts` → `evaluateWrite`; `packages/core/src/safety/rules.ts`; `packages/core/src/intents/operations/` for the operation's class and permission | every refusal is a code an operator reads; a destructive class is refused here and judged only at the grace gate |
 | 9 | The approval: the intent becomes an `Effect` with its managed-comment identity minted (for comments) and its `WriteRequest` snapshot; a record-only mode records `wouldApply` instead | `packages/core/src/engine/decide.ts` → `gateIntent`; `packages/core/src/intents/managed.ts` | dry-run says exactly what active would do; identity is platform-owned (D125) |
@@ -85,7 +85,7 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
      on the credential-free path; the shell's stubbed externals list what they answer).
    - intents → `IntentCatalogue`'s desired payloads, in full: what you may say is exactly those
      fields. A label move's cause is chosen by the workflow map from the item's position
-     (`moveTo`), not by you.
+     (`moveTo`), among the causes your declaration owns, unless you name one.
    - any "once" or "in place" promise → identity is per item and purpose (`kind` + `topic`);
      the effect id is per occasion. A comment with the same purpose on the same item is updated
      in place; two purposes need two topics.
@@ -149,7 +149,8 @@ a MEASURED or PROBED fact, and a third copy of either breaks one fact, one place
    ends the evaluation when a resolver cannot answer, and a label with no edge is skipped.
    `view.settings` arrives typed and already judged, so there is nothing to read first. An intent's
    `cause` is FREE TEXT and part of its identity, so state it; `applyMappedLabel` moves the item, and
-   its transition cause is the workflow map's (`moveTo`) unless you name one. Claims are derived from
+   its transition cause is the first on the map's edge that your declaration owns (`moveTo`) unless
+   you name one. Claims are derived from
    the record; name a claim only to narrow it. The judgements every capability makes live in
    `capability/facts.ts` (`isPaused`, `isConflicted`, `people`, the clocks, `mentions`, `on`,
    `inert`, `moveTo`); import them, never a sibling.

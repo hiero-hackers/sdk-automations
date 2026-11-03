@@ -282,8 +282,8 @@ describe("configReport", () => {
                 "      - enabled: false",
                 "  - applyLabels: none",
                 "  - labels it may set",
-                "    - status: needs revision — needsRevision; defined #d93f0b if the repository lacks it",
                 "    - status: needs review — needsReview; defined #5319e7 if the repository lacks it",
+                "    - status: needs revision — needsRevision; defined #d93f0b if the repository lacks it",
                 "",
                 "Inheriting active, so writing once this merges: triageQueue, prDashboard.",
                 "",
@@ -736,6 +736,42 @@ mappings:
         );
     });
 
+    /** A hand-built block: the positions its settings name, and who sets each (D244). */
+    it("says who sets each position a block's settings name, or that a person must", () => {
+        const body = renderConfiguration("sha256:consults", {
+            revision: "sha256:consults",
+            schemaVersion: 2,
+            mode: "active",
+            capabilities: {
+                triageQueue: { enabled: true, settings: {}, labels: ["awaitingTriage"] },
+                assignment: {
+                    enabled: true,
+                    settings: {
+                        autoAssign: {
+                            enabled: true,
+                            notClaimableWhen: ["blocked", "awaitingTriage"],
+                        },
+                    },
+                    consults: ["awaitingTriage", "blocked"],
+                },
+            },
+            mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
+            principals: {},
+        });
+
+        expect(body).toContain(
+            [
+                "- assignment — on, active (inherited from the file)",
+                "  - autoAssign",
+                "    - enabled: true",
+                "    - notClaimableWhen: blocked, awaitingTriage",
+                "  - positions its settings name",
+                "    - status: triage — awaitingTriage; may be set by triageQueue",
+                "    - status: blocked — blocked, a marker; only a person sets it",
+            ].join("\n"),
+        );
+    });
+
     /** The narrow shape again, with the three lists the trigger implies filled in. */
     it("declares one event trigger, one resolver, one comment and no group", () => {
         expect(configReport.declaration).toEqual({
@@ -744,8 +780,11 @@ mappings:
             settings: CONFIG_REPORT_SETTINGS,
             requiredMappings: {},
             labels: [],
+            moves: [],
+            reads: [],
             facts: ["pullRequest"],
             needs: { issue: [], pullRequest: [] },
+            wants: { issue: [], pullRequest: [] },
             resolvers: ["configAtHead"],
             intents: ["postManagedComment"],
         });

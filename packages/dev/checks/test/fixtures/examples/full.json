@@ -12,7 +12,10 @@
                 "requirements": {
                     "skill": false
                 }
-            }
+            },
+            "labels": [
+                "awaitingTriage"
+            ]
         },
         "prDashboard": {
             "enabled": true,
@@ -42,7 +45,11 @@
                     "needsRevision",
                     "needsReview"
                 ]
-            }
+            },
+            "labels": [
+                "needsReview",
+                "needsRevision"
+            ]
         },
         "configReport": {
             "enabled": true,
@@ -120,7 +127,12 @@
                 "unassign": {
                     "enabled": true
                 }
-            }
+            },
+            "consults": [
+                "awaitingTriage",
+                "ready",
+                "blocked"
+            ]
         }
     },
     "mappings": {

@@ -55,6 +55,18 @@ export const PR_EDGES: readonly Edge<PrMeaning, PrCause>[] = [
     { from: "readyToMerge", to: null, causes: ["humanClosed", "merged"] },
 ];
 
+/** The positions the edges these causes label end on, in map order; a closure cause ends on none. */
+export function positionsEnteredBy(
+    causes: readonly TransitionCause[],
+): readonly (IssueMeaning | PrMeaning)[] {
+    const entered: (IssueMeaning | PrMeaning)[] = [];
+    for (const edge of [...ISSUE_EDGES, ...PR_EDGES]) {
+        if (edge.to === null || entered.includes(edge.to)) continue;
+        if (edge.causes.some((cause) => causes.includes(cause))) entered.push(edge.to);
+    }
+    return entered;
+}
+
 /** Both tables as bare from/to pairs — what the doc-drift check compares. */
 export const PROFILE_EDGES: {
     readonly [K in EntityKind]: readonly {

@@ -12,7 +12,10 @@
                 "requirements": {
                     "skill": false
                 }
-            }
+            },
+            "labels": [
+                "awaitingTriage"
+            ]
         }
     },
     "mappings": {

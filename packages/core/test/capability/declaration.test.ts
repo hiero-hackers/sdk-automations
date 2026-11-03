@@ -15,6 +15,8 @@ const declaration: CapabilityDeclaration = {
     settings: spec({ checks: flag({ default: false }) }),
     requiredMappings: { labels: ["needsReview"] },
     labels: ["needsReview"],
+    moves: ["checksPassed", "revisionResolved"],
+    reads: [],
     facts: ["pullRequest"],
     /**
      * Empty, and it is the study's finding that it has to be: the webhook
@@ -22,9 +24,36 @@ const declaration: CapabilityDeclaration = {
      * declaration the boot check exists to refuse — asserted below.
      */
     needs: {},
+    wants: {},
     resolvers: ["linkedIssues"],
     intents: ["postManagedComment", "applyMappedLabel"],
 };
+
+describe("declareCapability", () => {
+    const input = {
+        name: "fixture",
+        triggers: [{ kind: "event", event: "pull_request" }],
+        settings: spec({}),
+        resolvers: [],
+        intents: ["applyMappedLabel"],
+    } as const;
+
+    it("derives labels as the positions the moves enter, in map order", () => {
+        const declared = declareCapability({ ...input, moves: ["checksFailed", "checksPassed"] });
+        expect(declared.labels).toEqual(["needsReview", "needsRevision"]);
+        expect(declared.reads).toEqual([]);
+        expect(validateCapabilityDeclarations([declared])).toEqual([]);
+    });
+
+    /** `labels` is not an input: a declared object spread back in keeps the derivation, not a stale list. */
+    it("derives labels again from a declared object spread back in with other moves", () => {
+        const first = declareCapability({ ...input, moves: ["checksPassed"] });
+        const widened = declareCapability({ ...first, moves: ["checksPassed", "checksFailed"] });
+        expect(first.labels).toEqual(["needsReview"]);
+        expect(widened.labels).toEqual(["needsReview", "needsRevision"]);
+        expect(validateCapabilityDeclarations([widened])).toEqual([]);
+    });
+});
 
 describe("validateCapabilityDeclarations", () => {
     it("accepts a valid direct declaration set", () => {
@@ -37,17 +66,102 @@ describe("validateCapabilityDeclarations", () => {
         );
     });
 
-    it("rejects a position two capabilities may set", () => {
+    it("rejects an edge two capabilities own", () => {
         expect(
             validateCapabilityDeclarations([declaration, { ...declaration, name: "other" }]),
-        ).toContain('label meaning "needsReview" is set by more than one capability');
+        ).toContain('transition cause "checksPassed" is owned by more than one capability');
     });
 
-    it("does not count one capability naming a position twice as two writers", () => {
-        const twice = { ...declaration, labels: ["needsReview", "needsReview"] };
+    /** Ownership is per edge, so two capabilities may enter one position by different causes (D243). */
+    it("accepts two capabilities entering one position along their own edges", () => {
+        const triage = {
+            ...declaration,
+            name: "triageQueue",
+            requiredMappings: {},
+            labels: ["ready"],
+            moves: ["triageCompleted"],
+        };
+        const release = { ...triage, name: "assignment", moves: ["lastContributorUnassigned"] };
+        expect(validateCapabilityDeclarations([triage, release])).toEqual([]);
+    });
+
+    it("does not count one capability naming a cause twice as two owners", () => {
+        const twice = {
+            ...declaration,
+            moves: ["checksPassed", "checksPassed", "revisionResolved"],
+        };
         expect(validateCapabilityDeclarations([twice]).join("\n")).not.toContain(
             "more than one capability",
         );
+    });
+
+    it("holds labels to the positions the moves enter, and refuses a closing or unknown cause", () => {
+        expect(
+            validateCapabilityDeclarations([{ ...declaration, labels: ["needsRevision"] }]),
+        ).toEqual([
+            'capability "prDashboard": labels ["needsRevision"] are not the positions its moves enter, ["needsReview"]',
+        ]);
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, moves: ["checksPassed", "merged", "nonsense"] },
+            ]),
+        ).toEqual([
+            'capability "prDashboard": "merged" closes an item, which is read and never written',
+            'capability "prDashboard": transition cause "nonsense" is not on the map',
+        ]);
+    });
+
+    /** A want is read by some trigger's producer, never by all of them (D245). */
+    it("holds a want to being read by some trigger's producer, and to not being a need", () => {
+        const wanting = { ...declaration, wants: { pullRequest: ["review"] } };
+        expect(validateCapabilityDeclarations([wanting])).toEqual([
+            'capability "prDashboard": wants "review" on pullRequest records, which no trigger\'s producer reads — read by: sweep',
+        ]);
+        const swept = {
+            ...wanting,
+            triggers: [
+                ...declaration.triggers,
+                { kind: "schedule", description: "hourly" } as const,
+            ],
+        };
+        expect(validateCapabilityDeclarations([swept])).toEqual([]);
+        // Needed as well: the want is refused, and the webhook trigger's unread need beside it.
+        expect(
+            validateCapabilityDeclarations([{ ...swept, needs: { pullRequest: ["review"] } }]),
+        ).toEqual([
+            'capability "prDashboard": wants "review" on pullRequest records, which it already needs',
+            'capability "prDashboard": the "pull_request" trigger leaves "review" unread on a pullRequest record, so every delivery it wakes is skipped — read by: sweep',
+        ]);
+        expect(
+            validateCapabilityDeclarations([{ ...swept, wants: { pullRequest: ["nonsense"] } }]),
+        ).toEqual(['capability "prDashboard": fact group "nonsense" is not in the fact catalogue']);
+    });
+
+    it("reports a repeated label beside a missing one, not as a match", () => {
+        expect(
+            validateCapabilityDeclarations([
+                {
+                    ...declaration,
+                    labels: ["needsReview", "needsReview"],
+                    moves: ["checksPassed", "checksFailed"],
+                },
+            ]),
+        ).toEqual([
+            'capability "prDashboard": duplicate labels entry "needsReview"',
+            'capability "prDashboard": labels ["needsReview","needsReview"] are not the positions its moves enter, ["needsReview","needsRevision"]',
+        ]);
+    });
+
+    it("refuses a read of the pause, of its own position, or of an unknown meaning", () => {
+        expect(
+            validateCapabilityDeclarations([
+                { ...declaration, reads: ["blocked", "needsReview", "nonsense", "readyToMerge"] },
+            ]),
+        ).toEqual([
+            'capability "prDashboard": reads "blocked", the pause every capability is held to (D28)',
+            'capability "prDashboard": reads "needsReview", a position it sets and so reads by right',
+            'capability "prDashboard": read meaning "nonsense" is not in the labels family',
+        ]);
     });
 
     it("returns every structural, duplicate-entry, and catalogue-name error", () => {
@@ -215,13 +329,13 @@ describe("validateCapabilityDeclarations", () => {
 
     /** D204: a capability that may set a position names which, and the reverse. */
     it("holds `labels` and the applyMappedLabel intent together", () => {
-        expect(validateCapabilityDeclarations([{ ...declaration, labels: [] }])).toEqual([
-            'capability "prDashboard": may set a position but names no label meaning in `labels`',
-        ]);
+        expect(validateCapabilityDeclarations([{ ...declaration, labels: [], moves: [] }])).toEqual(
+            ['capability "prDashboard": may set a position but owns no edge in `moves`'],
+        );
         expect(
             validateCapabilityDeclarations([{ ...declaration, intents: ["postManagedComment"] }]),
         ).toEqual([
-            'capability "prDashboard": names label meanings but never declares the applyMappedLabel intent',
+            'capability "prDashboard": owns edges in `moves` but never declares the applyMappedLabel intent',
         ]);
         expect(
             validateCapabilityDeclarations([
@@ -230,6 +344,7 @@ describe("validateCapabilityDeclarations", () => {
         ).toEqual([
             'capability "prDashboard": duplicate labels entry "needsReview"',
             'capability "prDashboard": label meaning "nonsense" is not in the labels family',
+            'capability "prDashboard": labels ["needsReview","needsReview","nonsense"] are not the positions its moves enter, ["needsReview"]',
         ]);
     });
 
@@ -239,12 +354,15 @@ describe("validateCapabilityDeclarations", () => {
             "facts",
             "intents",
             "labels",
+            "moves",
             "name",
             "needs",
+            "reads",
             "requiredMappings",
             "resolvers",
             "settings",
             "triggers",
+            "wants",
         ]);
     });
 });

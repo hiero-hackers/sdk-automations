@@ -12,6 +12,7 @@ import {
     type DestructiveWarning,
     type EngineCapability,
     type ItemRef,
+    validateCapabilityDeclarations,
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../store/index.js";
 import { createApplier, recordedWarningsIn } from "../../apply/apply.js";
@@ -66,6 +67,12 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
         sink(event);
     });
     const capabilities = options.capabilities ?? CAPABILITIES;
+    const invalid = validateCapabilityDeclarations(
+        capabilities.map(({ declaration }) => declaration),
+    );
+    if (invalid.length > 0) {
+        throw new Error(`invalid capability declarations: ${invalid.join("; ")}`);
+    }
     const { store, payload } = options;
     const worker = `action-${run.deliveryId}`;
     const sweeping = run.eventName === "schedule";

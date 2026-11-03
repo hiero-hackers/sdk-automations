@@ -182,6 +182,7 @@ Closing that is a fact-shape change — an assignee claim, and the apply-time re
 | `facts` / `needs` | `issue`, needing `command` — only the `issue_comment` producer reads it, and the sweep answers it unreadable |
 | `resolvers` | `isAutomationActor` · `assigneesOf` · `openAssignments` |
 | `intents` | `postManagedComment` · `assign` · `unassign` |
+| `reads` | none declared: the gates read whatever meanings `claimableOnlyWhen` and `notClaimableWhen` name, so the repository's file states that dependency |
 | `requiredMappings` | none — each enabled block demands its command word through the guard above |
 | Permissions | repository: `issues:read`, `issues:write` · organization: none |
 | Platform needs | durableState: none · crossItemCoordination: the cap counts across issues, read through `openAssignments` · externalDelivery: none |

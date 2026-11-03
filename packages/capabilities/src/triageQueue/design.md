@@ -178,6 +178,7 @@ flowchart LR
 | `facts` / `needs` | `issue`, needing `locked` and `skills` — both on the payload |
 | `resolvers` | `isAutomationActor` — asked about the author on `opened` and on a checklist label, about the sender on `ready` |
 | `intents` | `applyMappedLabel` · `postManagedComment` · `lockIssue` · `unlockIssue` |
+| `moves` / `reads` | owns `intakeObserved`, so sets `awaitingTriage`; reads `ready`, whose arrival completes triage |
 | `requiredMappings` | `labels: awaitingTriage` |
 | Permissions | repository `issues:read`, `issues:write` |
 | Platform needs | none — the issue record carries `locked` and `arrival` (D206) |

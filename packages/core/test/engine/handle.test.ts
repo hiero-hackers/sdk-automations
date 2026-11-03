@@ -19,6 +19,7 @@ const declaration = declareCapability({
     name: "triage",
     triggers: [{ kind: "event", event: "issues" }],
     settings: spec({}),
+    moves: ["intakeObserved", "triageCompleted"],
     resolvers: ["isAutomationActor"],
     intents: ["applyMappedLabel", "postManagedComment"],
 });
@@ -158,7 +159,7 @@ describe("intent", () => {
         }
         expect(isSkipSignal(thrown)).toBe(true);
         expect(handle.explanations[0]?.summary).toBe(
-            "Skipped: no edge on the workflow map moves this item to ready.",
+            "Skipped: no edge this capability owns moves this item to ready.",
         );
         expect(handle.explanations[0]?.detail).toEqual(["from no position"]);
     });

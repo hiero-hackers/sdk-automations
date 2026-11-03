@@ -156,10 +156,15 @@ declareCapability({
   trigger is refused at boot, because the webhook reads no group and the capability would be
   skipped on every delivery instead. The refusal names the trigger, the group, and the producers
   that do read it.
+- `wants` names a group the capability reads when it is there (D245): `prDashboard` wants `review`,
+  which the sweep reads and the `pull_request` webhook does not. A want is checked like a need
+  against the kinds and the catalogue, but against the producers only for being read by SOME
+  trigger's producer; a want the capability also needs is refused.
 - The view a capability receives is `FactsFor<D>`: the declared kinds, each with its own needed
-  groups' `| Unread` removed. The type is the guarantee — `"unread"` cannot reach a capability that
-  declared the group, and a capability that did not declare a group cannot read it (the group is
-  typed `Unread` for it, which nothing can do anything with).
+  groups' `| Unread` removed, its wanted groups as the producer left them, read or `"unread"`. The
+  type is the guarantee — `"unread"` cannot reach a capability that declared the group as a need, a
+  want makes the capability say what it does without it, and a capability that declared neither
+  cannot read the group (it is typed `Unread` for it, which nothing can do anything with).
 
 ## 4. What the engine does
 
@@ -168,7 +173,8 @@ declareCapability({
   projection for every intent is the record's own.
 - For each enabled capability: skip unless `declaration.facts` includes the record's kind; then,
   for each group in the record's kind's `needs`, if the record holds `"unread"`, record
-  `factsUnread` (an `info` finding naming the capability and the group) and skip. Otherwise invoke.
+  `factsUnread` (an `info` finding naming the capability and the group) and skip. A wanted group
+  never skips. Otherwise invoke.
 - The engine's own world derivation reads `position` only. Nothing else in core reads a group.
 
 ## 5. What this replaces

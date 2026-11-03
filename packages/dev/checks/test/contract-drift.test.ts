@@ -23,8 +23,11 @@ const DECLARATION_FIELDS: Record<keyof CapabilityDeclaration, true> = {
     settings: true,
     requiredMappings: true,
     labels: true,
+    moves: true,
+    reads: true,
     facts: true,
     needs: true,
+    wants: true,
     resolvers: true,
     intents: true,
 };
