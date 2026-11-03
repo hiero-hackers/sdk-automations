@@ -98,8 +98,9 @@ capabilities:
     checks:
       dcoSignoff:
         enabled: true
+      # Off: an API author cannot sign, so needsReview would be unreachable (9.9 step 3).
       gpgSignature:
-        enabled: true
+        enabled: false
       mergeConflicts:
         enabled: true
       linkedIssues:

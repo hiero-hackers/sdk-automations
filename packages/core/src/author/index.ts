@@ -54,8 +54,15 @@ export {
     section,
     spec,
     text,
+    writeDuration,
 } from "../capability/settings.js";
-export type { BlockOf, SettingsOf, Spec } from "../config/spec.js";
+export {
+    describeSpec,
+    type BlockOf,
+    type FieldDescription,
+    type SettingsOf,
+    type Spec,
+} from "../config/spec.js";
 export { LABEL_DEFAULTS } from "../config/label-defaults.js";
 export type { Command, MappableMeaning, RepositoryConfig, Skill } from "../config/schema.js";
 export { effectiveMode, type EffectiveMode } from "../config/mode.js";

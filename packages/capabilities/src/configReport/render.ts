@@ -7,14 +7,31 @@
  */
 
 import {
+    describeSpec,
     effectiveMode,
     inert,
     LABEL_DEFAULTS,
+    writeDuration,
     type ConfigError,
+    type FieldDescription,
     type MappableMeaning,
     type ConfigResult,
     type RepositoryConfig,
 } from "@hiero-hackers/automation-core/author";
+import { ASSIGNMENT_SETTINGS } from "../assignment/settings.js";
+import { INACTIVITY_SETTINGS } from "../inactivity/settings.js";
+import { PR_DASHBOARD_SETTINGS } from "../prDashboard/settings.js";
+import { TRIAGE_QUEUE_SETTINGS } from "../triageQueue/settings.js";
+import { CONFIG_REPORT_SETTINGS } from "./settings.js";
+
+/** Each shipped capability's field descriptions, so a duration renders with its unit. */
+export const DESCRIBED: Readonly<Record<string, Readonly<Record<string, FieldDescription>>>> = {
+    triageQueue: describeSpec(TRIAGE_QUEUE_SETTINGS),
+    prDashboard: describeSpec(PR_DASHBOARD_SETTINGS),
+    configReport: describeSpec(CONFIG_REPORT_SETTINGS),
+    inactivity: describeSpec(INACTIVITY_SETTINGS),
+    assignment: describeSpec(ASSIGNMENT_SETTINGS),
+};
 
 /** Two spaces a level, the indentation every example in `docs/` uses. */
 const indent = (depth: number): string => "  ".repeat(depth);
@@ -53,16 +70,27 @@ function isGroup(value: unknown): value is Readonly<Record<string, unknown>> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** A resolved settings block as a nested list, recursive because blocks are. */
-function tree(group: Readonly<Record<string, unknown>>, depth: number): readonly string[] {
+/**
+ * A resolved settings block as a nested list, recursive because blocks are. A duration
+ * is HELD in hours; its description names it, and it prints in the maintainer's spelling.
+ */
+function tree(
+    group: Readonly<Record<string, unknown>>,
+    depth: number,
+    fields?: Readonly<Record<string, FieldDescription>>,
+): readonly string[] {
     return Object.entries(group).flatMap(([key, value]) => {
         const name = inert(key);
-        if (isGroup(value)) return [bullet(depth, name), ...tree(value, depth + 1)];
+        const field = fields?.[key];
+        if (isGroup(value)) return [bullet(depth, name), ...tree(value, depth + 1, field?.fields)];
         if (Array.isArray(value)) {
             const entries = (value as readonly unknown[]).map(scalar);
             return [
                 bullet(depth, `${name}: ${entries.length === 0 ? "none" : entries.join(", ")}`),
             ];
+        }
+        if (field?.kind === "duration" && typeof value === "number") {
+            return [bullet(depth, `${name}: ${writeDuration(value)}`)];
         }
         return [bullet(depth, `${name}: ${scalar(value)}`)];
     });
@@ -107,7 +135,7 @@ function capabilities(config: RepositoryConfig): readonly string[] {
         .map(inert);
 
     const lines = on.flatMap(([name, block]) => {
-        const settings = tree(block.settings, 1);
+        const settings = tree(block.settings, 1, DESCRIBED[name]);
         const labels = labelsSetBy(config, block.labels ?? []);
         const heading = `${inert(name)} — on, ${modeLine(config, name)}`;
         return settings.length === 0 && labels.length === 0
