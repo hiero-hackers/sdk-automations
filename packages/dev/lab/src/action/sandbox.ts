@@ -179,16 +179,17 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
 
     const writeVariable = async (name: string, value: string | null): Promise<void> => {
         const path = `${repository}/actions/variables/${name}`;
-        const held = await variableAt(name);
+        // Not read first: a lagging read could already show `value` and the write would be skipped.
         if (value === null) {
-            if (held !== null) await call("DELETE", path, { accept: [204] });
-        } else if (held === null) {
-            await call("POST", `${repository}/actions/variables`, {
+            await call("DELETE", path, { accept: [204, 404] });
+        } else {
+            const created = await call("POST", `${repository}/actions/variables`, {
                 body: { name, value },
-                accept: [201],
+                accept: [201, 409],
             });
-        } else if (held !== value) {
-            await call("PATCH", path, { body: { name, value }, accept: [204] });
+            if (created.status === 409) {
+                await call("PATCH", path, { body: { name, value }, accept: [204] });
+            }
         }
         const readsBack = (seen: string | null) => seen === value;
         const after = await readUntil(() => variableAt(name), readsBack);
@@ -197,7 +198,8 @@ export function createSandbox(call: Call, owner: string, repo: string): Sandbox 
 
     const restoreVariables = async (): Promise<void> => {
         for (const [name, original] of [...variables]) {
-            await writeVariable(name, original ?? (name === ARM_VARIABLE ? "false" : null));
+            // The lab never starts armed, and a lagging read of the original could say it was.
+            await writeVariable(name, name === ARM_VARIABLE ? "false" : original);
             variables.delete(name);
         }
     };
