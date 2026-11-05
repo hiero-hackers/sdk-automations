@@ -101,6 +101,7 @@ nothing more:
 | `text({ optional: true })` | a string | `null` |
 | `text({ optional: false })` | a string | `problem` |
 | `meanings()` | a list of mapped label meanings | `empty` |
+| `logins()` | a list of GitHub logins | `empty` |
 | `section(fields)` | a plain group of fields with no consent of its own | `default` |
 | `block(fields)` | an enabled-block | `parked` |
 <!-- /generated -->

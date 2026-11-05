@@ -57,14 +57,7 @@ export interface DurationOptions {
 /** What one field is, for the generators, never for a reader; `absent` is DERIVED. */
 export interface FieldDescription {
     readonly kind:
-        | "flag"
-        | "duration"
-        | "count"
-        | "text"
-        | "meanings"
-        | "logins"
-        | "section"
-        | "block";
+        "flag" | "duration" | "count" | "text" | "meanings" | "logins" | "section" | "block";
     readonly doc: string | null;
     readonly absent: "default" | "inherited" | "null" | "empty" | "parked" | "problem";
     /** `flag`, `count`, and a `duration` that declares one — the written form for a duration. */

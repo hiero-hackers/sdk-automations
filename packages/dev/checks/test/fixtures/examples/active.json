@@ -42,6 +42,8 @@
             "enabled": false,
             "settings": {
                 "exemptBlocked": true,
+                "exemptMaintainers": [],
+                "exemptBots": false,
                 "remindAfter": 336,
                 "reap": {
                     "after": 504
