@@ -35,6 +35,7 @@ import {
     duration,
     DURATION_PATTERN,
     flag,
+    logins,
     MAX_CLOCK_HOURS,
     meanings,
     MIN_GRACE_HOURS,
@@ -551,6 +552,34 @@ describe("meanings", () => {
         ]);
     });
 });
+describe("logins", () => {
+    const fields = spec({ exempt: logins() });
+
+    it("reads each login lowercase, and an absent list as none", () => {
+        expect(readFrom(fields, view({ exempt: ["Maya", "bob-2"] }))).toEqual({
+            ok: true,
+            value: { exempt: ["maya", "bob-2"] },
+        });
+        expect(readFrom(fields, view({}))).toEqual({ ok: true, value: { exempt: [] } });
+    });
+
+    it("reports every entry that is not a login at its own dotted path", () => {
+        expect(
+            problemsOf(readFrom(fields, view({ exempt: ["maya", "-bob", 7, "bot[bot]"] }))),
+        ).toEqual([
+            'exempt.1: "-bob" is not a GitHub login',
+            "exempt.2: 7 is not a GitHub login",
+            'exempt.3: "bot[bot]" is not a GitHub login',
+        ]);
+    });
+
+    it("reports a list that is not a list", () => {
+        expect(problemsOf(readFrom(fields, view({ exempt: "maya" })))).toEqual([
+            "exempt: must be a list of logins",
+        ]);
+    });
+});
+
 describe("section", () => {
     const fields = spec({
         onOpen: section({ label: flag({ default: false }), welcome: flag({ default: true }) }),
@@ -1152,6 +1181,14 @@ describe("describe", () => {
         expect(meanings({ doc: "Meanings that claim" }).describe()).toStrictEqual({
             kind: "meanings",
             doc: "Meanings that claim",
+            absent: "empty",
+        });
+    });
+
+    it("logins: a list of logins, absent as empty", () => {
+        expect(logins({ doc: "Who is exempt" }).describe()).toStrictEqual({
+            kind: "logins",
+            doc: "Who is exempt",
             absent: "empty",
         });
     });

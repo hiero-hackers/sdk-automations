@@ -19,6 +19,10 @@ import {
     type Externals,
     type MappableMeaning,
     type Projection,
+    type ResolverAnswer,
+    type ResolverInput,
+    type ResolverName,
+    type ResolverOutput,
 } from "@hiero-hackers/automation-core";
 import { inactivity } from "./capability.js";
 import type { InactivityFacts, IssueLadderFacts, PullLadderFacts } from "./declaration.js";
@@ -814,6 +818,74 @@ describe("never from a bot, and never on an answer it did not get", () => {
 
         expect(await decide(issueRecord(), view, undetermined)).toEqual([]);
         expect(await decide(other, view, undetermined)).toEqual([]);
+    });
+});
+
+describe("exempted maintainers and bots are left alone (D243)", () => {
+    const exempting = (over: Readonly<Record<string, unknown>>) =>
+        viewWith({ ...DESIGN_SETTINGS, ...over });
+    const maintainers = exempting({ exemptMaintainers: ["Maya"] });
+    const bots = exempting({ exemptBots: true });
+    const stale = (author: string, assignees = [assignee("alice", 40)]) =>
+        pullRecord(
+            { author, assignees, position: position({ meaning: "needsRevision" }) },
+            { draft: false },
+        );
+
+    /** A bot is a login with GitHub's `[bot]` suffix, whoever asks. */
+    const bySuffix = async <Q extends ResolverName>(
+        _query: Q,
+        input: ResolverInput<Q>,
+    ): Promise<ResolverAnswer<ResolverOutput<Q>>> =>
+        await Promise.resolve({
+            ok: true,
+            value: (input as { readonly login: string }).login.endsWith("[bot]"),
+        } as ResolverAnswer<ResolverOutput<Q>>);
+
+    it("never reminds or releases an exempt assignee, matched without case", async () => {
+        const record = issueRecord({ assignees: [assignee("maya", 40)] });
+
+        expect(await decide(record, maintainers)).toEqual([]);
+    });
+
+    it("still releases the contributor on an issue a maintainer shares", async () => {
+        const record = issueRecord({ assignees: [assignee("maya", 40), assignee("alice", 40)] });
+
+        expect(await decide(record, maintainers)).toMatchObject([
+            { operation: "releaseAssignment", desired: { login: "alice" } },
+        ]);
+    });
+
+    it("never closes a pull request an exempt maintainer opened", async () => {
+        expect(await decide(stale("maya"), maintainers)).toEqual([]);
+    });
+
+    it("closes a contributor's pull request without naming its exempt assignee", async () => {
+        const record = stale("alice", [assignee("alice", 40), assignee("maya", 40)]);
+
+        const [close] = await decide(record, maintainers);
+        expect(close).toMatchObject({ operation: "closePullRequest" });
+        expect(close?.grace?.warning.body).toContain("@alice");
+        expect(close?.grace?.warning.body).not.toContain("maya");
+    });
+
+    it("never closes a pull request a bot opened once bots are exempt", async () => {
+        expect(await decide(stale("renovate[bot]"), bots, bySuffix)).toEqual([]);
+    });
+
+    it("closes a bot's pull request as before while bots are not exempt", async () => {
+        expect(await decide(stale("renovate[bot]"), view, bySuffix)).toMatchObject([
+            { operation: "closePullRequest" },
+        ]);
+    });
+
+    it("skips, rather than closes, when it cannot tell whether the author is a bot", async () => {
+        const record = stale("renovate[bot]");
+        const undetermined = answering({ ok: false, reason: "unavailable", detail: "no lookup" });
+        const handle = handleFor(inactivity.declaration, record, undetermined);
+
+        await expect(inactivity.evaluate(record, bots, handle)).rejects.toBeDefined();
+        expect(handle.skipped).toBe(true);
     });
 });
 

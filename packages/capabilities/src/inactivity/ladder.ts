@@ -48,6 +48,11 @@ export function deadlineOf(ladder: Reaping, observedAt: Date): Date {
     return new Date(observedAt.getTime() + graceHoursOf(ladder) * HOUR_MS);
 }
 
+/** Whether the repository listed this login under `exemptMaintainers` (D243). */
+export function exemptLogin(login: string, settings: InactivitySettings): boolean {
+    return settings.exemptMaintainers.includes(login.toLowerCase());
+}
+
 /** The two stops both ladders share, in order: paused, then conflicted. */
 export function stillOnTheLadder(facts: InactivityFacts, settings: InactivitySettings): boolean {
     if (settings.exemptBlocked && isPaused(facts)) return false;

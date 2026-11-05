@@ -19,6 +19,7 @@ import {
 import type { LadderContext } from "./context.js";
 import type { InactivityDeclaration, IssueLadderFacts } from "./declaration.js";
 import {
+    exemptLogin,
     graceHoursOf,
     ladderOf,
     reaps,
@@ -48,6 +49,7 @@ async function onIssueLadder(
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
     const intents: IntentFor<InactivityDeclaration>[] = [];
     for (const assignee of await people(context.platform, facts.assignees)) {
+        if (exemptLogin(assignee.login, context.settings)) continue;
         const clock = assigneeClock(assignee, context.observedAt);
         if (clock.idleHours < ladder.remindAfter) continue;
         intents.push(

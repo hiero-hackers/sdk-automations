@@ -587,6 +587,28 @@ mappings:
         expect(body).not.toContain("remindAfter: 720");
     });
 
+    /** The exemptions are part of what a maintainer is shown, an empty list as none. */
+    it("prints inactivity's exempt logins and its bot switch", () => {
+        const body = renderConfiguration("sha256:exempt", {
+            revision: "sha256:exempt",
+            schemaVersion: 2,
+            mode: "active",
+            capabilities: {
+                inactivity: {
+                    enabled: true,
+                    settings: { exemptMaintainers: ["maya", "bob"], exemptBots: true },
+                },
+                assignment: { enabled: true, settings: { exemptMaintainers: [] } },
+            },
+            mappings: { labels: {}, commands: {}, skills: {}, alerts: {} },
+            principals: {},
+        });
+
+        expect(body).toContain("- exemptMaintainers: maya, bob");
+        expect(body).toContain("- exemptBots: true");
+        expect(body).toContain("- exemptMaintainers: none");
+    });
+
     /** A capability the registry ships is one the report can describe. */
     it("describes every shipped capability", () => {
         for (const capability of CAPABILITIES) {

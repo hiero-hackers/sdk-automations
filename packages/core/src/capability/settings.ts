@@ -90,7 +90,7 @@ function strangers(
         }));
 }
 
-// ─── The seven constructors ──────────────────────────────────────────
+// ─── The eight constructors ──────────────────────────────────────────
 
 /** The spec, pinned. Identity at runtime; the point is the `const` parameter. */
 export function spec<const S extends Spec>(fields: S): S {
@@ -344,6 +344,37 @@ export function meanings(
     } = {},
 ): Field<readonly MappableMeaning[]> {
     return mappedList("labels", { one: "a meaning", many: "meanings" }, options.doc);
+}
+
+/** How GitHub spells a person's login: letters, digits and inner hyphens, at most 39. */
+export const LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+/** A list of GitHub logins, held lowercase: GitHub compares logins without case. */
+export function logins(options: { readonly doc?: string } = {}): Field<readonly string[]> {
+    return {
+        describe: () => ({ kind: "logins", doc: options.doc ?? null, absent: "empty" }),
+        read(key, scope) {
+            const path = dot(scope.path, key);
+            if (!Object.hasOwn(scope.raw, key)) return { ok: true, value: [] };
+            const value = scope.raw[key];
+            if (!Array.isArray(value)) return problem(path, "must be a list of logins");
+
+            const problems: SettingsProblem[] = [];
+            const listed: string[] = [];
+            for (const [index, entry] of value.entries()) {
+                if (typeof entry !== "string" || !LOGIN_PATTERN.test(entry)) {
+                    problems.push({
+                        code: "settingInvalid",
+                        path: `${path}.${String(index)}`,
+                        message: `${JSON.stringify(entry)} is not a GitHub login`,
+                    });
+                    continue;
+                }
+                listed.push(entry.toLowerCase());
+            }
+            return problems.length > 0 ? { ok: false, problems } : { ok: true, value: listed };
+        },
+    };
 }
 
 /**

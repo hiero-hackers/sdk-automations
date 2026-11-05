@@ -108,6 +108,8 @@ describe("the seeds' specs", () => {
         });
         expect(viewFor(inactivity.declaration, {}).settings).toEqual({
             exemptBlocked: true,
+            exemptMaintainers: [],
+            exemptBots: false,
             // Hours: a config with no clocks resolves to 30d (720) and 60d (1440).
             remindAfter: 720,
             // The root's release clock is a section, so it is always read: it

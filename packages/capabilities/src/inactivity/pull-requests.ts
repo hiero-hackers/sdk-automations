@@ -22,6 +22,7 @@ import {
 import type { InactivitySettings, LadderContext } from "./context.js";
 import type { InactivityDeclaration, PullLadderFacts } from "./declaration.js";
 import {
+    exemptLogin,
     graceHoursOf,
     ladderOf,
     REAP_REASONS,
@@ -70,6 +71,7 @@ export async function onPullRequest(
     const { pullRequests } = context.settings;
     if (!stillOnTheLadder(facts, context.settings)) return [];
     if (!pullRequests.enabled) return [];
+    if (await exemptAuthor(facts.author, context)) return [];
 
     // A pull request awaiting review is the maintainers' wait, not the contributor's. One a reviewer
     // sent back waits on its author, until a newer commit answers, whatever its label (D240, D241).
@@ -82,6 +84,17 @@ export async function onPullRequest(
     return await onPullRequestLadder(facts, reapable, context);
 }
 
+/** Whether the pull request's author is one the repository exempted, by login or as a bot. */
+async function exemptAuthor(
+    author: string,
+    { settings, platform }: LadderContext,
+): Promise<boolean> {
+    if (exemptLogin(author, settings)) return true;
+    // Asked only once consented, so a file without the setting reads nothing new; an
+    // unanswerable author skips the evaluation rather than counting as a person.
+    return settings.exemptBots && (await platform.ask("isAutomationActor", { login: author }));
+}
+
 /** What one pull request past its ladder is worth saying and doing about. */
 async function onPullRequestLadder(
     facts: PullLadderFacts,
@@ -91,9 +104,9 @@ async function onPullRequestLadder(
     const clock = pullRequestClock(facts, reapable.reason, context.observedAt);
     if (clock.idleHours < reapable.remindAfter) return [];
 
-    const logins = (await people(context.platform, facts.assignees)).map(
-        (assignee) => assignee.login,
-    );
+    const logins = (await people(context.platform, facts.assignees))
+        .map((assignee) => assignee.login)
+        .filter((login) => !exemptLogin(login, context.settings));
     return [
         reaps(reapable)
             ? close(context, facts, logins, clock, reapable)

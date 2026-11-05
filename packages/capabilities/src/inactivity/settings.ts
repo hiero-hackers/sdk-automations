@@ -10,6 +10,7 @@ import {
     block,
     duration,
     flag,
+    logins,
     MIN_GRACE_HOURS,
     MIN_REAP_HOURS,
     section,
@@ -40,11 +41,18 @@ const ladder = {
     ),
 };
 
-/** The five keys a repository may state, and what each is worth unstated. */
+/** The seven keys a repository may state, and what each is worth unstated. */
 export const INACTIVITY_SETTINGS = spec({
     exemptBlocked: flag({
         default: true,
         doc: "Leave anything carrying the blocked meaning alone — no reminder, no release",
+    }),
+    exemptMaintainers: logins({
+        doc: "Logins never reminded or released, and whose pull requests are never closed",
+    }),
+    exemptBots: flag({
+        default: false,
+        doc: "Leave pull requests a bot opened alone — a bot assignee is never reminded either way",
     }),
     remindAfter: duration({
         default: "30d",

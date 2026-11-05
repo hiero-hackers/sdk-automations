@@ -45,6 +45,8 @@ capabilities:
   inactivity:
     enabled: true
     exemptBlocked: true # the blocked mapping skips every warning and action
+    exemptMaintainers: [] # logins never reminded or released, whose pull requests are never closed
+    exemptBots: false # true leaves pull requests a bot opened alone
     remindAfter: 30d # default — any ladder or reason may override
     reap: # the release clock every level inherits; consent is each acting level's own
       after: 60d # reap = release the assignment (issues) · close (PRs)
@@ -129,6 +131,13 @@ Never acts on maintainer staleness or paused work:
 - anything carrying the `blocked` meaning
 - a closed issue or a merged pull request, which never reaches this capability at all: the platform
   wakes it for open items only, because it declares no `closed: true` (D59)
+- a login listed in `exemptMaintainers`, matched without case: never reminded or released, never
+  named in a pull request's reminder, and a pull request it opened is never closed. Anyone else on
+  the same item keeps their own clock. A maintainer is a login the repository lists, not a GitHub
+  role: an assignee has no `author_association`, and team membership is a read the default token
+  cannot make (D243)
+- a bot assignee, always; with `exemptBots: true`, a pull request a bot opened too. A bot is a login
+  with GitHub's `[bot]` suffix, and an author that cannot be judged skips the evaluation
 
 ```mermaid
 flowchart LR
