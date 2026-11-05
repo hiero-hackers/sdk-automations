@@ -34,6 +34,8 @@
         "inactivity.enabled",
         "inactivity.mode",
         "inactivity.exemptBlocked",
+        "inactivity.exemptMaintainers",
+        "inactivity.exemptBots",
         "inactivity.remindAfter",
         "inactivity.reap",
         "inactivity.reap.after",

@@ -20,6 +20,8 @@ One comment per pull request, updated in place. When the file parses:
 > - configReport — on, dry-run (inherited from the file), no settings
 > - inactivity — on, observe (stated on its block)
 >   - exemptBlocked: true
+>   - exemptMaintainers: none
+>   - exemptBots: false
 >   - remindAfter: 336
 >   - reap
 >     - after: 504

@@ -49,6 +49,7 @@ import {
     FACT_KINDS,
     flag,
     INTENT_OPERATIONS,
+    logins,
     MAPPABLE_MEANINGS,
     meanings,
     MEANING_FACTS,
@@ -742,7 +743,7 @@ interface ConstructorFacts {
     readonly forms: readonly (readonly [written: string, field: Field<unknown>])[];
 }
 
-/** The seven, keyed by the kind each one describes itself as. */
+/** The eight, keyed by the kind each one describes itself as. */
 const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts } = {
     flag: { reads: "a boolean", forms: [["flag({ default })", flag({ default: false })]] },
     duration: {
@@ -764,6 +765,7 @@ const CONSTRUCTORS: { readonly [K in FieldDescription["kind"]]: ConstructorFacts
         ],
     },
     meanings: { reads: "a list of mapped label meanings", forms: [["meanings()", meanings()]] },
+    logins: { reads: "a list of GitHub logins", forms: [["logins()", logins()]] },
     section: {
         reads: "a plain group of fields with no consent of its own",
         forms: [["section(fields)", section({})]],

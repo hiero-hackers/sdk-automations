@@ -290,6 +290,19 @@
                             "description": "Leave anything carrying the blocked meaning alone — no reminder, no release.",
                             "default": true
                         },
+                        "exemptMaintainers": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"
+                            },
+                            "description": "Logins never reminded or released, and whose pull requests are never closed."
+                        },
+                        "exemptBots": {
+                            "type": "boolean",
+                            "description": "Leave pull requests a bot opened alone — a bot assignee is never reminded either way.",
+                            "default": false
+                        },
                         "remindAfter": {
                             "type": "string",
                             "pattern": "^[1-9][0-9]*[hd]$|^0[hd]$",

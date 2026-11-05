@@ -49,6 +49,7 @@ export {
     count,
     duration,
     flag,
+    logins,
     MAX_CLOCK_HOURS,
     meanings,
     section,

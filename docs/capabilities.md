@@ -14,7 +14,7 @@ spelling), its own block's keys, and nothing another capability was given.
 |---|---|---|---|---|---|---|
 | `triageQueue` | put a new issue in the triage queue: label it, welcome its author, hold it until triaged | the `issues` webhook | `labels.awaitingTriage` | `welcome`, `lockUntilTriaged`, `confirmUnlock`, `requirements` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date; a lock on an issue; an unlock | [design page](../packages/capabilities/src/triageQueue/design.md) |
 | `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
-| `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
+| `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `exemptMaintainers`, `exemptBots`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
 | `configReport` | one comment on a pull request that changes `sdk-automations.yml`, saying what the App would read from it | the `pull_request` webhook | nothing required | none | a comment it keeps up to date | [design page](../packages/capabilities/src/configReport/design.md) |
 | `assignment` | let a contributor claim work, and release it again | the `issue_comment` webhook | nothing required | `autoAssign`, `unassign` | a comment it keeps up to date; an assignment; an unassignment | [design page](../packages/capabilities/src/assignment/design.md) |
 <!-- /generated -->
@@ -83,6 +83,8 @@ applyLabels: [] # none — The positions the dashboard may set: needsRevision on
 enabled: true
 # mode: dry-run — optional; observe, dry-run, active, never above the file's mode, which a block leaving it out inherits
 exemptBlocked: true # default — Leave anything carrying the blocked meaning alone — no reminder, no release
+exemptMaintainers: [] # none — Logins never reminded or released, and whose pull requests are never closed
+exemptBots: false # default — Leave pull requests a bot opened alone — a bot assignee is never reminded either way
 remindAfter: 30d # default — Silence before a reminder, for every ladder and reason that sets none of its own
 reap: # default — The release clock every ladder and reason inherits — consent is each acting level's own
   after: 60d # default — Silence before release — an issue is unassigned, a pull request closed

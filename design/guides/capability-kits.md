@@ -101,6 +101,7 @@ nothing more:
 | `text({ optional: true })` | a string | `null` |
 | `text({ optional: false })` | a string | `problem` |
 | `meanings()` | a list of mapped label meanings | `empty` |
+| `logins()` | a list of GitHub logins | `empty` |
 | `section(fields)` | a plain group of fields with no consent of its own | `default` |
 | `block(fields)` | an enabled-block | `parked` |
 <!-- /generated -->
@@ -141,6 +142,9 @@ The rule each constructor carries beyond that is prose no `describe()` reports, 
   writes "the Signing Guide (configured link)" and the comment prints title and address as text.
 - **`meanings`** — each entry must be one this repository mapped in that family, and an unmapped
   one is a problem: a guard naming a meaning demands its mapping.
+- **`logins`** — each entry must be spelled as a GitHub login, and is held lowercase because GitHub
+  compares logins without case. It names people the repository chose, so nothing is read from
+  GitHub to judge it: a listed login that left the project stays listed until someone removes it.
 - **`section`** — the station the group configures is switched by its own flags (`onOpen`,
   `approval`, a skill tier, a pillar), never by a consent key it does not have.
 - **`block`** — consent is `enabled: true` and nothing else. A block that is absent or says anything

@@ -30,6 +30,7 @@ import {
     COMMANDS,
     describeSpec,
     DURATION_PATTERN,
+    LOGIN_PATTERN,
     MAPPABLE_MEANINGS,
     MAPPING_SECTION_KEYS,
     REPOSITORY_MODES,
@@ -157,6 +158,8 @@ function shapeOf(field: FieldDescription): Subschema {
             return { type: "string" };
         case "meanings":
             return { type: "array", items: { enum: [...MAPPABLE_MEANINGS] } };
+        case "logins":
+            return { type: "array", items: { type: "string", pattern: LOGIN_PATTERN.source } };
         case "section":
             return groupSchema(field.fields ?? {});
         case "block":

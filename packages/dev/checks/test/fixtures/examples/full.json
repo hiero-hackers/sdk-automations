@@ -53,6 +53,10 @@
             "mode": "observe",
             "settings": {
                 "exemptBlocked": true,
+                "exemptMaintainers": [
+                    "maintainer-login"
+                ],
+                "exemptBots": true,
                 "remindAfter": 336,
                 "reap": {
                     "after": 504

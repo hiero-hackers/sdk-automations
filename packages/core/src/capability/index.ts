@@ -36,6 +36,8 @@ export {
     duration,
     DURATION_PATTERN,
     flag,
+    LOGIN_PATTERN,
+    logins,
     MAX_CLOCK_HOURS,
     meanings,
     parseDuration,
