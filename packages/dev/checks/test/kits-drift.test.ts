@@ -31,18 +31,18 @@ describe("capability-kits.md holds the constructor table the vocabulary generate
     });
 
     /**
-     * The table's rows are FORMS, not constructors: two of the seven answer
+     * The table's rows are FORMS, not constructors: two of the eight answer
      * differently depending on what they were given, and a row averaging them
      * would be true of neither. So the row count is the check that no form was
-     * lost, and the seven kinds are the check that no constructor was.
+     * lost, and the eight kinds are the check that no constructor was.
      */
     it("shows every constructor, at least one row each", () => {
         const [constructors] = renderConstructorTable();
         const rows = [...(constructors?.markdown ?? "").matchAll(/^\| `([a-zA-Z]+)\(/gm)].map(
             (m) => m[1]!,
         );
-        expect(new Set(rows).size).toBe(7);
-        expect(rows.length).toBeGreaterThan(7);
+        expect(new Set(rows).size).toBe(8);
+        expect(rows.length).toBeGreaterThan(8);
     });
 
     it("proves the check can fail", () => {
