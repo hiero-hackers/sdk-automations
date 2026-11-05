@@ -48,7 +48,7 @@ export function deadlineOf(ladder: Reaping, observedAt: Date): Date {
     return new Date(observedAt.getTime() + graceHoursOf(ladder) * HOUR_MS);
 }
 
-/** Whether the repository listed this login under `exemptMaintainers` (D243). */
+/** Whether the repository listed this login under `exemptMaintainers` (D246). */
 export function exemptLogin(login: string, settings: InactivitySettings): boolean {
     return settings.exemptMaintainers.includes(login.toLowerCase());
 }

@@ -135,7 +135,7 @@ Never acts on maintainer staleness or paused work:
   named in a pull request's reminder, and a pull request it opened is never closed. Anyone else on
   the same item keeps their own clock. A maintainer is a login the repository lists, not a GitHub
   role: an assignee has no `author_association`, and team membership is a read the default token
-  cannot make (D243)
+  cannot make (D246)
 - a bot assignee, always; with `exemptBots: true`, a pull request a bot opened too. A bot is a login
   with GitHub's `[bot]` suffix, and an author that cannot be judged skips the evaluation
 

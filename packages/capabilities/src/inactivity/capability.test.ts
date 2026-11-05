@@ -821,7 +821,7 @@ describe("never from a bot, and never on an answer it did not get", () => {
     });
 });
 
-describe("exempted maintainers and bots are left alone (D243)", () => {
+describe("exempted maintainers and bots are left alone (D246)", () => {
     const exempting = (over: Readonly<Record<string, unknown>>) =>
         viewWith({ ...DESIGN_SETTINGS, ...over });
     const maintainers = exempting({ exemptMaintainers: ["Maya"] });
