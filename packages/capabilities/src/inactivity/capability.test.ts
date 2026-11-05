@@ -843,7 +843,7 @@ describe("exempted maintainers and bots are left alone (D243)", () => {
         } as ResolverAnswer<ResolverOutput<Q>>);
 
     it("never reminds or releases an exempt assignee, matched without case", async () => {
-        const record = issueRecord({ assignees: [assignee("maya", 40)] });
+        const record = issueRecord({ assignees: [assignee("MAYA", 40)] });
 
         expect(await decide(record, maintainers)).toEqual([]);
     });
