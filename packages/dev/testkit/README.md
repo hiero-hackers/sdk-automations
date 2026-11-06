@@ -3,7 +3,9 @@
 What more than one package's tests need: the captured webhook payloads — scrubbed, human-reviewed,
 each carrying its own provenance — the journeys table that says what every capability decides on
 each of them, and the two temp-dir helpers, in callback and hook form. It imports nothing, ships
-nothing, and can kill no mutant.
+nothing, and can kill no mutant. `createWorld` lets the shared route table remember what was
+written, so an active run is held to what the repository ends up showing; it lives beside the table
+it extends.
 
 **A fixture is reached through the module, never through a path.** `capture("issues.opened.json")`
 and `WEBHOOK_CAPTURES`, never a URL assembled from another package. Stryker's sandbox is the mutated
