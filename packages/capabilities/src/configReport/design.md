@@ -58,6 +58,20 @@ because a block added to such a file writes as soon as it merges:
 
 > Inheriting active, so writing once this merges: triageQueue, configReport.
 
+**One line where two enabled blocks disagree.** A file that enables `triageQueue` and
+`assignment.autoAssign` without holding claims on `awaitingTriage` (in `notClaimableWhen`, or left
+out of a non-empty `claimableOnlyWhen`) gets a `Worth checking` line naming the key, because Analytics
+shipped exactly that and its templates promised the opposite:
+
+> **Worth checking**
+>
+> - triageQueue puts a new issue in the triage queue, but assignment lets it be claimed there.
+>   Adding `awaitingTriage` to `capabilities.assignment.autoAssign.notClaimableWhen` holds claims
+>   until triage.
+
+The report advises; it refuses nothing. The repository decides, and the reviewed file says what it
+decided (D236's principle for modes holds for claimability too).
+
 **A clock is shown as the hours it RESOLVED to, not as the `14d` the file wrote.** The report
 renders `{ enabled, settings }` and nothing else: a capability cannot know the shipped declarations
 (D150), so this one cannot tell a duration from a count and has no written form to print back. The
@@ -181,5 +195,6 @@ carrying a newline. The tree is a nested list, which is a tree that escaping wor
 | A rejected file | every error as `line N — path: message`, in document order |
 | Five errors from one bad capability-wide value | the cascade collapses to the enclosing error plus "and N places that inherit it" |
 | A key named `@everyone`, and one holding `*` | every file-derived string renders inert |
+| `triageQueue` and `autoAssign` on, `awaitingTriage` not held | the `Worth checking` line names the key; held either way, or either block off, nothing is said |
 | The pull request DELETES the file | the parser's no-file result, rendered as the empty configuration |
 | `dry-run` | the comment is named as `wouldApply` and nothing is written |

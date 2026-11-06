@@ -153,6 +153,34 @@ function capabilities(config: RepositoryConfig): readonly string[] {
     ];
 }
 
+/** One line where two enabled blocks disagree: a triage queue whose issues can still be claimed. */
+function worthChecking(config: RepositoryConfig): readonly string[] {
+    const triage = config.capabilities["triageQueue"];
+    const assignment = config.capabilities["assignment"];
+    if (triage?.enabled !== true || assignment?.enabled !== true) return [];
+    const autoAssign = assignment.settings["autoAssign"];
+    if (!isGroup(autoAssign) || autoAssign["enabled"] !== true) return [];
+    const listed = (key: string): readonly unknown[] => {
+        const value = autoAssign[key];
+        return Array.isArray(value) ? (value as readonly unknown[]) : [];
+    };
+    const required = listed("claimableOnlyWhen");
+    const held =
+        listed("notClaimableWhen").includes("awaitingTriage") ||
+        (required.length > 0 && !required.includes("awaitingTriage"));
+    if (held) return [];
+    return [
+        "",
+        "**Worth checking**",
+        "",
+        bullet(
+            0,
+            "triageQueue puts a new issue in the triage queue, but assignment lets it be claimed there. " +
+                "Adding `awaitingTriage` to `capabilities.assignment.autoAssign.notClaimableWhen` holds claims until triage.",
+        ),
+    ];
+}
+
 /** The `mappings:` section, family by family; a parsed document always carries the labels (D203). */
 function mappings(config: RepositoryConfig): readonly string[] {
     const families = Object.entries(config.mappings).filter(
@@ -193,6 +221,7 @@ export function renderConfiguration(revision: string, config: RepositoryConfig):
             `**Mode** — ${config.mode}, the most any capability may do`,
             "",
             ...capabilities(config),
+            ...worthChecking(config),
             "",
             ...mappings(config),
             ...principals(config),

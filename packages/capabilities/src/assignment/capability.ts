@@ -110,7 +110,7 @@ async function onAssign(facts: Facts, view: View, platform: Platform, login: str
         return [
             refusal(platform, {
                 login,
-                body: notYetClaimable(login, required),
+                body: notYetClaimable(login, required, carried),
                 explain: "Told the commenter the issue is not claimable yet.",
             }),
         ];
