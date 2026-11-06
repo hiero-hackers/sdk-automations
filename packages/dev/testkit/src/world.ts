@@ -20,6 +20,8 @@ export interface WorldItem {
     labels: string[];
     assignees: string[];
     readonly comments: WorldComment[];
+    /** The human history it was seeded with; the bot's own writes are never a human change. */
+    readonly timeline: readonly unknown[];
 }
 
 export interface WorldSeed {
@@ -28,6 +30,8 @@ export interface WorldSeed {
     readonly author: string;
     readonly labels?: readonly string[];
     readonly assignees?: readonly string[];
+    /** When the author assigned each seeded assignee; the timeline records it as theirs. */
+    readonly assignedAt?: string;
 }
 
 /** One answer from the world, or `undefined` for a route it does not hold. */
@@ -103,6 +107,12 @@ export function createWorld(options: {
                 labels: [...(seed.labels ?? [])],
                 assignees: [...(seed.assignees ?? [])],
                 comments: [],
+                timeline: (seed.assignees ?? []).map((login) => ({
+                    event: "assigned",
+                    assignee: { login },
+                    actor: { login: seed.author, type: "User" },
+                    created_at: seed.assignedAt ?? options.now().toISOString(),
+                })),
             },
         ]),
     );
@@ -122,6 +132,7 @@ export function createWorld(options: {
             return { status: 200, body: issueOf(item, stamp()) };
         }
         if (rest === "/comments" && method === "GET") return { status: 200, body: item.comments };
+        if (rest === "/timeline" && method === "GET") return { status: 200, body: item.timeline };
         if (rest === "/comments" && method === "POST") {
             const at = stamp();
             const comment = {
@@ -213,7 +224,7 @@ export function createWorld(options: {
                 }
                 return { status: 200, body: pullOf(pulled, stamp()) };
             }
-            const issue = /^\/issues\/(\d+)(\/(?:comments|labels(?:\/.+)?|assignees))?$/.exec(
+            const issue = /^\/issues\/(\d+)(\/(?:comments|timeline|labels(?:\/.+)?|assignees))?$/.exec(
                 route,
             );
             const item = issue === null ? undefined : items.get(Number(issue[1]));
