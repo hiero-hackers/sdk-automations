@@ -14,6 +14,13 @@ import { join } from "node:path";
 export { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
 export { startFakeGitHub, type FakeGitHub, type FakeGitHubOptions } from "./fake-github.js";
 export {
+    createWorld,
+    type World,
+    type WorldComment,
+    type WorldItem,
+    type WorldSeed,
+} from "./world.js";
+export {
     githubScript,
     HOUR,
     POOL_LIMIT,
