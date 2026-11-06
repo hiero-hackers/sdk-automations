@@ -109,7 +109,13 @@ const SCENARIOS: readonly Scenario[] = [
         item: { kind: "issue", number: 12 },
         seeds: [
             { number: 12, author: "ada", assignees: ["ada"], assignedAt: UPDATED },
-            { number: 34, pullRequest: true, author: "ada", assignees: ["ada"], assignedAt: UPDATED },
+            {
+                number: 34,
+                pullRequest: true,
+                author: "ada",
+                assignees: ["ada"],
+                assignedAt: UPDATED,
+            },
         ],
         at: new Date(START.getTime() + 40 * DAY_MS),
         intents: 1,
@@ -279,7 +285,13 @@ mappings:
             now: clock,
             items: [
                 { number: 12, author: "ada", assignees: ["ada"], assignedAt: UPDATED },
-                { number: 34, pullRequest: true, author: "ada", assignees: ["ada"], assignedAt: UPDATED },
+                {
+                    number: 34,
+                    pullRequest: true,
+                    author: "ada",
+                    assignees: ["ada"],
+                    assignedAt: UPDATED,
+                },
             ],
         });
         scriptedGitHub({ now: clock, config: () => REAPING, world });

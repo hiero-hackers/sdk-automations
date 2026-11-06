@@ -224,9 +224,8 @@ export function createWorld(options: {
                 }
                 return { status: 200, body: pullOf(pulled, stamp()) };
             }
-            const issue = /^\/issues\/(\d+)(\/(?:comments|timeline|labels(?:\/.+)?|assignees))?$/.exec(
-                route,
-            );
+            const issue =
+                /^\/issues\/(\d+)(\/(?:comments|timeline|labels(?:\/.+)?|assignees))?$/.exec(route);
             const item = issue === null ? undefined : items.get(Number(issue[1]));
             if (issue === null || item === undefined) return undefined;
             return onItem(method, item, issue[2] ?? "", sent);
