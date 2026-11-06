@@ -25,14 +25,24 @@ export function alreadyClaimed(login: string, holders: readonly string[]): strin
     return `Hi ${mentions([login])} — this issue is already assigned to ${named}, so it cannot be claimed.`;
 }
 
+/** An issue still at the gate has a next step: triage ends with `ready`, and the claim can follow. */
+const inTriage = (carried: readonly MappableMeaning[]): string =>
+    carried.includes("awaitingTriage")
+        ? " It is in the triage queue; once the team marks it ready, it can be claimed."
+        : "";
+
 /** A claim refused by the `notClaimableWhen` meanings the issue carries. */
 export function deniedBy(login: string, carried: readonly MappableMeaning[]): string {
-    return `Hi ${mentions([login])} — this issue cannot be claimed while it is marked ${listed(carried, "and")}.`;
+    return `Hi ${mentions([login])} — this issue cannot be claimed while it is marked ${listed(carried, "and")}.${inTriage(carried)}`;
 }
 
 /** A claim refused because the issue carries none of the `claimableOnlyWhen` meanings. */
-export function notYetClaimable(login: string, required: readonly MappableMeaning[]): string {
-    return `Hi ${mentions([login])} — only an issue marked ${listed(required, "or")} can be claimed in this repository, and this one is not yet.`;
+export function notYetClaimable(
+    login: string,
+    required: readonly MappableMeaning[],
+    carried: readonly MappableMeaning[],
+): string {
+    return `Hi ${mentions([login])} — only an issue marked ${listed(required, "or")} can be claimed in this repository, and this one is not yet.${inTriage(carried)}`;
 }
 
 /** A claim refused at `maxOpen`, counting only the assignments `capIgnores` leaves in. */
