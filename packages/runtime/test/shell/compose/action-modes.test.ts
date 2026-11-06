@@ -7,7 +7,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
 import { CONFIGS, capture, createWorld } from "@hiero-hackers/automation-testkit";
-import { parseActionEnvironment, type ActionRun } from "../../../src/shell/compose/action/inputs.js";
+import {
+    parseActionEnvironment,
+    type ActionRun,
+} from "../../../src/shell/compose/action/inputs.js";
 import { runAction, runStore } from "../../../src/shell/compose/action/run.js";
 import { scriptedGitHub } from "./scripted-github.js";
 
@@ -100,7 +103,9 @@ async function cell(
     const clock = (): Date => new Date(START.getTime() + Date.now() - began);
     const world = createWorld({
         now: clock,
-        items: [{ number, pullRequest: item.kind === "pullRequest", author: opened?.user.login ?? "" }],
+        items: [
+            { number, pullRequest: item.kind === "pullRequest", author: opened?.user.login ?? "" },
+        ],
     });
     scriptedGitHub({
         now: clock,

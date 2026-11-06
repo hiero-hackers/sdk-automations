@@ -69,7 +69,9 @@ function issueOf(item: WorldItem, updatedAt: string): unknown {
         user: { login: item.author, type: "User" },
         labels: item.labels.map((name) => ({ name })),
         assignees: item.assignees.map((login) => ({ login })),
-        ...(item.pullRequest ? { pull_request: { url: `https://api.github.com/pulls/${String(item.number)}` } } : {}),
+        ...(item.pullRequest
+            ? { pull_request: { url: `https://api.github.com/pulls/${String(item.number)}` } }
+            : {}),
     };
 }
 
@@ -108,7 +110,12 @@ export function createWorld(options: {
     let ids = 0;
     const stamp = (): string => options.now().toISOString();
 
-    const onItem = (method: string, item: WorldItem, rest: string, sent: Record<string, unknown>): WorldReply | undefined => {
+    const onItem = (
+        method: string,
+        item: WorldItem,
+        rest: string,
+        sent: Record<string, unknown>,
+    ): WorldReply | undefined => {
         if (rest === "" && method === "GET") return { status: 200, body: issueOf(item, stamp()) };
         if (rest === "" && method === "PATCH") {
             if (sent["state"] === "closed" || sent["state"] === "open") item.state = sent["state"];
@@ -117,7 +124,13 @@ export function createWorld(options: {
         if (rest === "/comments" && method === "GET") return { status: 200, body: item.comments };
         if (rest === "/comments" && method === "POST") {
             const at = stamp();
-            const comment = { id: (ids += 1), body: String(sent["body"] ?? ""), user: BOT, created_at: at, updated_at: at };
+            const comment = {
+                id: (ids += 1),
+                body: String(sent["body"] ?? ""),
+                user: BOT,
+                created_at: at,
+                updated_at: at,
+            };
             item.comments.push(comment);
             return { status: 201, body: comment };
         }
@@ -133,7 +146,8 @@ export function createWorld(options: {
         }
         if (rest.startsWith("/labels/") && method === "DELETE") {
             const name = decodeURIComponent(rest.slice("/labels/".length));
-            if (!item.labels.includes(name)) return { status: 404, body: { message: "Label does not exist" } };
+            if (!item.labels.includes(name))
+                return { status: 404, body: { message: "Label does not exist" } };
             item.labels = item.labels.filter((held) => held !== name);
             return { status: 200, body: item.labels.map((held) => ({ name: held })) };
         }
@@ -151,8 +165,14 @@ export function createWorld(options: {
         return undefined;
     };
 
-    const onComment = (method: string, id: number, sent: Record<string, unknown>): WorldReply | undefined => {
-        const comment = [...items.values()].flatMap((item) => item.comments).find((held) => held.id === id);
+    const onComment = (
+        method: string,
+        id: number,
+        sent: Record<string, unknown>,
+    ): WorldReply | undefined => {
+        const comment = [...items.values()]
+            .flatMap((item) => item.comments)
+            .find((held) => held.id === id);
         if (comment === undefined) return { status: 404, body: { message: "Not Found" } };
         if (method === "PATCH") {
             comment.body = String(sent["body"] ?? comment.body);
@@ -168,7 +188,8 @@ export function createWorld(options: {
             const sent = sentRecord(body);
             if (route === "/labels" && method === "POST") {
                 const name = String(sent["name"] ?? "");
-                if (labels.has(name)) return { status: 422, body: { message: "Validation Failed" } };
+                if (labels.has(name))
+                    return { status: 422, body: { message: "Validation Failed" } };
                 labels.add(name);
                 return { status: 201, body: { id: (ids += 1), name } };
             }
@@ -184,12 +205,17 @@ export function createWorld(options: {
             const pull = /^\/pulls\/(\d+)$/.exec(route);
             const pulled = pull === null ? undefined : items.get(Number(pull[1]));
             if (pulled?.pullRequest === true) {
-                if (method === "PATCH" && (sent["state"] === "closed" || sent["state"] === "open")) {
+                if (
+                    method === "PATCH" &&
+                    (sent["state"] === "closed" || sent["state"] === "open")
+                ) {
                     pulled.state = sent["state"];
                 }
                 return { status: 200, body: pullOf(pulled, stamp()) };
             }
-            const issue = /^\/issues\/(\d+)(\/(?:comments|labels(?:\/.+)?|assignees))?$/.exec(route);
+            const issue = /^\/issues\/(\d+)(\/(?:comments|labels(?:\/.+)?|assignees))?$/.exec(
+                route,
+            );
             const item = issue === null ? undefined : items.get(Number(issue[1]));
             if (issue === null || item === undefined) return undefined;
             return onItem(method, item, issue[2] ?? "", sent);
