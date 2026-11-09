@@ -327,6 +327,22 @@ export const DOCUMENT_REJECTIONS: readonly DocumentRejection[] = [
         yaml: `schemaVersion: 2\nmode: Observe\n${VALID_TAIL}`,
     },
 
+    {
+        code: "sinceInvalid",
+        why: "a day that does not exist, which Date.UTC would roll into the next month",
+        yaml: `schemaVersion: 2\nsince: 2026-02-30\n${VALID_TAIL}`,
+    },
+    {
+        code: "sinceInvalid",
+        why: "a date with a time of day is not a calendar date",
+        yaml: `schemaVersion: 2\nsince: "2026-11-04T10:00:00Z"\n${VALID_TAIL}`,
+    },
+    {
+        code: "sinceInvalid",
+        why: "a bare year is not a day",
+        yaml: `schemaVersion: 2\nsince: 2026\n${VALID_TAIL}`,
+    },
+
     // ---- capabilities ----
     {
         code: "capabilityNameInvalid",

@@ -104,6 +104,31 @@ function itemSection(store: Store, repository: RepositoryRef, item: ItemRef): st
     ];
 }
 
+/** The verdict code a decision carries when the file's `since` held an older item back. */
+const HELD_BACK = "beforeSince";
+
+/** Per capability, how many distinct items `since` left alone this run. Nothing when none. */
+function leftAlone(store: Store, repository: RepositoryRef, items: readonly ItemRef[]): string[] {
+    const held = new Map<string, Set<string>>();
+    for (const item of items) {
+        for (const { capability, code } of store.ledger.decisionsOn(repository, item)) {
+            if (code !== HELD_BACK) continue;
+            const seen = held.get(capability) ?? new Set<string>();
+            held.set(capability, seen.add(spelled(item)));
+        }
+    }
+    if (held.size === 0) return [];
+    return [
+        ...[...held]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([capability, seen]) => {
+                const count = seen.size;
+                return `- \`${capability}\`: ${String(count)} older ${count === 1 ? "item" : "items"} left alone (before \`since\`)`;
+            }),
+        "",
+    ];
+}
+
 export function renderSummary(store: Store, run: SummaryRun, outcome: RunOutcome): string {
     const { owner, repo } = run.repository;
     const link = run.runUrl === null ? "" : ` ([run](${run.runUrl}))`;
@@ -114,6 +139,7 @@ export function renderSummary(store: Store, run: SummaryRun, outcome: RunOutcome
         itemSection(store, run.repository, item),
     );
     const silent = sections.filter((section) => section.length === 0).length;
+    lines.push(...leftAlone(store, run.repository, distinct(outcome.items)));
     lines.push(...sections.flat());
     if (silent > 0) lines.push(`Items decided with no rows: ${String(silent)}.`, "");
     for (const event of undecided(outcome.events)) {

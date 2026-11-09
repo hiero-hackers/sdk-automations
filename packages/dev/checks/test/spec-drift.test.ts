@@ -26,6 +26,7 @@ const ERROR_CODES: { readonly [K in ConfigErrorCode]: true } = {
     unknownKey: true,
     schemaVersionUnsupported: true,
     modeInvalid: true,
+    sinceInvalid: true,
     capabilityNameInvalid: true,
     capabilityEnabledNotBoolean: true,
     capabilityModeAboveFile: true,

@@ -401,6 +401,8 @@ const REFUSAL_CODES: { readonly [C in SafetyRefusalCode]: CodeFacts } = {
 /** Not refusals: the decision was reached and written down instead (D57). */
 const RECORD_ONLY_CODES: { readonly [C in RecordOnlyCode]: string } = {
     observation: "The request's class is `observation`.",
+    beforeSince:
+        "The occasion predates the file's `since`: the effect is recorded, not applied. Never judged against the item's `updated_at`.",
     modeRecordsOnly:
         "The capability's mode is `observe` or `dry-run`: its block's own `mode`, or the file's where the block states none.",
 };

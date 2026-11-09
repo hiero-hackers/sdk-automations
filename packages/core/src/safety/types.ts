@@ -71,7 +71,7 @@ export type SafetyRefusalCode =
     | "activityCancelled";
 
 /** Why a write was recorded rather than performed. Not a refusal. */
-export type RecordOnlyCode = "observation" | "modeRecordsOnly";
+export type RecordOnlyCode = "observation" | "beforeSince" | "modeRecordsOnly";
 
 /** The answer both gates return: applied, recorded, or refused with a code. */
 export type SafetyVerdict =

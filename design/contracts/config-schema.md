@@ -69,6 +69,7 @@ The accepted top-level keys are exactly:
 |---|---|
 | `schemaVersion` | Optional; omission is version `2`, the only version read. Every other stated value — `1`, a present null, a quoted number — is `schemaVersionUnsupported` (D222). A future format must state its own version to be read as one. |
 | `mode` | Optional; omission defaults to `observe`, while a present null or invalid value is rejected. |
+| `since` | Optional `YYYY-MM-DD` UTC date, inherited by every block; absent is no bound. An intent whose occasion predates it is recorded as `beforeSince`, never judged against `updated_at`. |
 | `capabilities` | Optional mapping from an admitted capability name to a flat block: an `enabled` boolean, an optional `mode`, and beside them the keys the capability's spec reads. |
 | `mappings` | Optional; contains the `labels`, `commands` and `skills` families. |
 | `principals` | Optional string-to-string mapping. |
@@ -193,6 +194,7 @@ behind the standing gate (D125, protocol 8.2), and the Action when `arm-writes` 
 | `notAMapping` | The document or a mapping-shaped section has another type. |
 | `unknownKey` | A closed mapping contains an unsupported key. |
 | `schemaVersionUnsupported` | `schemaVersion` is stated and is not the unquoted number `2`; absence is version `2`. |
+| `sinceInvalid` | `since` is present but is not a real calendar date written `YYYY-MM-DD`. |
 | `modeInvalid` | The file's `mode` is present but is not one of §4's values, or a block's `mode` is present but is not `observe`, `dry-run` or `active`. |
 | `capabilityNameInvalid` | A capability name is not a valid configuration key. |
 | `capabilityEnabledNotBoolean` | `enabled` is present but is not a boolean. |

@@ -41,6 +41,6 @@ describe("contracts/safety.md holds the verdict tables the code generates", () =
         expect(readGeneratedBlock(forged, "refusal-codes")).not.toEqual(refusals?.markdown);
         expect(readGeneratedBlock(forged, "record-only-codes")).toBeNull();
         expect(refusals?.markdown.split("\n").length).toBeGreaterThan(20);
-        expect(recordOnly?.markdown.split("\n")).toHaveLength(4);
+        expect(recordOnly?.markdown.split("\n")).toHaveLength(5);
     });
 });

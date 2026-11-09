@@ -3,7 +3,12 @@
  * `design/contracts/safety.md`'s mechanically checkable subset only.
  */
 
-import { effectiveMode, type EffectiveMode, type RepositoryConfig } from "../config/index.js";
+import {
+    effectiveMode,
+    sinceStart,
+    type EffectiveMode,
+    type RepositoryConfig,
+} from "../config/index.js";
 import { missingPermissions } from "../github/index.js";
 import { isBlocked } from "../workflow/index.js";
 import type {
@@ -157,6 +162,16 @@ export const GENERAL_RULES: readonly GeneralRule[] = [
             ? refuse("modeDisabled", "the repository mode is disabled")
             : null,
     ),
+    // The occasion, never the item's `updated_at`, which moves for every label, comment and bot write.
+    itemState("beforeSince", (f) => {
+        const since = f.config.since === undefined ? null : sinceStart(f.config.since);
+        return since !== null && f.request.causeObservedAt.getTime() < since.getTime()
+            ? record(
+                  "beforeSince",
+                  `the occasion predates the file's since (${f.config.since}); the effect is recorded, not applied`,
+              )
+            : null;
+    }),
     standing("modeRecordsOnly", (f) =>
         f.mode.mode === "observe" || f.mode.mode === "dry-run"
             ? record(

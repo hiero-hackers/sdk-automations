@@ -44,6 +44,7 @@ describe("every rejection the catalogue names is reachable", () => {
         unknownKey: true,
         schemaVersionUnsupported: true,
         modeInvalid: true,
+        sinceInvalid: true,
         capabilityNameInvalid: true,
         capabilityEnabledNotBoolean: true,
         capabilityModeAboveFile: true,

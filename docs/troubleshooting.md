@@ -25,6 +25,7 @@ Nothing to fix — this is your configuration, or our caution, behaving as speci
 |---|---|
 | `killSwitch` | The intent-level emergency gate is on; returned intents are refused after capability evaluation |
 | `modeDisabled` | Your file says `disabled`; enabled capabilities may be evaluated, but every screened intent is refused |
+| `beforeSince` | The thing that prompted this action happened before the `since` date in your file, so the action is recorded, not applied. The job summary counts these per capability. A later push, `/working` or reassignment on the item brings it into coverage on the next run; to cover older items, move `since` earlier or remove it |
 | `modeRecordsOnly` | The capability runs in `observe` or `dry-run` — its block's own `mode`, or your file's when the block states none, and the message says which. Both record the action instead of applying it, and `dry-run` also names what it would have done in a `wouldApply` line beside this one |
 | `observation` | It was only ever a read; there was nothing to apply |
 | `capabilityDisabled` | The capability is `enabled: false` (or absent) in your file |

@@ -1,6 +1,6 @@
 {
     "//": "Baseline of every configuration key a repository may write. Editing this file is the act of declaring a compatible (key added) or breaking (key removed or renamed) change; config-keys.test.ts fails until it matches.",
-    "topLevel": ["schemaVersion", "mode", "capabilities", "mappings", "principals"],
+    "topLevel": ["schemaVersion", "mode", "since", "capabilities", "mappings", "principals"],
     "mappings": ["labels", "commands", "skills", "alerts"],
     "capabilities": [
         "triageQueue",

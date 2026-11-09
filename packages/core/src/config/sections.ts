@@ -87,6 +87,42 @@ export function readMode(raw: Record<string, unknown>): Checked<RepositoryMode> 
           };
 }
 
+const SINCE_FORMAT = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** The start of the UTC day `since` names, or `null` when it is not a real calendar date. */
+export function sinceStart(value: string): Date | null {
+    const match = SINCE_FORMAT.exec(value);
+    if (match === null) return null;
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const start = new Date(Date.UTC(year, month - 1, day));
+    // `Date.UTC` rolls February 30 into March: a date that moved was never a date.
+    return start.getUTCFullYear() === year &&
+        start.getUTCMonth() === month - 1 &&
+        start.getUTCDate() === day
+        ? start
+        : null;
+}
+
+/**
+ * An absent `since` is no bound. A stated one must be a `YYYY-MM-DD` string naming a real day;
+ * a number or a time of day is not a date. (The YAML core schema leaves an unquoted date a string.)
+ */
+export function readSince(raw: Record<string, unknown>): Checked<string | undefined> {
+    if (!Object.hasOwn(raw, "since")) return { ok: true, value: undefined };
+    const value = raw.since;
+    if (typeof value === "string" && sinceStart(value) !== null) return { ok: true, value };
+    return {
+        ok: false,
+        errors: [
+            err(
+                "sinceInvalid",
+                `since must be a calendar date written YYYY-MM-DD (UTC), got ${JSON.stringify(value)}`,
+                "since",
+            ),
+        ],
+    };
+}
+
 /** The admission list as a lookup. A `Map`, so `constructor` is a key like any other. */
 function admissionsOf(known: readonly AdmittedCapability[]): Map<string, AdmittedCapability> {
     const admitted = new Map<string, AdmittedCapability>();
