@@ -156,7 +156,11 @@ describe("the standing rules — the item-independent half a resend re-checks", 
     it("lets a refusal outrank the since hold-back", () => {
         const since = config({ since: "2026-11-04", mode: "disabled" });
         expect(
-            evalWrite(request({ causeObservedAt: new Date("2026-01-01T00:00:00Z") }), context(), since),
+            evalWrite(
+                request({ causeObservedAt: new Date("2026-01-01T00:00:00Z") }),
+                context(),
+                since,
+            ),
         ).toMatchObject({ outcome: "refuse", code: "modeDisabled" });
     });
 

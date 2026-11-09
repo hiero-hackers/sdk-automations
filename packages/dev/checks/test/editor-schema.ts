@@ -225,8 +225,7 @@ const DISCLAIMER = [
 const TOP_LEVEL_NOTES: { readonly [K in TopLevelKey]: string } = {
     schemaVersion: "The configuration format's version. Optional; the only value is 2.",
     mode: "How far the engine may go: the most any capability may do, and what a block that states no mode of its own inherits. Each step does what the one before it does, and more.",
-    since:
-        "A calendar date, YYYY-MM-DD in UTC. Automations act only on what occasioned on or after it; older items are recorded, not acted on. Inherited by every block. Absent means no bound.",
+    since: "A calendar date, YYYY-MM-DD in UTC. Automations act only on what occasioned on or after it; older items are recorded, not acted on. Inherited by every block. Absent means no bound.",
     capabilities:
         "One block per automation. A capability the engine does not ship is rejected whether it is enabled or not.",
     mappings: "The words this repository spells each meaning with.",
