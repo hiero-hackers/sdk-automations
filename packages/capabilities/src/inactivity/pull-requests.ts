@@ -9,6 +9,7 @@
 import {
     CANCELLED_BY,
     changesOutstanding,
+    isConflicted,
     lasting,
     latestOf,
     meaningsOf,
@@ -21,18 +22,19 @@ import {
 } from "@hiero-hackers/automation-core/author";
 import type { InactivitySettings, LadderContext } from "./context.js";
 import type { InactivityDeclaration, PullLadderFacts } from "./declaration.js";
+import { exemptedAsBlocked, exemptedAuthor, type AuthorExemption } from "./exemptions.js";
 import {
+    exemptAsBlocked,
     exemptLogin,
     graceHoursOf,
     ladderOf,
     REAP_REASONS,
     reaps,
-    stillOnTheLadder,
     type Ladder,
     type ReapReason,
     type Reaping,
 } from "./ladder.js";
-import { closeReason, pullRequestReminder } from "./messages.js";
+import { closeNotice, closeReason, pullRequestReminder } from "./messages.js";
 
 /** The first enabled reason that holds, with the clocks it resolved. */
 interface Reapable extends Ladder {
@@ -69,9 +71,8 @@ export async function onPullRequest(
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
     const { pullRequests } = context.settings;
-    if (!stillOnTheLadder(facts, context.settings)) return [];
+    if (isConflicted(facts)) return [];
     if (!pullRequests.enabled) return [];
-    if (await exemptAuthor(facts.author, context)) return [];
 
     // A pull request awaiting review is the maintainers' wait, not the contributor's. One a reviewer
     // sent back waits on its author, until a newer commit answers, whatever its label (D240, D241).
@@ -81,28 +82,40 @@ export async function onPullRequest(
     const reapable = reapableFor(facts, pullRequests);
     if (reapable === null) return [];
 
-    return await onPullRequestLadder(facts, reapable, context);
+    const clock = pullRequestClock(facts, reapable.reason, context.observedAt);
+    if (clock.idleHours < reapable.remindAfter) return [];
+    return await onPullRequestLadder(facts, reapable, clock, context);
 }
 
-/** Whether the pull request's author is one the repository exempted, by login or as a bot. */
-async function exemptAuthor(
+/** Which author-side rule exempts this pull request, or `null` for none. */
+async function authorExemption(
     author: string,
     { settings, platform }: LadderContext,
-): Promise<boolean> {
-    if (exemptLogin(author, settings)) return true;
+): Promise<AuthorExemption | null> {
+    if (exemptLogin(author, settings)) return "exemptMaintainers";
     // Asked only once consented, so a file without the setting reads nothing new; an
     // unanswerable author skips the evaluation rather than counting as a person.
-    return settings.exemptBots && (await platform.ask("isAutomationActor", { login: author }));
+    if (!settings.exemptBots) return null;
+    return (await platform.ask("isAutomationActor", { login: author })) ? "exemptBots" : null;
 }
 
-/** What one pull request past its ladder is worth saying and doing about. */
+/** What one pull request past its reminder is worth saying and doing about, unless a rule exempts it. */
 async function onPullRequestLadder(
     facts: PullLadderFacts,
     reapable: Reapable,
+    clock: Clock,
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
-    const clock = pullRequestClock(facts, reapable.reason, context.observedAt);
-    if (clock.idleHours < reapable.remindAfter) return [];
+    const stale = `stale in ${reapable.reason}, idle ${lasting(clock.idleHours)}`;
+    if (exemptAsBlocked(facts, context.settings)) {
+        exemptedAsBlocked(context.platform, [stale]);
+        return [];
+    }
+    const exemption = await authorExemption(facts.author, context);
+    if (exemption !== null) {
+        exemptedAuthor(context.platform, exemption, facts.author, stale);
+        return [];
+    }
 
     const logins = (await people(context.platform, facts.assignees))
         .map((assignee) => assignee.login)
@@ -141,7 +154,7 @@ function close(
             // The reason is what the warning is about, so it is the topic (D145).
             topic: reapable.reason,
             warning: { body: pullRequestReminder(logins, reapable.reason, reapable, observedAt) },
-            notice: { body: closeReason(reapable.reapAfter) },
+            notice: { body: closeNotice(reapable.reason, reapable.reapAfter) },
             cancelledBy: CANCELLED_BY,
             reversesWith: REVERSES_WITH,
             // The set `pullRequestClock` resets from.

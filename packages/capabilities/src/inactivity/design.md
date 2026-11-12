@@ -14,8 +14,8 @@ Issue reminder:
 
 Issue release:
 
-> This assignment was released after 60 days of inactivity. The issue is open for anyone to pick
-> up — you are welcome to `/assign` it again when you have capacity.
+> This assignment was released after 60 days with no pull request and no `/working`. The issue is
+> open for anyone to pick up — you are welcome to `/assign` it again when you have capacity.
 
 Pull request reminder, naming its reason (one per reapable state):
 
@@ -28,9 +28,13 @@ Pull request reminder, naming its reason (one per reapable state):
 > working on it, otherwise the pull request will be closed on
 > **2026-11-07**.
 
-Pull request close:
+Pull request close, naming the reason it closed for and the way back:
 
-> This pull request was closed after 60 days of inactivity.
+> This pull request was closed: it has been in **draft** without development activity for 60 days.
+> Want to keep going? Push your changes and ask a maintainer to reopen it.
+
+The close's own reason, which the act's change carries, stays `This pull request was closed after
+60 days of inactivity.`: rewording it would void every warning already standing.
 
 A level with no `reap` block reminds in the same words and promises nothing, because nothing
 follows:
@@ -139,6 +143,11 @@ Never acts on maintainer staleness or paused work:
 - a bot assignee, always; with `exemptBots: true`, a pull request a bot opened too. A bot is a login
   with GitHub's `[bot]` suffix, and an author that cannot be judged skips the evaluation
 
+An exemption that holds back a reminder or a release is recorded, never silent: one
+`capabilityExempted` row naming the rule (`exemptBlocked`, `exemptMaintainers`, `exemptBots`) and
+what it held back, which the job summary gathers into one table (D252). Only where it held
+something back: a blocked issue no clock has reached records nothing. No comment is posted.
+
 ```mermaid
 flowchart LR
     S["schedule → issue and pull-request facts"] --> X{"blocked, or PR awaiting review: needsReview with no change request outstanding, or ready-for-review without needsRevision?"}
@@ -213,6 +222,10 @@ left alone.
 | Review flips a PR `needsReview` → `needsRevision` | its clock starts; the reverse flip stops it |
 | pr-dashboard labels a failing PR `needsRevision` | the reaper's clock runs on it — detection is composed, not duplicated |
 | Item gains the `blocked` meaning mid-cycle | all clocks pause, including linked PRs |
+| A blocked issue or pull request past its reminder | nothing posted; one `capabilityExempted` row names `exemptBlocked` and what it held back |
+| A blocked issue no clock has reached | nothing recorded — an exemption is counted only where it held something back |
+| A listed maintainer or a bot author past the reminder | the same row, naming `exemptMaintainers` or `exemptBots` |
+| A close lands | its notice names the reason it closed for and how to come back |
 | Draft PR marked ready for review, no `needsRevision` | leaves the reapable state; its clock stops |
 | Two assignees, one recent | only the stale one is released |
 | Issue gains an open linked PR | the issue ladder falls silent; the PR ladder governs |
