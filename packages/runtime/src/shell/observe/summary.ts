@@ -7,6 +7,7 @@
 import { appendFileSync } from "node:fs";
 import type { ItemRef, RepositoryRef } from "@hiero-hackers/automation-core";
 import type { RunOutcome } from "../compose/action/run.js";
+import { EXEMPTED } from "../decide/decisions.js";
 import type { EffectOutcome, EffectOutcomeName } from "../effects.js";
 import type { ShellEvent } from "../log.js";
 import { standing } from "./explain.js";
@@ -104,17 +105,33 @@ function itemSection(store: Store, repository: RepositoryRef, item: ItemRef): st
     ];
 }
 
+/** Every exemption the run's items recorded, in one table, so work a rule held back is counted (D252). */
+function exemptionSection(
+    store: Store,
+    repository: RepositoryRef,
+    items: readonly ItemRef[],
+): string[] {
+    const rows = items.flatMap((item) =>
+        store.ledger
+            .decisionsOn(repository, item)
+            .filter(({ code }) => code === EXEMPTED)
+            .map(({ capability, detail }) => row([spelled(item), capability, detail])),
+    );
+    if (rows.length === 0) return [];
+    return ["### Left alone by an exemption", "", ...table(["item", "capability", "rule"], rows)];
+}
+
 export function renderSummary(store: Store, run: SummaryRun, outcome: RunOutcome): string {
     const { owner, repo } = run.repository;
     const link = run.runUrl === null ? "" : ` ([run](${run.runUrl}))`;
     const lines = [`## ${owner}/${repo}: ${run.eventName} (${outcome.kind})${link}`, ""];
     if (outcome.modeLowered) lines.push(LOWERED, "");
     if (outcome.configAbsent) lines.push(ABSENT, "");
-    const sections = distinct(outcome.items).map((item) =>
-        itemSection(store, run.repository, item),
-    );
+    const items = distinct(outcome.items);
+    const sections = items.map((item) => itemSection(store, run.repository, item));
     const silent = sections.filter((section) => section.length === 0).length;
     lines.push(...sections.flat());
+    lines.push(...exemptionSection(store, run.repository, items));
     if (silent > 0) lines.push(`Items decided with no rows: ${String(silent)}.`, "");
     for (const event of undecided(outcome.events)) {
         const detail = detailOf(event);

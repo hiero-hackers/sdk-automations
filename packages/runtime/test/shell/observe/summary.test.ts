@@ -122,6 +122,44 @@ describe("the job summary", () => {
         store.close();
     });
 
+    it("gathers every exemption into one table naming the item and the rule", async () => {
+        const exempting: EngineCapability = {
+            declaration: triageQueueDeclaration,
+            evaluate: async (_facts: never, _view: never, platform: never) => {
+                (platform as EngineHandle).exempt("Exempt under a rule.", "line a");
+                return await Promise.resolve([]);
+            },
+        };
+        scriptedGitHub({ now: () => START, config: () => configFor("triageQueue") });
+        const run = runOf();
+        const store = runStore();
+        const outcome = await runAction(run, {
+            payload: capture("issues.opened.json").bytes(),
+            store,
+            clock: () => START,
+            log: () => undefined,
+            capabilities: [exempting],
+        });
+        const text = renderSummary(store, run, outcome);
+        expect(text).toContain(
+            [
+                "### Left alone by an exemption",
+                "",
+                "| item | capability | rule |",
+                "| --- | --- | --- |",
+                "| issue#37 | triageQueue | Exempt under a rule. (line a) |",
+            ].join("\n"),
+        );
+        store.close();
+    });
+
+    it("adds no exemption table when nothing was exempted", async () => {
+        const run = runOf();
+        const { store, outcome } = await decided(run, "dry-run");
+        expect(renderSummary(store, run, outcome)).not.toContain("Left alone by an exemption");
+        store.close();
+    });
+
     it("lists a capability that threw as one problem row on its item", async () => {
         const throwing: EngineCapability = {
             declaration: triageQueueDeclaration,
