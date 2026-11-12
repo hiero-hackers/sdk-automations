@@ -176,6 +176,13 @@ const decide = async (facts: InactivityFacts, on = view, source = human) => {
     return intents;
 };
 
+/** What the capability recorded as exempt, beside the intents it returned (D252). */
+const exempted = async (facts: InactivityFacts, on = view, source = human) => {
+    const platform = handleFor(inactivity.declaration, facts, source);
+    const intents = await inactivity.evaluate(facts, on, platform);
+    return { intents, exemptions: platform.exemptions };
+};
+
 const ENGINE = [toEngine(inactivity)];
 
 const CONFIG = configEnabling(
@@ -478,7 +485,7 @@ describe("the pull-request ladder judges the contributor's wait", () => {
                         body: "⏰ Hi @alice — this pull request has carried the `needsRevision` label without development activity for 2 days. Push a commit or comment `/working` to let us know you are working on it, otherwise the pull request will be closed on **2026-09-12**.",
                     },
                     notice: {
-                        body: "This pull request was closed after 5 days of inactivity.",
+                        body: "This pull request was closed: it has carried the `needsRevision` label without development activity for 5 days. Want to keep going? Push your changes and ask a maintainer to reopen it.",
                     },
                     cancelledBy: "a commit or a /working comment",
                     reversesWith: "re-assign / reopen",
@@ -542,6 +549,14 @@ describe("the pull-request ladder judges the contributor's wait", () => {
         ]);
     });
 
+    it("names the reason in the close notice, and the way back", async () => {
+        const [close] = await decide(pullRecord());
+
+        expect(close?.grace?.notice.body).toBe(
+            "This pull request was closed: it has been in **draft** without development activity for 60 days. Want to keep going? Push your changes and ask a maintainer to reopen it.",
+        );
+    });
+
     it("Reaper closes a PR", async () => {
         // An intent names the record's own item, so the close is the only act.
         const closing = pullRecord(
@@ -591,7 +606,7 @@ describe("the issue ladder judges each assignment on its own clock", () => {
                         body: "⏰ Hi @alice — you are assigned to this issue, but there is no pull request after 14 days. Still working on it? Comment `/working` to let us know development is active, otherwise this assignment will be released on **2026-09-16**.",
                     },
                     notice: {
-                        body: "This assignment was released after 21 days of inactivity. The issue is open for anyone to pick up — you are welcome to `/assign` it again when you have capacity.",
+                        body: "This assignment was released after 21 days with no pull request and no `/working`. The issue is open for anyone to pick up — you are welcome to `/assign` it again when you have capacity.",
                     },
                     cancelledBy: "a commit or a /working comment",
                     reversesWith: "re-assign / reopen",
@@ -760,6 +775,39 @@ describe("what pauses or ends a ladder", () => {
         expect(await decide(pausedPull)).toEqual([]);
     });
 
+    it("records a blocked issue it would have warned about as exempt under exemptBlocked", async () => {
+        const paused = issueRecord({ position: position({ blocked: true }) });
+
+        expect(await exempted(paused)).toEqual({
+            intents: [],
+            exemptions: [
+                {
+                    capability: "inactivity",
+                    summary: "Exempt under exemptBlocked: the item carries the blocked meaning.",
+                    detail: ["alice idle 40 days"],
+                },
+            ],
+        });
+    });
+
+    it("records a blocked pull request it would have warned about, with its reason", async () => {
+        const paused = pullRecord({ position: position({ blocked: true }) });
+
+        const { exemptions } = await exempted(paused);
+        expect(exemptions.map((exemption) => exemption.detail)).toEqual([
+            ["stale in draft, idle 70 days"],
+        ]);
+    });
+
+    it("records nothing for a blocked issue no clock has reached", async () => {
+        const fresh = issueRecord({
+            position: position({ blocked: true }),
+            assignees: [assignee("alice", 2)],
+        });
+
+        expect((await exempted(fresh)).exemptions).toEqual([]);
+    });
+
     /** A position no ladder can read. */
     it("says nothing about an item it cannot judge", async () => {
         const conflicted = issueRecord({
@@ -867,6 +915,35 @@ describe("exempted maintainers and bots are left alone (D246)", () => {
         expect(close).toMatchObject({ operation: "closePullRequest" });
         expect(close?.grace?.warning.body).toContain("@alice");
         expect(close?.grace?.warning.body).not.toContain("maya");
+    });
+
+    it("records the exempt assignee it left alone, and only that one", async () => {
+        const record = issueRecord({ assignees: [assignee("maya", 40), assignee("alice", 40)] });
+
+        const { intents, exemptions } = await exempted(record, maintainers);
+        expect(intents).toHaveLength(1);
+        expect(exemptions).toEqual([
+            expect.objectContaining({
+                summary: "Exempt under exemptMaintainers: maya is listed.",
+                detail: ["maya idle 40 days"],
+            }),
+        ]);
+    });
+
+    it("records a pull request an exempt maintainer opened", async () => {
+        const { exemptions } = await exempted(stale("maya"), maintainers);
+
+        expect(exemptions.map((exemption) => exemption.summary)).toEqual([
+            "Exempt under exemptMaintainers: maya, a listed maintainer, opened this pull request.",
+        ]);
+    });
+
+    it("records a pull request a bot opened once bots are exempt", async () => {
+        const { exemptions } = await exempted(stale("renovate[bot]"), bots, bySuffix);
+
+        expect(exemptions.map((exemption) => exemption.summary)).toEqual([
+            "Exempt under exemptBots: renovate[bot], a bot, opened this pull request.",
+        ]);
     });
 
     it("never closes a pull request a bot opened once bots are exempt", async () => {

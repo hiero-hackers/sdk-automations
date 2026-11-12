@@ -93,7 +93,10 @@ Either stops every run at once; nothing else needs undoing.
 ## Reading a run
 
 Each run writes a job summary that lists every item it decided, the decisions and effects for each,
-and their codes. [Troubleshooting](troubleshooting.md) explains every code. A run that fails
+and their codes. [Troubleshooting](troubleshooting.md) explains every code. A closing table, **Left
+alone by an exemption**, lists each item a rule you chose held back — `inactivity`'s
+`exemptBlocked`, `exemptMaintainers` or `exemptBots` — with the rule and what it held back, so
+exempt work stays counted rather than invisible. A run that fails
 names the event that failed, and the job turns red. GitHub emails a scheduled run's failure to
 whoever last edited the workflow file, so that person should be someone who will read it.
 

@@ -95,6 +95,8 @@ export interface PlatformHandle<D extends TypedDeclaration> {
     /** Stop and say why on the operator surface: one explanation, no intents. */
     skip(summary: string, ...detail: readonly string[]): readonly never[];
     explain(explanation: StructuredExplanation): void;
+    /** A rule the repository chose held back an act: recorded under its own code, so the run counts it (D252). */
+    exempt(summary: string, ...detail: readonly string[]): void;
 }
 
 /**
