@@ -502,6 +502,36 @@ describe("the freshness rule", () => {
         expect(sleeps).toEqual([ABSENCE_CONFIRMATION_GAP_MS]);
     });
 
+    it("waits out the rest of the gap when the clock reads the pause a millisecond short", async () => {
+        let now = NOW;
+        let slept = 0;
+        const { readBack, sleeps } = harness([listed("[]")], {
+            clock: () => now,
+            sleep: (milliseconds) => {
+                slept += 1;
+                now = new Date(now.getTime() + milliseconds - (slept === 1 ? 1 : 0));
+                return Promise.resolve();
+            },
+        });
+
+        expect(await readBack.commentPresence(ITEM, () => true)).toBe("absent");
+        expect(sleeps).toEqual([ABSENCE_CONFIRMATION_GAP_MS, 1]);
+    });
+
+    it("tops up at most one gap when the clock is set back during the pause", async () => {
+        let now = NOW;
+        const { readBack, sleeps } = harness([listed("[]")], {
+            clock: () => now,
+            sleep: (milliseconds) => {
+                now = new Date(now.getTime() + milliseconds - 3_600_000);
+                return Promise.resolve();
+            },
+        });
+
+        expect(await readBack.commentPresence(ITEM, () => true)).toBe("unknown");
+        expect(sleeps).toEqual([ABSENCE_CONFIRMATION_GAP_MS, ABSENCE_CONFIRMATION_GAP_MS]);
+    });
+
     it("refuses to call it absent when the clock says no second passed", async () => {
         // A sleep seam that returns without time passing: the pause happened,
         // the gap did not, and the rule is about the gap.
