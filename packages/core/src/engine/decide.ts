@@ -47,6 +47,7 @@ import {
     type WriteContext,
 } from "../safety/index.js";
 import {
+    exemptionFinding,
     explanationFinding,
     finding,
     screenFinding,
@@ -536,6 +537,14 @@ export async function decide(
             for (const explanation of handle.explanations) {
                 findings.push(
                     explanationFinding(explanation, {
+                        kind: "capability",
+                        capability: declaration.name,
+                    }),
+                );
+            }
+            for (const exemption of handle.exemptions) {
+                findings.push(
+                    exemptionFinding(exemption, {
                         kind: "capability",
                         capability: declaration.name,
                     }),

@@ -106,6 +106,7 @@ interface PlatformHandle<D extends TypedDeclaration> {
   intent<K extends D["intents"][number]>(request: IntentRequest<K>): Intent<K>;
   skip(summary: string, ...detail: readonly string[]): readonly never[];
   explain(explanation: StructuredExplanation): void;
+  exempt(summary: string, ...detail: readonly string[]): void;
 }
 ```
 
@@ -115,6 +116,8 @@ sentinel, which `decide()` catches; that is the one throw a capability body may 
 catches it and still returns intents has them refused as `intentsAfterSkip`. `resolve` is the raw answer, for
 the capability that carries on without one. `skip` is the explicit stop, returned. `intent` builds one intent
 about the record in hand, so the occasion, the cause, and the claims are read off the record (§3).
+`exempt` records that a rule the repository chose held back an act: a `notice` coded
+`capabilityExempted`, which does not end the evaluation (D252).
 
 `FactsFor<D>` is the declared kinds, each with its own kind's needed groups' `| Unread` removed and every
 other group typed `Unread` — the type is the guarantee, not a promise the engine keeps.

@@ -52,6 +52,9 @@ function watch(): {
             explain: (explanation) => {
                 explained.push(explanation);
             },
+            exempt: () => {
+                throw new Error("the guards exempt nothing");
+            },
         },
         explained,
     };

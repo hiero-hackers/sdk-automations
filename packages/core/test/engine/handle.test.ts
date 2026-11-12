@@ -191,6 +191,29 @@ describe("decide contains the sentinel", () => {
         expect(decision.report.findings.map((f) => f.code)).toEqual(["capabilityExplained"]);
     });
 
+    it("reports an exemption as a notice under its own code", async () => {
+        const capability: EngineCapability = {
+            declaration: declaration as never,
+            async evaluate(_f: never, _c: never, platform: never): Promise<readonly AnyIntent[]> {
+                (platform as EngineHandle).exempt("Exempt.", "why");
+                return await Promise.resolve([]);
+            },
+        };
+        const decision = await decide(
+            { kind: "facts", facts: webhookIssue() },
+            config,
+            [capability],
+            externals,
+        );
+        expect(decision.report.findings).toEqual([
+            expect.objectContaining({
+                code: "capabilityExempted",
+                severity: "notice",
+                detail: ["why"],
+            }),
+        ]);
+    });
+
     it("refuses the intents of a capability that caught the sentinel", async () => {
         const capability: EngineCapability = {
             declaration: declaration as never,
