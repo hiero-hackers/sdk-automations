@@ -15,6 +15,7 @@ import {
 } from "@hiero-hackers/automation-core";
 import { Store } from "../../../store/index.js";
 import { createApplier, recordedWarningsIn } from "../../apply/apply.js";
+import type { ConfigSource } from "../../decide/config.js";
 import { createItemDecider, type DecideItem } from "../../decide/item.js";
 import { declareSweep } from "../../decide/schedule.js";
 import { hydrateWarnings } from "../../decide/warnings.js";
@@ -27,7 +28,7 @@ import {
     SWEEP_WRITE_CALLS,
 } from "../../sweep/budgets.js";
 import { createSweep } from "../../sweep/sweep.js";
-import { liveGitHub } from "../live.js";
+import { liveGitHub, type LiveGitHub } from "../live.js";
 import type { RepositorySeams, ShellOptions } from "../shell.js";
 import { itemNamedBy, RUNNER_GRANTS, type ActionRun } from "./inputs.js";
 
@@ -52,29 +53,25 @@ export interface RunActionOptions {
     readonly clock?: () => Date;
     readonly log?: Log;
     readonly capabilities?: readonly EngineCapability[];
+    /** Where the configuration is read from; absent, the default branch's file. */
+    readonly configSource?: ConfigSource;
 }
 
 /** The runner token outlives any job; a job is six hours at most. */
 const TOKEN_LIFETIME_MS = 6 * 60 * 60_000;
 
-export async function runAction(run: ActionRun, options: RunActionOptions): Promise<RunOutcome> {
-    const clock = options.clock ?? (() => new Date());
-    const events: ShellEvent[] = [];
-    const sink = options.log ?? createLogger({ clock });
-    const log: Log = contained((event) => {
-        events.push(event);
-        sink(event);
-    });
-    const capabilities = options.capabilities ?? CAPABILITIES;
-    const { store, payload } = options;
-    const worker = `action-${run.deliveryId}`;
-    const sweeping = run.eventName === "schedule";
-    let modeLowered = false;
-    let configAbsent = false;
-    const items: ItemRef[] = [];
-    const effects: EffectOutcome[] = [];
-
-    const live = liveGitHub({
+/** The live seams one run reads and writes through, holding the runner's token. */
+export function runnerGitHub(
+    run: ActionRun,
+    options: {
+        readonly store: Store;
+        readonly clock: () => Date;
+        readonly log: Log;
+        readonly capabilities: readonly EngineCapability[];
+    },
+): LiveGitHub {
+    const { store, clock, log, capabilities } = options;
+    return liveGitHub({
         auth: {
             kind: "token",
             token: {
@@ -95,6 +92,26 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
         ownWrites: (served) => (item) => store.ledger.landedOn(served, item),
         log,
     });
+}
+
+export async function runAction(run: ActionRun, options: RunActionOptions): Promise<RunOutcome> {
+    const clock = options.clock ?? (() => new Date());
+    const events: ShellEvent[] = [];
+    const sink = options.log ?? createLogger({ clock });
+    const log: Log = contained((event) => {
+        events.push(event);
+        sink(event);
+    });
+    const capabilities = options.capabilities ?? CAPABILITIES;
+    const { store, payload } = options;
+    const worker = `action-${run.deliveryId}`;
+    const sweeping = run.eventName === "schedule";
+    let modeLowered = false;
+    let configAbsent = false;
+    const items: ItemRef[] = [];
+    const effects: EffectOutcome[] = [];
+
+    const live = runnerGitHub(run, { store, clock, log, capabilities });
 
     /** The shared box over one seam set, with the arming ceiling and the item list on it. */
     const deciderOver = (seams: RepositorySeams): DecideItem => {
@@ -147,13 +164,19 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
         };
     };
 
+    const configSourceOf = (seams: RepositorySeams): ConfigSource =>
+        options.configSource ?? seams.configSource;
+
     /** Typed as the shell's own seam so the sweep's allowance passes as it does there. */
     const seamsFor: ShellOptions["seams"] = live.seamsFor;
     const laneSeams = seamsFor(run.repository);
     const deliveries = createDeliveries({
         store,
         capabilities,
-        lane: () => ({ configSource: laneSeams.configSource, decideItem: deciderOver(laneSeams) }),
+        lane: () => ({
+            configSource: configSourceOf(laneSeams),
+            decideItem: deciderOver(laneSeams),
+        }),
         repository: run.repository,
         allowance: live.deliveryAllowance,
         worker,
@@ -191,7 +214,7 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
         };
     }
 
-    const config = await deliveries.configuration(run.repository, laneSeams.configSource);
+    const config = await deliveries.configuration(run.repository, configSourceOf(laneSeams));
     if (config === null) {
         // A rejected file is the repository's to fix and completes; a failed read is the run's failure.
         const unreadable = events.some(
@@ -217,7 +240,7 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
             return {
                 decideItem: deciderOver(seams),
                 facts: seams.facts,
-                configuration: () => deliveries.configuration(repository, seams.configSource),
+                configuration: () => deliveries.configuration(repository, configSourceOf(seams)),
             };
         },
         clock,

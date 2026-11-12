@@ -22,7 +22,8 @@
         "build:action": "esbuild src/shell/compose/action/main.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/action.js \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
         "explain": "tsx src/shell/observe/explain-cli.ts",
         "status": "tsx src/shell/observe/status-cli.ts",
-        "backup": "tsx src/shell/observe/backup-cli.ts"
+        "backup": "tsx src/shell/observe/backup-cli.ts",
+        "simulate": "tsx src/shell/compose/action/simulate-cli.ts"
     },
     "dependencies": {
         "@hiero-hackers/automation-capabilities": "workspace:*",

@@ -19,6 +19,7 @@
         "shell:explain": "pnpm --filter @hiero-hackers/automation-runtime explain --",
         "shell:status": "pnpm --filter @hiero-hackers/automation-runtime status",
         "shell:backup": "pnpm --filter @hiero-hackers/automation-runtime backup --",
+        "config:simulate": "pnpm --filter @hiero-hackers/automation-runtime simulate --",
         "lint": "eslint .",
         "audit": "pnpm audit --audit-level moderate",
         "format": "prettier --write \"packages/**/*.ts\"",
