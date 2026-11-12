@@ -20,6 +20,7 @@ import {
     createResolverSource,
     readAssigneesOf,
     readCommitAttestations,
+    readPullRequestProfile,
 } from "../../../src/adapter/reads/resolvers.js";
 import { parseConfigDocument, type RepositoryConfig } from "@hiero-hackers/automation-core";
 import { createAllowance, type Allowance } from "../../../src/adapter/client/allowance.js";
@@ -87,7 +88,7 @@ const list = (items: readonly unknown[], headers?: Record<string, string>) =>
     success(JSON.stringify(items), headers);
 
 describe("the matrix gate over the resolver surface", () => {
-    it("names every read the matrix confirmed, which since 6.9 is all seven", () => {
+    it("names every read the matrix confirmed", () => {
         expect([...CONFIRMED_RESOLVER_READS].sort()).toEqual([
             "assigneesOf",
             "commitAttestations",
@@ -347,6 +348,101 @@ describe("mergeability", () => {
         const { resolve } = source([failure(403, "no")]);
 
         expect(await resolve("mergeability", { item: PULL })).toMatchObject({ ok: false });
+    });
+});
+
+describe("pullRequestProfile", () => {
+    const pull = (over: Record<string, unknown> = {}) =>
+        success(
+            JSON.stringify({
+                number: 34,
+                body: "Fixes the empty payload.",
+                author_association: "CONTRIBUTOR",
+                additions: 12,
+                deletions: 3,
+                changed_files: 2,
+                ...over,
+            }),
+        );
+
+    it("answers the description, the association and the diff size GitHub states", async () => {
+        const { options, urls } = reader([pull()]);
+
+        expect(await readPullRequestProfile(options, 34)).toEqual({
+            ok: true,
+            value: {
+                blankDescription: false,
+                firstContribution: false,
+                additions: 12,
+                deletions: 3,
+                changedFiles: 2,
+            },
+        });
+        expect(urls()).toEqual([
+            "https://api.github.com/repos/Hiero-Hackers/SDK-Automations/pulls/34",
+        ]);
+    });
+
+    it.each([
+        ["no body at all", null],
+        ["whitespace", "  \n\t"],
+        [
+            "a template's comments and nothing else",
+            "<!-- What does this change? -->\n\n<!-- Why? -->",
+        ],
+    ])("reads %s as a blank description", async (_what, body) => {
+        const { options } = reader([pull({ body })]);
+
+        expect(await readPullRequestProfile(options, 34)).toMatchObject({
+            value: { blankDescription: true },
+        });
+    });
+
+    it("reads text beside a template's comments as written", async () => {
+        const { options } = reader([pull({ body: "<!-- Why? -->\nBecause it crashed." })]);
+
+        expect(await readPullRequestProfile(options, 34)).toMatchObject({
+            value: { blankDescription: false },
+        });
+    });
+
+    it.each([
+        ["FIRST_TIME_CONTRIBUTOR", true],
+        ["FIRST_TIMER", true],
+        ["MEMBER", false],
+        ["NONE", null],
+        ["MANNEQUIN", null],
+        [undefined, null],
+    ])("reads the association %s as a first contribution %s", async (association, first) => {
+        const { options } = reader([pull({ author_association: association })]);
+
+        expect(await readPullRequestProfile(options, 34)).toMatchObject({
+            value: { firstContribution: first },
+        });
+    });
+
+    it.each([
+        ["a body that is not text", { body: 7 }],
+        ["a missing line count", { additions: undefined }],
+        ["a negative file count", { changed_files: -1 }],
+        ["an answer about a different pull request", { number: 999 }],
+    ])("refuses %s", async (_what, over) => {
+        const { options } = reader([pull(over)]);
+
+        expect(await readPullRequestProfile(options, 34)).toMatchObject({
+            ok: false,
+            reason: "unavailable",
+        });
+    });
+
+    it("is not dispatched until the probe records its fields, and sends nothing", async () => {
+        const { resolve, calls } = source([pull()]);
+
+        expect(await resolve("pullRequestProfile", { item: PULL })).toMatchObject({
+            ok: false,
+            reason: "unavailable",
+        });
+        expect(calls).toHaveLength(0);
     });
 });
 
