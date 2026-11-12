@@ -8,6 +8,7 @@
 
 import {
     changesOutstanding,
+    labelKey,
     type CommentFact,
     type ItemFacts,
     type ItemRef,
@@ -329,12 +330,12 @@ export function createReadBack({
 
         assignees: (item) => readAssigneesOf(reads, item.number),
         commentPresence: (item, matches) => presenceOf(() => comments(item), matches),
-        // Exact names: this asks about the managed name the platform itself wrote (D4).
+        // GitHub keeps a label's own spelling when one is added under another case (D55).
 
         labelPresence: (item, label) =>
             presenceOf(
                 () => labels(item),
-                (name) => name === label,
+                (name) => labelKey(name) === labelKey(label),
             ),
         labelDefined,
     };

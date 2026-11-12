@@ -557,12 +557,19 @@ describe("the freshness rule", () => {
         expect(scripted.calls).toHaveLength(1);
     });
 
-    it("holds a label to the same rule, by exact name", async () => {
+    it("holds a label to the same rule, by name", async () => {
         const there = harness([listed('[{"name":"status: stale"}]')]);
-        const cased = harness([listed('[{"name":"Status: Stale"}]')]);
+        const other = harness([listed('[{"name":"status: stalled"}]')]);
 
         expect(await there.readBack.labelPresence(ITEM, "status: stale")).toBe("present");
-        expect(await cased.readBack.labelPresence(ITEM, "status: stale")).toBe("absent");
-        expect(cased.sleeps).toEqual([ABSENCE_CONFIRMATION_GAP_MS]);
+        expect(await other.readBack.labelPresence(ITEM, "status: stale")).toBe("absent");
+        expect(other.sleeps).toEqual([ABSENCE_CONFIRMATION_GAP_MS]);
+    });
+
+    it("finds a label GitHub kept under the repository's own case", async () => {
+        const { readBack, sleeps } = harness([listed('[{"name":"Status: Stale"}]')]);
+
+        expect(await readBack.labelPresence(ITEM, "status: stale")).toBe("present");
+        expect(sleeps).toEqual([]);
     });
 });
