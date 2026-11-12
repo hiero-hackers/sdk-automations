@@ -242,7 +242,18 @@ function firstContributionOf(association: unknown): boolean | null {
 function isBlankDescription(body: unknown): boolean | null {
     if (body === null) return true;
     if (typeof body !== "string") return null;
-    return body.replace(/<!--[\s\S]*?-->/g, "").trim() === "";
+    return withoutComments(body).trim() === "";
+}
+
+/** Strips HTML comments until none is left, so a nested opener cannot survive one pass. */
+function withoutComments(text: string): string {
+    let previous: string;
+    let current = text;
+    do {
+        previous = current;
+        current = current.replace(/<!--[\s\S]*?-->/g, "");
+    } while (current !== previous);
+    return current;
 }
 
 const isCount = (value: unknown): value is number =>
