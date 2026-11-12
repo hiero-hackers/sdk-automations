@@ -13,6 +13,14 @@ import { join } from "node:path";
 
 export { CONFIGS, configFor, JOURNEYS, type Row } from "./journeys.js";
 export { startFakeGitHub, type FakeGitHub, type FakeGitHubOptions } from "./fake-github.js";
+export { history, seedsOf, type History, type HistoryItem, type HistoryName } from "./history.js";
+export {
+    createWorld,
+    type World,
+    type WorldComment,
+    type WorldItem,
+    type WorldSeed,
+} from "./world.js";
 export {
     githubScript,
     HOUR,
