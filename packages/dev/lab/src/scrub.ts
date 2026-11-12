@@ -16,6 +16,9 @@ const EMAIL = /[^\s"@]+@[^\s"@]+\.[^\s"@]+/g;
 /** Full-length git object ids tie a fixture to sandbox history. */
 const GIT_SHA = /^[0-9a-f]{40}$/;
 
+/** An App's account names software, not a person, and capabilities judge bots by this suffix. */
+const isAppLogin = (value: string): boolean => value.endsWith("[bot]");
+
 /** Deterministic 40-hex placeholder: same input sha, same output sha. */
 function shaFor(sha: string, mapping: Mapping): string {
     const existing = mapping.strings.get(sha);
@@ -53,11 +56,17 @@ function collect(value: unknown, mapping: Mapping): void {
     for (const [key, child] of Object.entries(value)) {
         if (typeof child === "string" && IDENTIFYING_KEYS.has(key)) {
             if (!identityObject && (key === "name" || key === "full_name")) continue;
+            if (key === "login" && isAppLogin(child)) continue;
             for (const part of child.split("/")) {
                 if (part !== "" && !mapping.strings.has(part)) {
                     mapping.strings.set(part, `scrubbed-${mapping.strings.size + 1}`);
                 }
             }
+            continue;
+        }
+        // Registered before any rewrite, so prose quoting a sha is rewritten whatever the order.
+        if (typeof child === "string" && GIT_SHA.test(child)) {
+            shaFor(child, mapping);
             continue;
         }
         if (typeof child === "number" && ID_KEYS.has(key)) {
@@ -75,6 +84,10 @@ function rewrite(text: string, mapping: Mapping): string {
     let out = text.replace(EMAIL, "scrubbed@example.invalid");
     for (const original of [...mapping.strings.keys()].sort((a, b) => b.length - a.length)) {
         out = out.split(original).join(mapping.strings.get(original)!);
+    }
+    // A short sha is the seven-character prefix GitHub and the Action print.
+    for (const [original, stamp] of mapping.strings) {
+        if (GIT_SHA.test(original)) out = out.split(original.slice(0, 7)).join(stamp.slice(0, 7));
     }
     return out;
 }
