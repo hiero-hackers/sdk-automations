@@ -1,6 +1,6 @@
-# On a version tag: the hosted image, pushed and attested; and the Action bundle, attested and
-# committed on `release/<tag>`, with `releases/v<major>` and the major tag moved to it, so no
-# source commit carries it.
+# On a version tag: the hosted image, pushed and attested with its provenance and SBOM; and the
+# Action bundle, attested the same two ways and committed on `release/<tag>`, with
+# `releases/v<major>` and the major tag moved to it, so no source commit carries it.
 name: release
 
 on:
@@ -58,6 +58,27 @@ jobs:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+      # The image's SBOM, read from the pushed digest with the login above; syft comes from its
+      # checksummed release, like actionlint in ci.yml.
+      - name: list the image's packages
+        env:
+          SYFT_VERSION: 1.55.0
+          SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
+          IMAGE: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "${RUNNER_TEMP}/syft.tar.gz" "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  ${RUNNER_TEMP}/syft.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/syft.tar.gz" -C "${RUNNER_TEMP}" syft
+          "${RUNNER_TEMP}/syft" scan "registry:${IMAGE}" -o "spdx-json=${RUNNER_TEMP}/image.spdx.json"
+      # The provenance step above already records where the image is stored.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/image.spdx.json
+          push-to-registry: true
+          create-storage-record: false
 
   release:
     name: build and publish the action
@@ -73,15 +94,35 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      # No dependency cache: a release builds from the lockfile alone, so no cache entry another
+      # run wrote can reach the published bundle.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: pnpm
+          package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @hiero-hackers/automation-runtime build:action
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/runtime/dist/action.js
+      # The bundle holds what esbuild inlined: the runtime's production closure, which a production
+      # deploy lays out as installed packages for syft to read. The workspace's dev tools are not in it.
+      - name: list the bundle's packages
+        env:
+          SYFT_VERSION: 1.55.0
+          SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
+        run: |
+          set -euo pipefail
+          pnpm --filter @hiero-hackers/automation-runtime deploy --prod --legacy "${RUNNER_TEMP}/bundle-closure"
+          curl -fsSL -o "${RUNNER_TEMP}/syft.tar.gz" "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  ${RUNNER_TEMP}/syft.tar.gz" | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/syft.tar.gz" -C "${RUNNER_TEMP}" syft
+          "${RUNNER_TEMP}/syft" scan "dir:${RUNNER_TEMP}/bundle-closure" --select-catalogers +javascript-package-cataloger \
+            --source-name sdk-automations-action --source-version "${GITHUB_REF_NAME}" -o "spdx-json=${RUNNER_TEMP}/action.spdx.json"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: packages/runtime/dist/action.js
+          sbom-path: ${{ runner.temp }}/action.spdx.json
       # The bundle goes through the contents API, which GitHub signs, onto `release/<tag>`, cut at
       # the tagged commit and kept, so each release SHA a consumer pins stays on a branch after the
       # major moves on. A re-run resets that branch and publishes a fresh SHA, which the notes below
@@ -98,7 +139,8 @@ jobs:
           MAJOR="${GITHUB_REF_NAME%%.*}"
           TAG_BRANCH="release/${GITHUB_REF_NAME}"
           export FILE TAG_BRANCH
-          export MSG="$(printf 'release: %s\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' "${GITHUB_REF_NAME}")"
+          MSG="$(printf 'release: %s\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' "${GITHUB_REF_NAME}")"
+          export MSG
           gh api -X PATCH "${REPO}/git/refs/heads/${TAG_BRANCH}" -f sha="${GITHUB_SHA}" -F force=true >/dev/null \
             || gh api -X POST "${REPO}/git/refs" -f ref="refs/heads/${TAG_BRANCH}" -f sha="${GITHUB_SHA}" >/dev/null
           node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/put.json",JSON.stringify({message:process.env.MSG,branch:process.env.TAG_BRANCH,content:fs.readFileSync(process.env.FILE).toString("base64")}))'
@@ -119,6 +161,8 @@ jobs:
         run: |
           set -euo pipefail
           MAJOR="${GITHUB_REF_NAME%%.*}"
+          # The backticks are Markdown for the Release page, not command substitution.
+          # shellcheck disable=SC2016
           NOTES="$(printf 'Bundle built from commit %s.\nPin `%s`, or the release SHA %s on `release/%s`.\nThe Action is pre-1.0: expect it to change, and start in `dry-run`.' "${GITHUB_SHA}" "${MAJOR}" "${RELEASE_SHA}" "${GITHUB_REF_NAME}")"
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release edit "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "${NOTES}" --prerelease="$([ "${MAJOR}" = v0 ] && echo true || echo false)"
