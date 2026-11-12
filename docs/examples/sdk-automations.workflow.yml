@@ -7,8 +7,10 @@ name: sdk-automations
 on:
   issues:
     types: [opened, labeled, unlabeled, closed, reopened, assigned, unassigned]
+  # zizmor: ignore[dangerous-triggers] nothing here checks out or runs the commenter's code
   issue_comment:
     types: [created]
+  # zizmor: ignore[dangerous-triggers] no checkout: the Action reads the configuration through the API
   pull_request_target:
     types:
       [
@@ -40,8 +42,22 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # The sweep's place in a list longer than one run can read, carried to the next scheduled
+      # run; the newest entry wins. Only the schedule touches it, so no pull request can write it.
+      - if: github.event_name == 'schedule'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: sdk-automations-cursor.json
+          key: sdk-automations-cursor-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sdk-automations-cursor-
       # The major tag moves with each release (v0 while the Action is pre-1.0); pin the
       # release SHA where you can.
-      - uses: hiero-hackers/sdk-automations@v0
+      - uses: hiero-hackers/sdk-automations@v0 # zizmor: ignore[unpinned-uses] the documented default; installing.md says how to pin
         with:
           arm-writes: "false"
+          sweep-cursor: sdk-automations-cursor.json
+      - if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: sdk-automations-cursor.json
+          key: sdk-automations-cursor-${{ github.run_id }}-${{ github.run_attempt }}

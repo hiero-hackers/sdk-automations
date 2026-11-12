@@ -536,6 +536,16 @@ export class Ledger {
             .run(scheduleId, dueAt, effect);
     }
 
+    /** Point a pending schedule's next firing past `resumeAfter`: the cursor a previous process kept (D248). */
+    resumeScheduleAfter(scheduleId: string, resumeAfter: number | null): boolean {
+        const result = this.db
+            .prepare(
+                "UPDATE schedule SET resume_after = ? WHERE schedule_id = ? AND status = 'pending'",
+            )
+            .run(resumeAfter, scheduleId);
+        return result.changes === 1;
+    }
+
     /**
      * Atomically claim every due pending schedule and return the claimed rows.
      * A restart mid-processing does NOT re-fire a running schedule; redriving stuck `running` rows is `requeueStuck`, deliberately not this method.
