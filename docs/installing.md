@@ -50,6 +50,18 @@ The editor schema is served from the default branch, so it can accept a key the 
 does not read yet. A block's own `mode` is one: `v0.1.0` refuses it as `unknownKey`, and the first
 release after it reads it.
 
+## The sweep's place in a long list
+
+One run's token reaches only so many items, so in a large repository the hourly sweep can stop
+before the end of its list. The example's two cache steps carry where it stopped, in
+`sdk-automations-cursor.json`, to the next scheduled run, which continues from there; the run that
+reaches the end starts the next pass from the first item again. Without them, or once GitHub has
+evicted the entry after a week unused, every sweep starts from the first item, and items numbered
+past what one run reaches are never swept. Each run saves a small entry and only the newest is read,
+so older ones age out on their own. The steps run on the schedule alone, so no pull request's run
+can write the entry. An entry the run cannot read is reported as a warning and the sweep starts
+over; a cursor the run cannot write fails the run.
+
 ## Going active with a backlog
 
 The first active sweep acts on everything already open, not only on what arrives next: the
@@ -98,4 +110,9 @@ names the event that failed, and the job turns red. GitHub emails a scheduled ru
 whoever last edited the workflow file, so that person should be someone who will read it.
 
 GitHub switches off `schedule` workflows in a public repository with no activity for 60 days. The
-hourly sweep then stops without a failed run; re-enable the workflow from the Actions tab.
+hourly sweep then stops without a failed run, and that is when it matters most: the inactivity
+reminders are for work nobody is touching. Nothing documented keeps a workflow enabled, so the
+Action offers no keep-alive. Check it instead, for example from a monthly reminder:
+`gh api repos/<owner>/<repo>/actions/workflows/sdk-automations.yml --jq .state` answers
+`disabled_inactivity` once it is off, and `gh workflow enable sdk-automations.yml -R <owner>/<repo>`,
+or the Actions tab, turns it back on.
