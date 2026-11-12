@@ -1,6 +1,7 @@
 /**
  * What each enabled check asks the platform, and the row it earns: one read
- * shared by the two commit checks, one per linked issue for the assignment.
+ * shared by the two commit checks, one per linked issue for the assignment,
+ * and one profile read for every enabled signal.
  */
 
 import {
@@ -21,6 +22,7 @@ import {
 } from "./checks.js";
 import { prDashboardDeclaration, type Platform } from "./declaration.js";
 import { PR_DASHBOARD_SETTINGS } from "./settings.js";
+import { anySignal, notesFor, type Note, type Signals } from "./signals.js";
 
 export type Checks = SettingsOf<typeof PR_DASHBOARD_SETTINGS>["checks"];
 
@@ -138,4 +140,21 @@ export async function rowsFor(
         ...(await mergeRows(checks, item, platform)),
         ...(await linkRows(checks, item, author, platform)),
     ];
+}
+
+/** Every enabled signal's note, from one profile read; an unanswered read makes each one unknown. */
+export async function signalNotes(
+    signals: Signals,
+    item: ItemRef,
+    platform: Platform,
+): Promise<Note[]> {
+    if (!anySignal(signals)) return [];
+    const profile = await platform.resolve("pullRequestProfile", { item });
+    if (profile.ok) return notesFor(signals, profile.value);
+    platform.explain({
+        capability: prDashboardDeclaration.name,
+        summary: "The reviewer signals are unknown: a resolver could not answer.",
+        detail: [`resolver reason: ${profile.reason}`, profile.detail],
+    });
+    return notesFor(signals, null);
 }

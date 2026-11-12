@@ -137,6 +137,16 @@ const externals: Externals = {
         if (query === "assigneesOf") return { ok: true, value: [] } as never;
         if (query === "openAssignments") return { ok: true, value: [] } as never;
         if (query === "configAtHead") return { ok: true, value: { touched: false } } as never;
+        if (query === "pullRequestProfile") {
+            const profile = {
+                blankDescription: false,
+                firstContribution: null,
+                additions: 0,
+                deletions: 0,
+                changedFiles: 0,
+            };
+            return { ok: true, value: profile } as never;
+        }
         return { ok: true, value: false } as never;
     },
 };

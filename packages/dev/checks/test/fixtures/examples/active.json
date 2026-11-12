@@ -35,6 +35,17 @@
                         }
                     }
                 },
+                "signals": {
+                    "blankDescription": {
+                        "enabled": false
+                    },
+                    "firstContribution": {
+                        "enabled": false
+                    },
+                    "diffSize": {
+                        "enabled": false
+                    }
+                },
                 "applyLabels": []
             }
         },

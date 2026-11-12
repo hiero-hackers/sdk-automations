@@ -19,6 +19,7 @@ export const prDashboardDeclaration = declareCapability({
         "commitAttestations",
         "mergeability",
         "assigneesOf",
+        "pullRequestProfile",
     ],
     intents: ["postManagedComment", "applyMappedLabel"],
 });

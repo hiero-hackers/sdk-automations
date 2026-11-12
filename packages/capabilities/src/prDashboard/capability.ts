@@ -18,7 +18,8 @@ import {
     type PrDashboardDeclaration,
 } from "./declaration.js";
 import { dashboard } from "./messages.js";
-import { anyEnabled, rowsFor } from "./rows.js";
+import { anyEnabled, rowsFor, signalNotes } from "./rows.js";
+import { anySignal, noteDetail } from "./signals.js";
 
 export { prDashboardDeclaration, type PrDashboardDeclaration } from "./declaration.js";
 
@@ -65,8 +66,13 @@ export const prDashboard: Capability<PrDashboardDeclaration> = {
     declaration: prDashboardDeclaration,
 
     async evaluate(facts, config, platform) {
-        const { checks } = config.settings;
-        if (!anyEnabled(checks)) return [];
+        const { checks, signals } = config.settings;
+        if (!anyEnabled(checks)) {
+            // Signals annotate the dashboard; with no check there is no dashboard to annotate.
+            return anySignal(signals)
+                ? platform.skip("Skipped: signals are enabled, but no check is.")
+                : [];
+        }
         // The dashboard speaks to a person: a bot can neither sign off nor take an assignment.
         if (await platform.ask("isAutomationActor", { login: facts.author })) return [];
         const rows = await rowsFor(checks, facts.item, facts.author, platform);
@@ -76,13 +82,17 @@ export const prDashboard: Capability<PrDashboardDeclaration> = {
                 ...rows.map((row) => `${row.check}: ${row.outcome}`),
             );
         }
+        const notes = await signalNotes(signals, facts.item, platform);
         const report = platform.intent({
             operation: "postManagedComment",
-            desired: { kind: "summary", body: dashboard(facts.author, rows) },
+            desired: { kind: "summary", body: dashboard(facts.author, rows, notes) },
             cause: "pullRequestChecked",
             explain: {
                 summary: "Reported the quality checks on this pull request.",
-                detail: rows.map((row) => `${row.check}: ${row.outcome}`),
+                detail: [
+                    ...rows.map((row) => `${row.check}: ${row.outcome}`),
+                    ...notes.map(noteDetail),
+                ],
             },
         });
         const label = labelIntent(rows, facts, config.settings.applyLabels, platform);

@@ -13,7 +13,7 @@ spelling), its own block's keys, and nothing another capability was given.
 | Capability | What it does | Wakes on | Needs mapped | Settings keys | May write | Design |
 |---|---|---|---|---|---|---|
 | `triageQueue` | put a new issue in the triage queue: label it, welcome its author, hold it until triaged | the `issues` webhook | `labels.awaitingTriage` | `welcome`, `lockUntilTriaged`, `confirmUnlock`, `requirements` | the `awaitingTriage` label, at your spelling or the default; a comment it keeps up to date; a lock on an issue; an unlock | [design page](../packages/capabilities/src/triageQueue/design.md) |
-| `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
+| `prDashboard` | one dashboard comment that tells a contributor what stops their pull request from being ready to review | the `pull_request` webhook, a schedule (hourly recheck of every open pull request) | nothing required | `checks`, `signals`, `applyLabels` | a comment it keeps up to date; the `needsRevision`, `needsReview` labels, at your spelling or the default | [design page](../packages/capabilities/src/prDashboard/design.md) |
 | `inactivity` | remind about stalled work, then release it | a schedule (hourly stale-assignment sweep) | nothing required | `exemptBlocked`, `exemptMaintainers`, `exemptBots`, `remindAfter`, `reap`, `issues`, `pullRequests` | a comment it keeps up to date; an assignment's release, after a warning; a pull request's closure, after a warning | [design page](../packages/capabilities/src/inactivity/design.md) |
 | `configReport` | one comment on a pull request that changes `sdk-automations.yml`, saying what the App would read from it | the `pull_request` webhook | nothing required | none | a comment it keeps up to date | [design page](../packages/capabilities/src/configReport/design.md) |
 | `assignment` | let a contributor claim work, and release it again | the `issue_comment` webhook | nothing required | `autoAssign`, `unassign` | a comment it keeps up to date; an assignment; an unassignment | [design page](../packages/capabilities/src/assignment/design.md) |
@@ -74,6 +74,14 @@ checks: # default — The quality checks this repository runs — each one off u
     assignedIssues: # off until enabled — Say so when the author is not assigned to every linked issue
       enabled: true
       # guide: "…" — optional; A page explaining how to get assigned, shown to the contributor when this check fails
+signals: # default — Facts for reviewers under the checks — never a check, never the verdict, each one off until it is enabled
+  blankDescription: # off until enabled — Tell reviewers whether the description is blank, HTML comments aside
+    enabled: true
+  firstContribution: # off until enabled — Tell reviewers whether GitHub counts this as the author's first contribution here
+    enabled: true
+  diffSize: # off until enabled — Tell reviewers how many lines and files the pull request changes
+    enabled: true
+    lines: 500 # default — Lines added plus removed above which the size is called out
 applyLabels: [] # none — The positions the dashboard may set: needsRevision on any failure, needsReview when every check passes on a pull request that is ready for review
 ```
 
