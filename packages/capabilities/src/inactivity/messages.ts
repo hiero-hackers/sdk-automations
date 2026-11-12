@@ -36,12 +36,17 @@ export function pullRequestReminder(
     return `${opening} ${REASON_PHRASE[reason]} without development activity for ${lasting(ladder.remindAfter)}. Push a commit or comment \`/working\` to let us know you are working on it${next}.`;
 }
 
-/** The close's reason, and the notice the platform posts after it (grace.md §3). */
+/** The close's reason. The act's change carries it, so rewording it voids every pending warning. */
 export function closeReason(reapAfter: number): string {
     return `This pull request was closed after ${lasting(reapAfter)} of inactivity.`;
 }
 
+/** What the platform posts once a close lands: the reason that fired, and the way back (grace.md §3). */
+export function closeNotice(reason: ReapReason, reapAfter: number): string {
+    return `This pull request was closed: it has ${REASON_PHRASE[reason]} without development activity for ${lasting(reapAfter)}. Want to keep going? Push your changes and ask a maintainer to reopen it.`;
+}
+
 /** What the platform posts once a release lands — the design's release text. */
 export function issueReleaseNotice(reapAfter: number): string {
-    return `This assignment was released after ${lasting(reapAfter)} of inactivity. The issue is open for anyone to pick up — you are welcome to \`/assign\` it again when you have capacity.`;
+    return `This assignment was released after ${lasting(reapAfter)} with no pull request and no \`/working\`. The issue is open for anyone to pick up — you are welcome to \`/assign\` it again when you have capacity.`;
 }

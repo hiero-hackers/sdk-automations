@@ -9,6 +9,7 @@
 import {
     assigneeClock,
     CANCELLED_BY,
+    isConflicted,
     lasting,
     people,
     REVERSES_WITH,
@@ -18,23 +19,30 @@ import {
 } from "@hiero-hackers/automation-core/author";
 import type { LadderContext } from "./context.js";
 import type { InactivityDeclaration, IssueLadderFacts } from "./declaration.js";
+import { exemptedAsBlocked, exemptedAssignee } from "./exemptions.js";
 import {
+    exemptAsBlocked,
     exemptLogin,
     graceHoursOf,
     ladderOf,
     reaps,
-    stillOnTheLadder,
     type Ladder,
     type Reaping,
 } from "./ladder.js";
 import { issueReleaseNotice, issueReminder } from "./messages.js";
+
+/** One assignee past the reminder, with the clock that put them there. */
+interface StaleAssignee {
+    readonly assignee: AssigneeClock;
+    readonly clock: Clock;
+}
 
 export async function onIssue(
     facts: IssueLadderFacts,
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
     const { issues } = context.settings;
-    if (!stillOnTheLadder(facts, context.settings)) return [];
+    if (isConflicted(facts)) return [];
     if (!issues.enabled) return [];
     // With a pull request open, the pull-request ladder governs (design.md).
     if (facts.links.openPullRequests.length > 0) return [];
@@ -47,19 +55,40 @@ async function onIssueLadder(
     ladder: Ladder,
     context: LadderContext,
 ): Promise<readonly IntentFor<InactivityDeclaration>[]> {
-    const intents: IntentFor<InactivityDeclaration>[] = [];
+    const stale = await contributorsPastReminder(facts, ladder, context);
+    if (stale.length === 0) return [];
+    if (exemptAsBlocked(facts, context.settings)) {
+        exemptedAsBlocked(context.platform, stale.map(staleness));
+        return [];
+    }
+    return stale.map(({ assignee, clock }) =>
+        reaps(ladder)
+            ? release(context, assignee, clock, ladder)
+            : remind(context, assignee, clock, ladder),
+    );
+}
+
+/** The human assignees whose own clock passed the reminder, minus listed maintainers, each recorded. */
+async function contributorsPastReminder(
+    facts: IssueLadderFacts,
+    ladder: Ladder,
+    context: LadderContext,
+): Promise<readonly StaleAssignee[]> {
+    const stale: StaleAssignee[] = [];
     for (const assignee of await people(context.platform, facts.assignees)) {
-        if (exemptLogin(assignee.login, context.settings)) continue;
         const clock = assigneeClock(assignee, context.observedAt);
         if (clock.idleHours < ladder.remindAfter) continue;
-        intents.push(
-            reaps(ladder)
-                ? release(context, assignee, clock, ladder)
-                : remind(context, assignee, clock, ladder),
-        );
+        if (exemptLogin(assignee.login, context.settings)) {
+            exemptedAssignee(context.platform, assignee.login, staleness({ assignee, clock }));
+        } else {
+            stale.push({ assignee, clock });
+        }
     }
-    return intents;
+    return stale;
 }
+
+const staleness = ({ assignee, clock }: StaleAssignee): string =>
+    `${assignee.login} idle ${lasting(clock.idleHours)}`;
 
 /**
  * The release, carrying the reminder's words as grace. One assignee per

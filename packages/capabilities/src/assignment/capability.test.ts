@@ -382,7 +382,7 @@ describe("claims, refusals and releases", () => {
         const holder = await run(comment("unassign", "alice"), { holders: ["alice"] });
         expectRelease(holder.intents);
         expect(noticeOf(holder.intents).body).toContain(
-            "@alice claimed this issue and has since been unassigned at their request. The issue is open for anyone to pick up.",
+            "@alice claimed this issue and has since been unassigned at their request. The issue is open for anyone to pick up — comment this repository's assign command to claim it again.",
         );
     });
 
@@ -542,7 +542,7 @@ describe("the order of the guards", () => {
         it("tells the commenter it is already claimed when someone else holds it", async () => {
             const taken = await run(unclaimable, { holders: ["bob"] }, view);
             expect(noticeOf(taken.intents).body).toBe(
-                "Hi @alice — this issue is already assigned to @\u200bbob, so it cannot be claimed.",
+                "Hi @alice — this issue is already assigned to @\u200bbob, so it cannot be claimed. It can be claimed again once it is released.",
             );
 
             const free = await run(unclaimable, { holders: [] }, view);
@@ -598,7 +598,7 @@ describe("the switches, the guard and the lists", () => {
             viewWith({ notClaimableWhen: ["blocked", "awaitingTriage"] }),
         );
         expect(noticeOf(paused.intents).body).toBe(
-            "Hi @alice — this issue cannot be claimed while it is marked `blocked`.",
+            "Hi @alice — this issue cannot be claimed while it is marked `blocked`. It can be claimed once that changes.",
         );
     });
 
@@ -607,7 +607,7 @@ describe("the switches, the guard and the lists", () => {
 
         const refused = await run(comment("assign"), {}, view);
         expect(noticeOf(refused.intents).body).toBe(
-            "Hi @alice — only an issue marked `ready`, `inProgress` or `awaitingTriage` can be claimed in this repository, and this one is not yet.",
+            "Hi @alice — only an issue marked `ready`, `inProgress` or `awaitingTriage` can be claimed in this repository, and this one is not yet. It can be claimed once it is.",
         );
 
         const accepted = await run(
@@ -621,7 +621,7 @@ describe("the switches, the guard and the lists", () => {
     it("names every holder of the issue, and pings none of them", async () => {
         const refused = await run(comment("assign"), { holders: ["bob", "carol", "dave"] });
         expect(noticeOf(refused.intents).body).toBe(
-            "Hi @alice — this issue is already assigned to @\u200bbob, @\u200bcarol, @\u200bdave, so it cannot be claimed.",
+            "Hi @alice — this issue is already assigned to @\u200bbob, @\u200bcarol, @\u200bdave, so it cannot be claimed. It can be claimed again once it is released.",
         );
 
         const accepted = await run(comment("assign"), { holders: [] });
@@ -670,6 +670,24 @@ describe("the switches, the guard and the lists", () => {
         expect(noticeOf(capped.intents).body).toContain(
             "Release one with this repository's unassign command",
         );
+    });
+
+    it("tells a capped commenter with no release command what frees a claim", async () => {
+        const quiet = viewWith({ maxOpen: 1 }, { enabled: false });
+        const capped = await run(comment("assign"), { open: open(1) }, quiet);
+
+        expect(noticeOf(capped.intents).body).toContain(
+            "Once one of them is closed, you can claim this issue.",
+        );
+    });
+
+    it("offers the claim back after a release only where claims are on", async () => {
+        const releasing = await run(comment("unassign", "alice"), { holders: ["alice"] });
+        expect(noticeOf(releasing.intents).body).toContain("assign command to claim it again");
+
+        const claimsOff = viewWith({ enabled: false });
+        const quiet = await run(comment("unassign", "alice"), { holders: ["alice"] }, claimsOff);
+        expect(noticeOf(quiet.intents).body).not.toContain("claim it again");
     });
 
     it("reads a login the same whatever its case", async () => {

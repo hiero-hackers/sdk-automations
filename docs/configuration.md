@@ -281,6 +281,10 @@ where the label is one act among several lists the positions it may set, like pr
 | `readyToMerge` | Approved, awaiting merge | `status: ready to merge` | `#006b75` Approved and waiting to merge |
 | `blocked` | Paused by a human — the App reads this and never sets it | `status: blocked` | `#b60205` Paused by a person; every clock waits |
 
+**Pausing an item** is adding its `blocked` label by hand; removing it resumes. While it is on,
+no capability writes to the item, and `inactivity` sends no reminder and makes no release. There is
+no pause command: a command would have the App set `blocked`, and only a person may (D79, D251).
+
 Rules: a label must be a non-empty string, and no two meanings may share one. The duplicate check
 ignores case and surrounding spaces, but the label is otherwise used **exactly as written** — it has
 to match your real GitHub label character for character.
