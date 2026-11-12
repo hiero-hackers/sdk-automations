@@ -83,6 +83,13 @@ const READY_LABEL = "status: ready";
 /** The default timeline's one human label — later than any fixture's cause. */
 const TIMELINE_AT = "2026-08-06T23:10:51Z";
 
+/**
+ * The warning older Node 24 releases (24.14 does; 24.21 does not) print on loading `node:sqlite`; the store
+ * needs that module, so a clean shutdown on those releases leaves exactly this on stderr.
+ */
+const SQLITE_WARNING =
+    /^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n/;
+
 const MISSING_VARIABLES =
     "WEBHOOK_SECRET is required; REPO_OWNER and REPO_NAME are required without App credentials (the repository the local file serves).";
 
@@ -1230,7 +1237,7 @@ describe("the sandbox entry point, as a process", () => {
                             { at: expect.any(String), event: "shutdown", signal },
                         ]);
                         expect(written.at(-1)).toMatchObject({ event: "shutdown" });
-                        expect(shell.stderr()).toBe("");
+                        expect(shell.stderr().replace(SQLITE_WARNING, "")).toBe("");
                     },
                 );
             });
