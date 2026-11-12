@@ -217,6 +217,15 @@ export const readPull = (
 ): Promise<Read<Record<string, unknown>>> =>
     readRecord(context, pullPath(context, number), `#${String(number)} pull request`);
 
+/** One item as its own endpoint holds it: the pull request's for a pull request, the issue's for an issue. */
+export const readItem = (
+    context: RepositoryReads,
+    item: ItemRef,
+): Promise<Read<Record<string, unknown>>> =>
+    item.kind === "pullRequest"
+        ? readPull(context, item.number)
+        : readRecord(context, issuePath(context, item.number), `#${String(item.number)} issue`);
+
 /**
  * The two reads more than one fact folds over, keyed by item number.
  * A reader called on its own gets `everyTime`; the sweep's reader memoises both.

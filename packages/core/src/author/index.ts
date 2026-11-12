@@ -81,6 +81,7 @@ export {
     type IssueFacts,
     type ItemRef,
     type PullRequestFacts,
+    type PullRequestProfile,
     type RepositoryRef,
     type ResolverAnswer,
     type ResolverInput,

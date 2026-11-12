@@ -27,6 +27,14 @@ all-clear; with nothing linked, the assignment check fails and says what to do f
 >
 > ⏳ A check could not run this time. It runs again on the next update to this pull request.
 
+With signals enabled, a section for reviewers follows the closing line. It states facts with no
+mark, because a signal neither passes nor fails:
+
+> **For reviewers** — what GitHub states about this pull request. No check depends on it.
+> - **Description** — Blank, HTML comments aside.
+> - **Author** — First contribution to this repository, by GitHub's count.
+> - **Size** — +1200 −40 across 38 files. That is above this repository's 500-line mark.
+
 When every enabled check passes, the closing line is `✅ Every check passes.` A row names at most
 twenty commits or issues and counts the rest. Commit shas and subjects are escaped and `@mentions`
 broken before rendering (they are attacker-controlled); the guide is the maintainer's own text.
@@ -56,6 +64,14 @@ capabilities:
         assignedIssues: # sub-check — the dependency is the structure
           enabled: true
           guide: "https://github.com/<org>/<repo>/wiki/Assignment"
+    signals: # facts for reviewers; never a check, never the verdict
+      blankDescription:
+        enabled: true
+      firstContribution:
+        enabled: true
+      diffSize:
+        enabled: true
+        lines: 500 # default; the size is called out above this many lines added plus removed
     applyLabels: [needsRevision, needsReview] # the positions the verdict may set; each mapped below
 
 mappings:
@@ -79,7 +95,7 @@ capabilities:
         enabled: true
 ```
 
-All five checks and `applyLabels` are in the shipped spec. `applyLabels` lists the positions the
+All five checks, the three signals and `applyLabels` are in the shipped spec. `applyLabels` lists the positions the
 verdict may set: a listed position is written at the file's spelling, the default where the file
 maps none, and defined in the repository when it lacks the label; one prDashboard never sets
 (anything but the two) is reported on the operator surface at every evaluation.
@@ -133,11 +149,26 @@ outright (D198).
 | Issue link | ≥1 linked issue, listed | none found | resolver failed |
 | Assignment | author assigned to every linked issue | unassigned issues listed, or nothing linked to check against | the links or any assignee list unreadable |
 
+Signals sit beside the checks, not among them (D254). They are facts GitHub states, shown to
+reviewers and never enforced: no signal changes a row, the closing line, or the verdict's label,
+and a repository that enables signals but no check gets no dashboard, with the reason on the
+operator surface. Every signal comes from one `pullRequestProfile` read of the pull request; an
+unanswered read renders each enabled signal unknown and says why on the operator surface. Until
+the conformance probe records that read's fields, the adapter answers it `unavailable` without
+sending it, so every signal renders unknown. Whether the author is assigned to the linked issue is
+already the Assignment check, so it is not repeated here.
+
+| Signal | States | Unknown when |
+|---|---|---|
+| Description | blank or written, once HTML comments (a template's prompts) are removed | the read failed |
+| Author | first contribution here (`FIRST_TIME_CONTRIBUTOR`, `FIRST_TIMER`) or returning (`CONTRIBUTOR`, `COLLABORATOR`, `MEMBER`, `OWNER`) | GitHub's association is `NONE`, `MANNEQUIN`, absent, or the read failed |
+| Size | lines added and removed, and files changed; called out above `lines` | the read failed |
+
 | Declaration | Value |
 |---|---|
 | `triggers` | `pull_request` (opened, edited, synchronize, reopened, ready_for_review) · `schedule` — the hourly sweep re-evaluates every open pull request; the sweep's own reads are shared, and each pull request costs the resolvers it asks (commits, mergeability, links, one read per linked issue), bounded by the sweep's allowance |
 | `facts` / `needs` | a `pullRequest` record with the `readiness` group (draft or ready), which the `pull_request` producer reads |
-| `resolvers` | `isAutomationActor` (the author; no request) · `linkedIssues` · `commitAttestations` (read once for both commit checks) · `mergeability` · `assigneesOf` (one read per linked issue; an ISSUE number) — every read a confirmed matrix row (protocol 6.9) |
+| `resolvers` | `isAutomationActor` (the author; no request) · `linkedIssues` · `commitAttestations` (read once for both commit checks) · `mergeability` · `assigneesOf` (one read per linked issue; an ISSUE number) — every read a confirmed matrix row (protocol 6.9) · `pullRequestProfile` (one read for every enabled signal; not yet confirmed, so answered `unavailable`) |
 | `intents` | `postManagedComment` (`summary`) · `applyMappedLabel` (`needsReview`/`needsRevision`) |
 | `requiredMappings` | none — `applyLabels` demands the mapping of each position it lists |
 | Permissions | repository: `pull_requests:read`, `issues:read`, `issues:write` · organization: none |
@@ -184,3 +215,9 @@ outright (D198).
 | `applyLabels` names a position the file does not map | set at its default spelling (D203) |
 | `applyLabels` names no meaning | the file is refused |
 | `applyLabels` names a position never set | reported; the listed ones still set |
+| Every signal enabled | each listed under the closing line, with no mark |
+| A size within the repository's mark | stated, not called out |
+| An author association of `NONE` | the author note is unknown, not first and not returning |
+| The profile cannot be read | every signal unknown, the reason on the operator surface; the checks still judged |
+| Every check passes, the description blank, the author new | `needsReview` all the same: no signal moves the verdict |
+| Signals enabled, no check enabled | skipped with the reason; nothing asked |

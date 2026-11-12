@@ -9,6 +9,7 @@ import type {
     AdmittedCapability,
     Allowance,
     Externals,
+    ItemRef,
     PermissionGrant,
     ReadBack,
     RepositoryRef,
@@ -26,12 +27,14 @@ import {
     installationGrants,
     liveExternalsForDelivery,
     orderingEvidenceSource,
+    readItem,
     staticTokenSource,
     wait,
     type Allowance as ClientAllowance,
     type AppIdentity,
     type FactsReader,
     type OrderingEvidenceOptions,
+    type Read,
     type TokenSource,
 } from "../../adapter/index.js";
 import type { Log } from "../log.js";
@@ -53,6 +56,8 @@ export interface LiveGitHub {
     readonly sweepAllowance: Allowance;
     /** The webhook lane's, holding the share the sweep does not (D192). */
     readonly deliveryAllowance: Allowance;
+    /** One item as GitHub holds it now, charged to the webhook lane. */
+    readItem(repository: RepositoryRef, item: ItemRef): Promise<Read<Record<string, unknown>>>;
 }
 
 /** An App's credentials, or a token minted elsewhere with the identity it acts as. */
@@ -243,6 +248,8 @@ export function liveGitHub({
     return {
         sweepAllowance,
         deliveryAllowance,
+        readItem: (repository, item) =>
+            readItem({ http, repository, allowance: deliveryAllowance }, item),
         // Held seams are the webhook lane's, and spend its allowance; the sweep passes its own.
 
         seamsFor: (repository, allowance) => {

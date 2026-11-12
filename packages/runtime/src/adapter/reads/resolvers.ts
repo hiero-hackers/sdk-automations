@@ -18,6 +18,7 @@ import {
     type ConfigAtHead,
     type ItemRef,
     type MappableMeaning,
+    type PullRequestProfile,
     type RepositoryConfig,
     type RepositoryRef,
     type ResolverAnswer,
@@ -187,17 +188,11 @@ async function commitAttestations(
         : readCommitAttestations(options, number);
 }
 
-/**
- * Can GitHub merge this pull request cleanly?
- * GitHub reports `null` while it is still computing; that is neither `true` nor `false`.
- */
-async function mergeability(
+/** `GET /pulls/{n}`, held to the pull request it was asked about. */
+async function readPullRecord(
     { http, repository, allowance }: ResolverSourceOptions,
-    input: unknown,
-): Promise<ResolverAnswer<boolean>> {
-    const number = itemNumber(input, "pullRequest");
-    if (number === null) return unavailable("mergeability requires a valid pull request item");
-
+    number: number,
+): Promise<ResolverAnswer<Record<string, unknown>>> {
     const outcome = await http.request(
         { url: `${repoPath(repository)}/pulls/${String(number)}`, method: "GET" },
         allowance,
@@ -208,11 +203,95 @@ async function mergeability(
     if (body["number"] !== number) {
         return unavailable("GitHub answered about a different pull request");
     }
-    const mergeable = body["mergeable"];
+    return { ok: true, value: body };
+}
+
+/**
+ * Can GitHub merge this pull request cleanly?
+ * GitHub reports `null` while it is still computing; that is neither `true` nor `false`.
+ */
+async function mergeability(
+    options: ResolverSourceOptions,
+    input: unknown,
+): Promise<ResolverAnswer<boolean>> {
+    const number = itemNumber(input, "pullRequest");
+    if (number === null) return unavailable("mergeability requires a valid pull request item");
+
+    const read = await readPullRecord(options, number);
+    if (!read.ok) return read;
+    const mergeable = read.value["mergeable"];
     if (typeof mergeable !== "boolean") {
         return unavailable("GitHub has not finished computing whether this branch merges cleanly");
     }
     return { ok: true, value: mergeable };
+}
+
+/** Associations GitHub gives an author with no earlier commit here, or none on GitHub at all. */
+const FIRST_ASSOCIATIONS = new Set(["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER"]);
+
+/** Associations that imply an earlier contribution; `NONE` and `MANNEQUIN` say neither. */
+const RETURNING_ASSOCIATIONS = new Set(["CONTRIBUTOR", "COLLABORATOR", "MEMBER", "OWNER"]);
+
+function firstContributionOf(association: unknown): boolean | null {
+    if (typeof association !== "string") return null;
+    if (FIRST_ASSOCIATIONS.has(association)) return true;
+    return RETURNING_ASSOCIATIONS.has(association) ? false : null;
+}
+
+/** Blank once HTML comments are removed: a template's prompts are comments, not an answer. */
+function isBlankDescription(body: unknown): boolean | null {
+    if (body === null) return true;
+    if (typeof body !== "string") return null;
+    return withoutComments(body).trim() === "";
+}
+
+/** Strips HTML comments until none is left, so a nested opener cannot survive one pass. */
+function withoutComments(text: string): string {
+    let previous: string;
+    let current = text;
+    do {
+        previous = current;
+        current = current.replace(/<!--[\s\S]*?-->/g, "");
+    } while (current !== previous);
+    return current;
+}
+
+const isCount = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * The description, author association and diff size of one pull request.
+ * Not yet dispatched: the probe has not recorded these fields, so the gate answers `unavailable`.
+ */
+export async function readPullRequestProfile(
+    options: ResolverSourceOptions,
+    number: number,
+): Promise<ResolverAnswer<PullRequestProfile>> {
+    const read = await readPullRecord(options, number);
+    if (!read.ok) return read;
+    const pull = read.value;
+    const blankDescription = isBlankDescription(pull["body"]);
+    const additions = pull["additions"];
+    const deletions = pull["deletions"];
+    const changedFiles = pull["changed_files"];
+    if (
+        blankDescription === null ||
+        !isCount(additions) ||
+        !isCount(deletions) ||
+        !isCount(changedFiles)
+    ) {
+        return unavailable("GitHub returned malformed pull request data");
+    }
+    return {
+        ok: true,
+        value: {
+            blankDescription,
+            firstContribution: firstContributionOf(pull["author_association"]),
+            additions,
+            deletions,
+            changedFiles,
+        },
+    };
 }
 
 /**

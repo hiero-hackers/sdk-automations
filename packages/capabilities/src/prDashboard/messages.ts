@@ -2,6 +2,7 @@
 
 import { mentions } from "@hiero-hackers/automation-core/author";
 import { type CheckName, type Row } from "./checks.js";
+import { type DiffSize, type Note } from "./signals.js";
 
 const TITLE: Readonly<Record<CheckName, string>> = {
     dcoSignoff: "DCO sign-off",
@@ -81,12 +82,57 @@ const closing = (rows: readonly Row[]): string => {
     return SOME_UNDETERMINED;
 };
 
-/** The whole dashboard: a greeting, one paragraph per enabled check, a closing line. */
-export function dashboard(author: string, rows: readonly Row[]): string {
+const REVIEWERS =
+    "**For reviewers** — what GitHub states about this pull request. No check depends on it.";
+
+const UNREAD = "Could not be read this time.";
+
+function sizeSentence(size: DiffSize): string {
+    const counted = `+${String(size.additions)} −${String(size.deletions)} across ${String(size.files)} files.`;
+    return size.above
+        ? `${counted} That is above this repository's ${String(size.mark)}-line mark.`
+        : counted;
+}
+
+/** One note as a list item; no mark, because a signal neither passes nor fails. */
+function noteLine(note: Note): string {
+    switch (note.signal) {
+        case "blankDescription": {
+            const said =
+                note.blank === null
+                    ? UNREAD
+                    : note.blank
+                      ? "Blank, HTML comments aside."
+                      : "Written.";
+            return `- **Description** — ${said}`;
+        }
+        case "firstContribution": {
+            const said =
+                note.first === null
+                    ? "GitHub does not say whether the author has contributed here before."
+                    : note.first
+                      ? "First contribution to this repository, by GitHub's count."
+                      : "Has contributed to this repository before.";
+            return `- **Author** — ${said}`;
+        }
+        case "diffSize":
+            return `- **Size** — ${note.size === null ? UNREAD : sizeSentence(note.size)}`;
+    }
+}
+
+/** The reviewers' section, or nothing when no signal is enabled. */
+const reviewers = (notes: readonly Note[]): string[] =>
+    notes.length === 0 ? [] : [[REVIEWERS, ...notes.map(noteLine)].join("\n")];
+
+/** The whole dashboard: a greeting, one paragraph per enabled check, a closing line, then the reviewers' notes. */
+export function dashboard(author: string, rows: readonly Row[], notes: readonly Note[]): string {
     const paragraphs = rows.map(
         (row) => `${MARK[row.outcome]} **${TITLE[row.check]}** — ${sentence(row)}`,
     );
-    return [`Hey ${mentions([author])} 👋 Thanks for the PR!`, ...paragraphs, closing(rows)].join(
-        "\n\n",
-    );
+    return [
+        `Hey ${mentions([author])} 👋 Thanks for the PR!`,
+        ...paragraphs,
+        closing(rows),
+        ...reviewers(notes),
+    ].join("\n\n");
 }

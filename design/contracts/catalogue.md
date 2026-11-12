@@ -52,6 +52,7 @@ the platform.
 | `assigneesOf` | `item` | `string[]` |
 | `openAssignments` | `login` | `{ item, meanings }[]` |
 | `configAtHead` | `item` | `ConfigAtHead` |
+| `pullRequestProfile` | `item` | `PullRequestProfile` |
 <!-- /generated -->
 
 A resolver answers `{ ok: false, reason }` rather than throwing, and an undeclared resolver is
