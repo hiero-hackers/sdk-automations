@@ -78,7 +78,7 @@ jobs:
           ENGINE_COMMIT: ${{ inputs.engine || github.sha }}
           PROTOCOLS: ${{ inputs.protocols }}
           ARM: ${{ (github.event_name == 'schedule' || inputs.arm) && '--arm' || '' }}
-        run: pnpm lab:action ${PROTOCOLS:+--only "${PROTOCOLS}"} ${ARM}
+        run: pnpm lab:action ${PROTOCOLS:+--only "${PROTOCOLS}"} ${ARM:+"${ARM}"}
       # The backstop for a run the runner killed before its own restore ran:
       # the variable back to false and the config to dry-run, whatever else is left.
       - name: disarm the sandbox
