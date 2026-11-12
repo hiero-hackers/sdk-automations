@@ -1,5 +1,9 @@
 name: sdk-automations
 description: Runs the sdk-automations engine on one GitHub event, or on the hourly sweep, for the repository that uses it.
+author: hiero-hackers
+branding:
+  icon: check-square
+  color: blue
 inputs:
   token:
     description: The token the run reads and writes GitHub with.
@@ -13,6 +17,9 @@ inputs:
   app-id:
     description: The App id behind the token, so a run recognises its own comments.
     default: "15368"
+  sweep-cursor:
+    description: A file where the sweep keeps its place between scheduled runs, carried by the workflow's cache; empty starts every sweep at the first item.
+    default: ""
 runs:
   using: node24
   main: packages/runtime/dist/action.js
