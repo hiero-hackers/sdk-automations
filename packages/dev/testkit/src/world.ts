@@ -22,6 +22,19 @@ export interface WorldItem {
     readonly comments: WorldComment[];
     /** The human history it was seeded with; the bot's own writes are never a human change. */
     readonly timeline: readonly unknown[];
+    /** What a pull request's own reads answer, as seeded. */
+    readonly pull: PullFacts;
+    /** The last change; a write moves it, as GitHub's `updated_at` does. */
+    updatedAt: string | undefined;
+}
+
+export interface PullFacts {
+    /** The pull request as GitHub answered it; the world's own state is laid over it. */
+    readonly shown: Readonly<Record<string, unknown>>;
+    readonly reviews: readonly unknown[];
+    readonly commits: readonly unknown[];
+    /** The issues it closes, by number, in this repository. */
+    readonly closes: readonly number[];
 }
 
 export interface WorldSeed {
@@ -32,6 +45,11 @@ export interface WorldSeed {
     readonly assignees?: readonly string[];
     /** When the author assigned each seeded assignee; the timeline records it as theirs. */
     readonly assignedAt?: string;
+    /** A real history, replacing the one `assignedAt` would make up. */
+    readonly timeline?: readonly unknown[];
+    readonly comments?: readonly WorldComment[];
+    readonly updatedAt?: string;
+    readonly pull?: Partial<PullFacts>;
 }
 
 /** One answer from the world, or `undefined` for a route it does not hold. */
@@ -69,8 +87,8 @@ function issueOf(item: WorldItem, updatedAt: string): unknown {
         number: item.number,
         state: item.state,
         locked: false,
-        updated_at: updatedAt,
-        user: { login: item.author, type: "User" },
+        updated_at: item.updatedAt ?? updatedAt,
+        user: { login: item.author, type: item.author.endsWith("[bot]") ? "Bot" : "User" },
         labels: item.labels.map((name) => ({ name })),
         assignees: item.assignees.map((login) => ({ login })),
         ...(item.pullRequest
@@ -82,19 +100,51 @@ function issueOf(item: WorldItem, updatedAt: string): unknown {
 /** The pull-request shape: the issue's fields plus what only `/pulls/{n}` reports. */
 function pullOf(item: WorldItem, updatedAt: string): unknown {
     return {
-        ...(issueOf(item, updatedAt) as Record<string, unknown>),
         draft: false,
         merged: false,
         mergeable: true,
         created_at: updatedAt,
         head: { sha: "a".repeat(40) },
+        ...item.pull.shown,
+        ...(issueOf(item, updatedAt) as Record<string, unknown>),
     };
+}
+
+/** The linked-issue read, answered per pull request the query names: one, or a batch of aliases. */
+function linkedIssues(
+    items: ReadonlyMap<number, WorldItem>,
+    repository: string,
+    sent: Record<string, unknown>,
+): WorldReply | undefined {
+    const query = typeof sent["query"] === "string" ? sent["query"] : "";
+    if (!query.includes("closingIssuesReferences")) return undefined;
+    const variables = (sent["variables"] ?? {}) as Record<string, unknown>;
+    const asked = Object.entries(variables).filter(
+        ([name, value]) => (name === "number" || /^n\d+$/.test(name)) && typeof value === "number",
+    );
+    const answered: Record<string, unknown> = { nameWithOwner: repository };
+    for (const [name, value] of asked) {
+        const item = items.get(value as number);
+        if (item?.pullRequest !== true) return undefined;
+        answered[name === "number" ? "pullRequest" : `p${name.slice(1)}`] = {
+            number: item.number,
+            closingIssuesReferences: {
+                nodes: item.pull.closes.map((number) => ({
+                    number,
+                    repository: { nameWithOwner: repository },
+                })),
+                pageInfo: { hasNextPage: false, endCursor: null },
+            },
+        };
+    }
+    return { status: 200, body: { data: { rateLimit: { cost: 1 }, repository: answered } } };
 }
 
 export function createWorld(options: {
     readonly now: () => Date;
     readonly items: readonly WorldSeed[];
     readonly labels?: readonly string[];
+    readonly repository?: string;
 }): World {
     const items = new Map<number, WorldItem>(
         options.items.map((seed) => [
@@ -106,18 +156,32 @@ export function createWorld(options: {
                 state: "open",
                 labels: [...(seed.labels ?? [])],
                 assignees: [...(seed.assignees ?? [])],
-                comments: [],
-                timeline: (seed.assignees ?? []).map((login) => ({
-                    event: "assigned",
-                    assignee: { login },
-                    actor: { login: seed.author, type: "User" },
-                    created_at: seed.assignedAt ?? options.now().toISOString(),
-                })),
+                comments: (seed.comments ?? []).map((comment) => ({ ...comment })),
+                timeline:
+                    seed.timeline ??
+                    (seed.assignees ?? []).map((login) => ({
+                        event: "assigned",
+                        assignee: { login },
+                        actor: { login: seed.author, type: "User" },
+                        created_at: seed.assignedAt ?? options.now().toISOString(),
+                    })),
+                pull: {
+                    shown: seed.pull?.shown ?? {},
+                    reviews: seed.pull?.reviews ?? [],
+                    commits: seed.pull?.commits ?? [],
+                    closes: seed.pull?.closes ?? [],
+                },
+                updatedAt: seed.updatedAt,
             },
         ]),
     );
     const labels = new Set(options.labels ?? []);
-    let ids = 0;
+    const repository = options.repository ?? "scrubbed-1/scrubbed-2";
+    // Ids continue past every seeded comment's, so a new one never answers as an old one.
+    let ids = Math.max(
+        0,
+        ...[...items.values()].flatMap((item) => item.comments.map(({ id }) => id)),
+    );
     const stamp = (): string => options.now().toISOString();
 
     const onItem = (
@@ -126,6 +190,7 @@ export function createWorld(options: {
         rest: string,
         sent: Record<string, unknown>,
     ): WorldReply | undefined => {
+        if (method !== "GET") item.updatedAt = stamp();
         if (rest === "" && method === "GET") return { status: 200, body: issueOf(item, stamp()) };
         if (rest === "" && method === "PATCH") {
             if (sent["state"] === "closed" || sent["state"] === "open") item.state = sent["state"];
@@ -197,6 +262,17 @@ export function createWorld(options: {
         labels,
         answer(method, route, body) {
             const sent = sentRecord(body);
+            if (route === "/graphql") return linkedIssues(items, repository, sent);
+            if (route === "/issues" && method === "GET") {
+                const open = [...items.values()].filter((item) => item.state === "open");
+                return { status: 200, body: open.map((item) => issueOf(item, stamp())) };
+            }
+            const pullRead = /^\/pulls\/(\d+)\/(reviews|commits)$/.exec(route);
+            const read = pullRead === null ? undefined : items.get(Number(pullRead[1]));
+            if (read?.pullRequest === true && method === "GET") {
+                const facts = pullRead?.[2] === "reviews" ? read.pull.reviews : read.pull.commits;
+                return { status: 200, body: facts };
+            }
             if (route === "/labels" && method === "POST") {
                 const name = String(sent["name"] ?? "");
                 if (labels.has(name))
