@@ -9,6 +9,13 @@ it extends. `history(name)` is a real repository's items cut at one instant, pul
 the lab's `history.ts` (protocol 7.1), and `seedsOf` makes them a world, so a replayed sweep can be
 held to what the live one wrote.
 
+The world pages a list by `per_page` and `page` with a `Link` header, and matches a label name
+without regard to case, keeping the repository's spelling, as GitHub does. The rest of GitHub's rough
+edges are set by the test that wants them: a seeded `locked` item refuses comments with 403,
+`transfer(n)` makes every route to an item answer 301, and `losesWriteReply` applies a write but
+answers 502. [`rough-edges.test.ts`](../../runtime/test/shell/compose/rough-edges.test.ts) runs the Action
+through each of them.
+
 **A fixture is reached through the module, never through a path.** `capture("issues.opened.json")`
 and `WEBHOOK_CAPTURES`, never a URL assembled from another package. Stryker's sandbox is the mutated
 package's own directory, so a fixture read by path from above it is simply absent when the mutants

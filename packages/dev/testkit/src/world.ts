@@ -2,12 +2,15 @@
  * GitHub that remembers what was written: comments, labels, assignees and state, read back as
  * GitHub would answer them. A write the route table only acknowledges lands here, so a test can
  * hold an active run to what the repository ends up showing, not to what was sent.
+ * Harsher than GitHub in one place: a seeded lock refuses every comment, a collaborator's too.
+ * Kinder in one: the bot's own lock is acknowledged by the route table and never held here.
  */
 
 export interface WorldComment {
     readonly id: number;
     body: string;
-    readonly user: { readonly login: string; readonly type: "User" | "Bot" };
+    /** `null` where GitHub reports no account, as it may for one since deleted. */
+    readonly user: { readonly login: string; readonly type: "User" | "Bot" } | null;
     readonly created_at: string;
     updated_at: string;
 }
@@ -17,6 +20,7 @@ export interface WorldItem {
     readonly pullRequest: boolean;
     readonly author: string;
     state: "open" | "closed";
+    readonly locked: boolean;
     labels: string[];
     assignees: string[];
     readonly comments: WorldComment[];
@@ -41,6 +45,8 @@ export interface WorldSeed {
     readonly number: number;
     readonly pullRequest?: boolean;
     readonly author: string;
+    /** A locked conversation refuses the runner's comments, as GitHub refuses `GITHUB_TOKEN`'s. */
+    readonly locked?: boolean;
     readonly labels?: readonly string[];
     readonly assignees?: readonly string[];
     /** When the author assigned each seeded assignee; the timeline records it as theirs. */
@@ -63,6 +69,8 @@ export interface World {
     /** The repository's own labels, by name. */
     readonly labels: ReadonlySet<string>;
     answer(method: string, route: string, body: string): WorldReply | undefined;
+    /** Move an item to another repository: from now on every route to it answers 301. */
+    transfer(number: number): void;
 }
 
 const BOT = { login: "github-actions[bot]", type: "Bot" } as const;
@@ -86,7 +94,7 @@ function issueOf(item: WorldItem, updatedAt: string): unknown {
     return {
         number: item.number,
         state: item.state,
-        locked: false,
+        locked: item.locked,
         updated_at: item.updatedAt ?? updatedAt,
         user: { login: item.author, type: item.author.endsWith("[bot]") ? "Bot" : "User" },
         labels: item.labels.map((name) => ({ name })),
@@ -154,6 +162,7 @@ export function createWorld(options: {
                 pullRequest: seed.pullRequest ?? false,
                 author: seed.author,
                 state: "open",
+                locked: seed.locked ?? false,
                 labels: [...(seed.labels ?? [])],
                 assignees: [...(seed.assignees ?? [])],
                 comments: (seed.comments ?? []).map((comment) => ({ ...comment })),
@@ -176,6 +185,10 @@ export function createWorld(options: {
         ]),
     );
     const labels = new Set(options.labels ?? []);
+    // GitHub matches a label name without regard to case, and keeps the spelling it was made with.
+    const spellingOf = (name: string): string | undefined =>
+        [...labels].find((held) => held.toLowerCase() === name.toLowerCase());
+    const moved = new Set<number>();
     const repository = options.repository ?? "scrubbed-1/scrubbed-2";
     // Ids continue past every seeded comment's, so a new one never answers as an old one.
     let ids = Math.max(
@@ -190,6 +203,12 @@ export function createWorld(options: {
         rest: string,
         sent: Record<string, unknown>,
     ): WorldReply | undefined => {
+        if (rest === "/comments" && method === "POST" && item.locked) {
+            return {
+                status: 403,
+                body: { message: "Unable to create comment because issue is locked." },
+            };
+        }
         if (method !== "GET") item.updatedAt = stamp();
         if (rest === "" && method === "GET") return { status: 200, body: issueOf(item, stamp()) };
         if (rest === "" && method === "PATCH") {
@@ -215,16 +234,17 @@ export function createWorld(options: {
         }
         if (rest === "/labels" && method === "POST") {
             for (const name of strings(sent["labels"])) {
-                labels.add(name);
-                if (!item.labels.includes(name)) item.labels.push(name);
+                const spelled = spellingOf(name) ?? name;
+                labels.add(spelled);
+                if (!item.labels.includes(spelled)) item.labels.push(spelled);
             }
             return { status: 200, body: item.labels.map((name) => ({ name })) };
         }
         if (rest.startsWith("/labels/") && method === "DELETE") {
-            const name = decodeURIComponent(rest.slice("/labels/".length));
-            if (!item.labels.includes(name))
+            const name = decodeURIComponent(rest.slice("/labels/".length)).toLowerCase();
+            if (!item.labels.some((held) => held.toLowerCase() === name))
                 return { status: 404, body: { message: "Label does not exist" } };
-            item.labels = item.labels.filter((held) => held !== name);
+            item.labels = item.labels.filter((held) => held.toLowerCase() !== name);
             return { status: 200, body: item.labels.map((held) => ({ name: held })) };
         }
         if (rest === "/assignees" && method === "POST") {
@@ -260,11 +280,20 @@ export function createWorld(options: {
     return {
         items,
         labels,
+        transfer(number) {
+            moved.add(number);
+        },
         answer(method, route, body) {
             const sent = sentRecord(body);
             if (route === "/graphql") return linkedIssues(items, repository, sent);
+            const away = /^\/(?:issues|pulls)\/(\d+)(?:\/|$)/.exec(route);
+            if (away !== null && moved.has(Number(away[1]))) {
+                return { status: 301, body: { message: "Moved Permanently" } };
+            }
             if (route === "/issues" && method === "GET") {
-                const open = [...items.values()].filter((item) => item.state === "open");
+                const open = [...items.values()].filter(
+                    (item) => item.state === "open" && !moved.has(item.number),
+                );
                 return { status: 200, body: open.map((item) => issueOf(item, stamp())) };
             }
             const pullRead = /^\/pulls\/(\d+)\/(reviews|commits)$/.exec(route);
@@ -275,15 +304,15 @@ export function createWorld(options: {
             }
             if (route === "/labels" && method === "POST") {
                 const name = String(sent["name"] ?? "");
-                if (labels.has(name))
+                if (spellingOf(name) !== undefined)
                     return { status: 422, body: { message: "Validation Failed" } };
                 labels.add(name);
                 return { status: 201, body: { id: (ids += 1), name } };
             }
             const label = /^\/labels\/(.+)$/.exec(route);
             if (label !== null && method === "GET") {
-                const name = decodeURIComponent(label[1] ?? "");
-                return labels.has(name)
+                const name = spellingOf(decodeURIComponent(label[1] ?? ""));
+                return name !== undefined
                     ? { status: 200, body: { name } }
                     : { status: 404, body: { message: "Not Found" } };
             }
