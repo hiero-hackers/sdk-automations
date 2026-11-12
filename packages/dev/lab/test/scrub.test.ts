@@ -108,6 +108,16 @@ describe("structure survives", () => {
         expect(JSON.stringify(withSha)).not.toContain("1749456194");
     });
 
+    it("rewrites a short sha in prose the same way, even when the prose comes first", () => {
+        const scrubbed = scrubPayload({
+            comment: { body: "`1749456` has no signature" },
+            commit: { sha: "17494561942194c0b8b22ba14a09996d0c885e82" },
+        }) as { comment: { body: string }; commit: { sha: string } };
+        expect(scrubbed.comment.body).toBe(
+            `\`${scrubbed.commit.sha.slice(0, 7)}\` has no signature`,
+        );
+    });
+
     it("blanks description prose, which no identifier pass would catch", () => {
         const d = scrubPayload({
             repository: {
@@ -119,6 +129,14 @@ describe("structure survives", () => {
         }) as any;
         expect(d.repository.description).toBe("scrubbed-description");
         expect(JSON.stringify(d)).not.toContain("Throwaway");
+    });
+
+    it("keeps an App's login, which names software and carries the bot suffix", () => {
+        const scrubbed = JSON.stringify(
+            scrubPayload({ user: { login: "dependabot[bot]" }, sender: { login: "ada-lovelace" } }),
+        );
+        expect(scrubbed).toContain("dependabot[bot]");
+        expect(scrubbed).not.toContain("ada-lovelace");
     });
 
     it("is deterministic", () => {

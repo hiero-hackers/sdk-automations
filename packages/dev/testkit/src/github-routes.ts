@@ -6,6 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { World } from "./world.js";
 
 export const HOUR = 3_600_000;
 export const POOL_LIMIT = 5_000;
@@ -30,6 +31,10 @@ export interface GitHubScript {
     readonly refusesWrites?: () => boolean;
     /** While true, the configuration file is absent. */
     readonly noConfig?: () => boolean;
+    /** The items whose writes land and read back; the route table answers everything else. */
+    readonly world?: World;
+    /** While true for a write, the world applies it and the gateway answers 502 instead. */
+    readonly losesWriteReply?: (method: string, route: string) => boolean;
 }
 
 export interface GitHubRequest {
@@ -37,6 +42,8 @@ export interface GitHubRequest {
     readonly path: string;
     readonly ifNoneMatch: string | null;
     readonly body: string;
+    /** The query string, `?` included; the world pages a list by it. */
+    readonly query?: string;
 }
 
 export interface GitHubReply {
@@ -187,6 +194,28 @@ function writeReply(
     return { status: 200, body: {} };
 }
 
+/** One page of a world's list as GitHub pages it: `per_page` entries and a Link to the last. */
+function pageOf(
+    body: unknown,
+    path: string,
+    query: string | undefined,
+): { body: unknown; link?: string } {
+    const asked = new URLSearchParams(query);
+    if (!Array.isArray(body) || !asked.has("page")) return { body };
+    const size = Number(asked.get("per_page") ?? 30);
+    const page = Number(asked.get("page"));
+    const last = Math.max(1, Math.ceil(body.length / size));
+    const at = (n: number): string => {
+        asked.set("page", String(n));
+        return `<https://api.github.com${path}?${asked.toString()}>`;
+    };
+    const links = page < last ? [`${at(page + 1)}; rel="next"`, `${at(last)}; rel="last"`] : [];
+    return {
+        body: body.slice((page - 1) * size, page * size),
+        ...(links.length === 0 ? {} : { link: links.join(", ") }),
+    };
+}
+
 export function githubScript(script: GitHubScript) {
     const calls: GitHubCall[] = [];
     let ids = 0;
@@ -227,18 +256,39 @@ export function githubScript(script: GitHubScript) {
             "x-ratelimit-resource": pool,
             ...(etag === undefined ? {} : { etag }),
         });
-        if (WRITE_METHODS.has(request.method) && route !== "/graphql") {
-            if (script.refusesWrites?.() === true) {
-                calls.push({ method: request.method, path, status: 403, pool, window });
+        const writing = WRITE_METHODS.has(request.method) && route !== "/graphql";
+        if (writing && script.refusesWrites?.() === true) {
+            calls.push({ method: request.method, path, status: 403, pool, window });
+            return {
+                status: 403,
+                headers: limits(),
+                body: JSON.stringify({
+                    message: "Resource not accessible by integration",
+                    documentation_url: "https://docs.github.com/rest",
+                }),
+            };
+        }
+        // The world answers in full every time: a state that moves must never read as a 304.
+        const held = script.world?.answer(request.method, route, request.body);
+        if (held !== undefined) {
+            if (writing && script.losesWriteReply?.(request.method, route) === true) {
+                calls.push({ method: request.method, path, status: 502, pool, window });
                 return {
-                    status: 403,
-                    headers: limits(),
-                    body: JSON.stringify({
-                        message: "Resource not accessible by integration",
-                        documentation_url: "https://docs.github.com/rest",
-                    }),
+                    status: 502,
+                    headers: {},
+                    body: JSON.stringify({ message: "Server Error" }),
                 };
             }
+            const page = pageOf(held.body, path, request.query);
+            const link = page.link === undefined ? {} : { link: page.link };
+            calls.push({ method: request.method, path, status: held.status, pool, window });
+            return {
+                status: held.status,
+                headers: { ...limits(), ...link },
+                body: JSON.stringify(page.body),
+            };
+        }
+        if (writing) {
             const written = writeReply(request.method, route, request.body, () => (ids += 1));
             calls.push({ method: request.method, path, status: written.status, pool, window });
             return {
