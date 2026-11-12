@@ -720,6 +720,18 @@ describe("the review group — the three reads protocol 6.9 confirmed", () => {
         });
     });
 
+    it("keeps a change request whose reviewer GitHub reports as no account", async () => {
+        const deleted = {
+            "/pulls/34/reviews": json([
+                { state: "CHANGES_REQUESTED", user: null, submitted_at: "2026-08-26T00:00:00Z" },
+            ]),
+        };
+        await expect(readChangesRequestedAt(context(deleted), 34)).resolves.toEqual({
+            ok: true,
+            value: new Date("2026-08-26T00:00:00Z"),
+        });
+    });
+
     it("refuses an undated change request rather than guessing when it stood", async () => {
         const undated = {
             "/pulls/34/reviews": json([{ state: "CHANGES_REQUESTED", user: { login: "linus" } }]),
