@@ -31,6 +31,7 @@ import { triageQueueDeclaration } from "../triageQueue/capability.js";
 import { CAPABILITIES } from "../index.js";
 import { prDashboardDeclaration } from "../prDashboard/capability.js";
 import { inactivityDeclaration } from "../inactivity/capability.js";
+import { assignmentDeclaration } from "../assignment/capability.js";
 import {
     answering,
     configEnabling,
@@ -49,6 +50,7 @@ const KNOWN: readonly AdmittedCapability[] = [
     prDashboardDeclaration,
     inactivityDeclaration,
     configReportDeclaration,
+    assignmentDeclaration,
 ];
 
 const enabled = () => configEnabling(["configReport"], [configReportDeclaration]);
@@ -791,6 +793,69 @@ mappings:
                 "- configReport — on, active (inherited from the file), no settings",
             ].join("\n"),
         );
+    });
+
+    /** Analytics shipped a triage queue whose issues anyone could claim; the report now says so. */
+    describe("a triage queue whose issues can still be claimed", () => {
+        const NOTE = "**Worth checking**";
+        const file = (autoAssign: string) => `schemaVersion: 2
+mode: active
+
+capabilities:
+  triageQueue:
+    enabled: true
+  assignment:
+    enabled: true
+    autoAssign:
+      enabled: true
+${autoAssign}
+mappings:
+  commands:
+    assign: "/assign"
+`;
+
+        it("is pointed out, with the key that holds claims", async () => {
+            const body = await bodyFor(file(""));
+            expect(body).toContain(
+                [
+                    NOTE,
+                    "",
+                    "- triageQueue puts a new issue in the triage queue, but assignment lets it be claimed there. " +
+                        "Adding `awaitingTriage` to `capabilities.assignment.autoAssign.notClaimableWhen` holds claims until triage.",
+                ].join("\n"),
+            );
+        });
+
+        it.each([
+            ["the deny list holds awaitingTriage", "      notClaimableWhen: [awaitingTriage]\n"],
+            ["the required list leaves it out", "      claimableOnlyWhen: [ready]\n"],
+        ])("is not raised when %s", async (_name, line) => {
+            expect(await bodyFor(file(line))).not.toContain(NOTE);
+        });
+
+        it("is not raised when the required list names awaitingTriage itself", async () => {
+            const body = await bodyFor(file("      claimableOnlyWhen: [ready, awaitingTriage]\n"));
+            expect(body).toContain(NOTE);
+        });
+
+        it.each([
+            [
+                "triageQueue is off",
+                "triageQueue:\n    enabled: true",
+                "triageQueue:\n    enabled: false",
+            ],
+            [
+                "autoAssign is off",
+                "autoAssign:\n      enabled: true",
+                "autoAssign:\n      enabled: false",
+            ],
+        ])("is not raised when %s", async (_name, from, to) => {
+            expect(await bodyFor(file("").replace(from, to))).not.toContain(NOTE);
+        });
+
+        it("is not raised when neither capability is written", async () => {
+            expect(await bodyFor(CLEAN)).not.toContain(NOTE);
+        });
     });
 
     /** The narrow shape again, with the three lists the trigger implies filled in. */

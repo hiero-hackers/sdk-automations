@@ -519,7 +519,7 @@ describe("the order of the guards", () => {
             view,
         );
         expect(noticeOf(denied.intents).body).toBe(
-            "Hi @alice — this issue cannot be claimed while it is marked `awaitingTriage`.",
+            "Hi @alice — this issue cannot be claimed while it is marked `awaitingTriage`. It is in the triage queue; once the team marks it ready, it can be claimed.",
         );
 
         const accepted = await run(comment("assign", "alice", { meaning: "ready" }), {}, view);
@@ -574,6 +574,32 @@ describe("the switches, the guard and the lists", () => {
 
         const on = await run(record, { holders: ["alice"] }, viewWith());
         expectRelease(on.intents);
+    });
+
+    it("tells a commenter refused at the gate what comes next, on either refusal", async () => {
+        const next = "It is in the triage queue; once the team marks it ready, it can be claimed.";
+        const atGate = comment("assign", "alice", { meaning: "awaitingTriage" });
+
+        const notYet = await run(atGate, {}, viewWith({ claimableOnlyWhen: ["ready"] }));
+        expect(noticeOf(notYet.intents).body).toBe(
+            `Hi @alice — only an issue marked \`ready\` can be claimed in this repository, and this one is not yet. ${next}`,
+        );
+
+        const elsewhere = await run(
+            comment("assign"),
+            {},
+            viewWith({ claimableOnlyWhen: ["ready"] }),
+        );
+        expect(noticeOf(elsewhere.intents).body).not.toContain("triage queue");
+
+        const paused = await run(
+            comment("assign", "alice", { meaning: "ready", blocked: true }),
+            {},
+            viewWith({ notClaimableWhen: ["blocked", "awaitingTriage"] }),
+        );
+        expect(noticeOf(paused.intents).body).toBe(
+            "Hi @alice — this issue cannot be claimed while it is marked `blocked`.",
+        );
     });
 
     it("names three required meanings as `a`, `b` or `c`", async () => {
@@ -683,7 +709,7 @@ describe("the switches, the guard and the lists", () => {
             view,
         );
         expect(noticeOf(refused.intents).body).toBe(
-            "Hi @alice — this issue cannot be claimed while it is marked `blocked` and `awaitingTriage`.",
+            "Hi @alice — this issue cannot be claimed while it is marked `blocked` and `awaitingTriage`. It is in the triage queue; once the team marks it ready, it can be claimed.",
         );
 
         const accepted = await run(comment("assign", "alice", { meaning: "ready" }), {}, view);
