@@ -11,6 +11,8 @@ export type ConfigErrorCode =
     | "unknownKey"
     | "schemaVersionUnsupported"
     | "modeInvalid"
+    /** `since` is not a real calendar date written `YYYY-MM-DD`. */
+    | "sinceInvalid"
     | "capabilityNameInvalid"
     | "capabilityEnabledNotBoolean"
     /** A block states a mode above the file's, which bounds every capability. */

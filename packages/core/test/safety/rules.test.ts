@@ -32,6 +32,7 @@ describe("the check order is contract, and now assertable directly", () => {
             "invalidTimestamp",
             "newerHumanChange",
             "modeDisabled",
+            "beforeSince",
             "modeRecordsOnly",
         ]);
     });
@@ -133,6 +134,34 @@ describe("the standing rules — the item-independent half a resend re-checks", 
                 killSwitchActive: false,
             }),
         ).toMatchObject({ outcome: "record-only", code: "modeRecordsOnly" });
+    });
+
+    it("records an occasion before the file's since, and applies one on or after it", () => {
+        const since = config({ since: "2026-11-04" });
+        const at = (iso: string) =>
+            evalWrite(request({ causeObservedAt: new Date(iso) }), context(), since);
+        expect(at("2026-11-03T23:59:59Z")).toMatchObject({
+            outcome: "record-only",
+            code: "beforeSince",
+        });
+        expect(at("2026-11-04T00:00:00Z")).toEqual({ outcome: "apply" });
+        expect(at("2026-12-01T00:00:00Z")).toEqual({ outcome: "apply" });
+    });
+
+    it("applies everything when the file states no since", () => {
+        const old = request({ causeObservedAt: new Date("2001-01-01T00:00:00Z") });
+        expect(evalWrite(old, context(), config())).toEqual({ outcome: "apply" });
+    });
+
+    it("lets a refusal outrank the since hold-back", () => {
+        const since = config({ since: "2026-11-04", mode: "disabled" });
+        expect(
+            evalWrite(
+                request({ causeObservedAt: new Date("2026-01-01T00:00:00Z") }),
+                context(),
+                since,
+            ),
+        ).toMatchObject({ outcome: "refuse", code: "modeDisabled" });
     });
 
     it("refuses a capability the repository turned off, and a grant the installation lost", () => {

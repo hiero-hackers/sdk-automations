@@ -493,3 +493,22 @@ describe("NO_CONFIG is inert all the way down", () => {
         expect(NO_CONFIG.revision).toBe("");
     });
 });
+
+describe("since", () => {
+    const OPTIONS = { revision: "rev", knownCapabilities: [] };
+
+    it("is read as stated, and absent means no bound", () => {
+        const stated = parseConfig({ mode: "active", since: "2026-11-04" }, OPTIONS);
+        expect(stated.ok && stated.config.since).toBe("2026-11-04");
+        const absent = parseConfig({ mode: "active" }, OPTIONS);
+        expect(absent.ok && absent.config.since).toBeUndefined();
+    });
+
+    it("rejects a non-string, a malformed string, and a day that does not exist", () => {
+        for (const since of [20261104, "04-11-2026", "2026-13-01", "2026-02-30", null]) {
+            const result = parseConfig({ mode: "active", since }, OPTIONS);
+            expect(result.ok, String(since)).toBe(false);
+            if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("sinceInvalid");
+        }
+    });
+});

@@ -2,6 +2,7 @@
     "revision": "active.yml",
     "schemaVersion": 2,
     "mode": "active",
+    "since": "2026-11-04",
     "capabilities": {
         "triageQueue": {
             "enabled": true,
