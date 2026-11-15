@@ -88,8 +88,13 @@ function keptBody(body: string): string {
 export function instantOf(entry: unknown): number | null {
     if (!isRecord(entry)) return null;
     const commit = isRecord(entry["commit"]) ? entry["commit"] : undefined;
+    // A commits-list entry nests its committer under `commit`; a timeline `committed` event does not.
     const committer =
-        commit !== undefined && isRecord(commit["committer"]) ? commit["committer"] : {};
+        commit !== undefined && isRecord(commit["committer"])
+            ? commit["committer"]
+            : isRecord(entry["committer"])
+              ? entry["committer"]
+              : {};
     const stamp =
         entry["created_at"] ?? entry["submitted_at"] ?? committer["date"] ?? entry["committed_at"];
     const parsed = typeof stamp === "string" ? Date.parse(stamp) : Number.NaN;
@@ -216,6 +221,21 @@ export function draftAt(draftNow: boolean, since: readonly Record<string, unknow
     return first["event"] === "ready_for_review";
 }
 
+/** A review dismissed since still had, at `at`, the state its dismissal event records. */
+export function undismissed(review: unknown, since: readonly Record<string, unknown>[]): unknown {
+    if (!isRecord(review)) return review;
+    const dismissal = since.find(
+        (event) =>
+            event["event"] === "review_dismissed" &&
+            isRecord(event["dismissed_review"]) &&
+            event["dismissed_review"]["review_id"] === review["id"],
+    );
+    if (dismissal === undefined) return review;
+    const state = String((dismissal["dismissed_review"] as Record<string, unknown>)["state"]);
+    // The timeline spells review states in lower case, the reviews list in upper case.
+    return { ...review, state: review["event"] === "reviewed" ? state : state.toUpperCase() };
+}
+
 /**
  * A pull request as it stood at `at`, or the reason it cannot be: a force-push since replaced its
  * commits, so neither they nor the mergeability then can be read back. One merged since is read
@@ -230,7 +250,14 @@ export function pullAt(
     }
     const shown = { ...pull, draft: draftAt(pull["draft"] === true, since) };
     if (!since.some(({ event }) => event === "merged" || event === "closed")) return shown;
-    const reopened = { ...shown, state: "open", merged: false, merged_at: null, closed_at: null };
+    const reopened = {
+        ...shown,
+        state: "open",
+        merged: false,
+        merged_at: null,
+        merged_by: null,
+        closed_at: null,
+    };
     return since.some(({ event }) => event === "merged")
         ? { ...reopened, mergeable: true }
         : reopened;
@@ -246,7 +273,8 @@ async function itemAt(
 ) {
     const number = Number(entry["number"]);
     const everything = await allPages(call, `${base}/issues/${String(number)}/timeline`);
-    const timeline = asOf(everything, at);
+    const since = after(everything, at);
+    const timeline = asOf(everything, at).map((event) => undismissed(event, since));
     const comments = asOf(await allPages(call, `${base}/issues/${String(number)}/comments`), at);
     const pullRequest = entry["pull_request"] !== undefined;
     const assignees = heldAt(timeline, "assigned", "unassigned", (e) =>
@@ -263,23 +291,38 @@ async function itemAt(
         ...entry,
         state: "open",
         closed_at: null,
+        closed_by: null,
         updated_at: updated,
         labels: labels.map((name) => ({ name })),
         assignees: assignees.map((login) => ({ login })),
     };
     if (!pullRequest) return { entry: shown, comments, timeline };
+    shown["pull_request"] = { ...(entry["pull_request"] as object), merged_at: null };
     const { body } = await call("GET", `${base}/pulls/${String(number)}`);
-    const pull = pullAt(isRecord(body) ? body : {}, after(everything, at));
+    const pull = pullAt(isRecord(body) ? body : {}, since);
     if ("unfaithful" in pull) return { number, unfaithful: pull.unfaithful };
     return {
         entry: shown,
         comments,
         timeline,
         pull,
-        reviews: asOf(await allPages(call, `${base}/pulls/${String(number)}/reviews`), at),
+        reviews: asOf(await allPages(call, `${base}/pulls/${String(number)}/reviews`), at).map(
+            (review) => undismissed(review, since),
+        ),
         commits: asOf(await allPages(call, `${base}/pulls/${String(number)}/commits`), at),
         closes: await closedThen(call, base, await closingIssues(call, owner, repo, number), at),
     };
+}
+
+/** `sdk-automations.yml` as the default branch held it at `instant`, not as it is now. */
+export async function configAt(call: Call, base: string, instant: string): Promise<string> {
+    const { body: commits } = await call("GET", `${base}/commits?until=${instant}&per_page=1`);
+    const sha = Array.isArray(commits) && isRecord(commits[0]) ? commits[0]["sha"] : undefined;
+    if (typeof sha !== "string") throw new Error(`no commit at or before ${instant}`);
+    const { body: file } = await call("GET", `${base}/contents/sdk-automations.yml?ref=${sha}`);
+    const content = isRecord(file) ? file["content"] : undefined;
+    if (typeof content !== "string") throw new Error(`sdk-automations.yml unreadable at ${sha}`);
+    return Buffer.from(content, "base64").toString("utf8");
 }
 
 export async function pullHistory(call: Call, fullName: string, instant: string): Promise<unknown> {
@@ -302,11 +345,7 @@ export async function pullHistory(call: Call, fullName: string, instant: string)
         else items.push(item);
     }
     items.sort((a, b) => Number(a.entry["number"]) - Number(b.entry["number"]));
-    const { body: file } = await call("GET", `${base}/contents/sdk-automations.yml`);
-    const config = Buffer.from(
-        String((file as { content?: string }).content ?? ""),
-        "base64",
-    ).toString("utf8");
+    const config = await configAt(call, base, instant);
     return scrubPayload(
         blankProse(
             pruned({ repository: { full_name: fullName }, at: instant, config, unfaithful, items }),
