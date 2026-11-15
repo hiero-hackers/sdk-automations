@@ -135,7 +135,8 @@ describe("Analytics' history, replayed", () => {
         const { sweep } = replay(history("analytics-2026-11-05T2120Z"));
 
         // The live sweep also wrote #613's dashboard and `status: needs revision`; 613 was
-        // force-pushed since, so it is unfaithful and not in this world.
+        // force-pushed since, so it is unfaithful and not in this world. #588 loses 613 as its open
+        // linked pull request, and stays silent anyway: its last activity is 17 days old.
         expect(await sweep("2026-11-05T21:21:37Z")).toEqual([
             "#310 comment inactivity",
             "#391 comment prDashboard",
