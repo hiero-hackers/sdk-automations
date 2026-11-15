@@ -118,6 +118,17 @@ describe("structure survives", () => {
         );
     });
 
+    it("keeps two short shas distinct, so prose still says which commit it means", () => {
+        const scrubbed = scrubPayload({
+            a: { sha: "17494561942194c0b8b22ba14a09996d0c885e82" },
+            b: { sha: "abcdef0123456789abcdef0123456789abcdef01" },
+            c: { body: "`1749456` and `abcdef0` are unsigned" },
+        }) as { a: { sha: string }; b: { sha: string }; c: { body: string } };
+        const [a, b] = [scrubbed.a.sha.slice(0, 7), scrubbed.b.sha.slice(0, 7)];
+        expect(a).not.toBe(b);
+        expect(scrubbed.c.body).toBe(`\`${a}\` and \`${b}\` are unsigned`);
+    });
+
     it("blanks description prose, which no identifier pass would catch", () => {
         const d = scrubPayload({
             repository: {

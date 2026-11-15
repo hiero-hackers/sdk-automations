@@ -23,7 +23,10 @@ const isAppLogin = (value: string): boolean => value.endsWith("[bot]");
 function shaFor(sha: string, mapping: Mapping): string {
     const existing = mapping.strings.get(sha);
     if (existing !== undefined) return existing;
-    const stamped = String(mapping.strings.size + 1).padStart(40, "0");
+    // The counter leads, so the seven-character short sha still tells commits apart.
+    const stamped = String(mapping.strings.size + 1)
+        .padStart(7, "0")
+        .padEnd(40, "0");
     mapping.strings.set(sha, stamped);
     return stamped;
 }
