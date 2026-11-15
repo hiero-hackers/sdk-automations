@@ -1,7 +1,9 @@
 /**
  * Analytics' real history, replayed through the Action: each recorded instant is the moment just
  * before a live hourly sweep, and the replayed sweep must write exactly what that live sweep wrote
- * (read back from the repository afterwards), then nothing more when it runs again.
+ * (read back from the repository afterwards), then nothing more when it runs again. Only the
+ * faithful items are in the world: a pull request force-pushed since (the history's `unfaithful`
+ * list) is left out, so what the live sweep wrote to it is not expected here.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -37,6 +39,7 @@ function sweepRun(repository: string): ActionRun {
 
 /** What one item shows: enough to tell any write the sweep made. */
 interface Shown {
+    readonly state: string;
     readonly comments: ReadonlyMap<number, string>;
     readonly labels: readonly string[];
     readonly assignees: readonly string[];
@@ -47,6 +50,7 @@ const shownBy = (world: World): Map<number, Shown> =>
         [...world.items.values()].map((item) => [
             item.number,
             {
+                state: item.state,
                 comments: new Map(item.comments.map(({ id, body }) => [id, body])),
                 labels: [...item.labels],
                 assignees: [...item.assignees],
@@ -74,6 +78,14 @@ function changes(before: Map<number, Shown>, after: Map<number, Shown>): string[
         }
         for (const login of then?.assignees ?? []) {
             if (!now.assignees.includes(login)) lines.push(`#${String(number)} released ${login}`);
+        }
+        for (const login of now.assignees) {
+            if (!(then?.assignees ?? []).includes(login)) {
+                lines.push(`#${String(number)} assigned ${login}`);
+            }
+        }
+        if (then !== undefined && then.state !== now.state) {
+            lines.push(`#${String(number)} ${now.state}`);
         }
     }
     return lines.sort();
@@ -122,6 +134,8 @@ describe("Analytics' history, replayed", () => {
     it("writes what the first active sweep wrote (run 42111922684, 2026-11-05)", async () => {
         const { sweep } = replay(history("analytics-2026-11-05T2120Z"));
 
+        // The live sweep also wrote #613's dashboard and `status: needs revision`; 613 was
+        // force-pushed since, so it is unfaithful and not in this world.
         expect(await sweep("2026-11-05T21:21:37Z")).toEqual([
             "#310 comment inactivity",
             "#391 comment prDashboard",
