@@ -28,6 +28,7 @@ on:
     - cron: "17 * * * *"
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
@@ -42,14 +43,27 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      # The sweep's place in a list longer than one run can read, carried to the next scheduled
-      # run; the newest entry wins. Only the schedule touches it, so no pull request can write it.
-      - if: github.event_name == 'schedule'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # The sweep's place in a list longer than one run can read, carried as an artifact of the
+      # previous scheduled run of this workflow. Only that run can upload its own artifacts; a
+      # cache would not do, since any default-branch run in the repository can write a cache entry.
+      - id: previous
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          workflow="${WORKFLOW_REF%@*}"
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow##*/}/runs?event=schedule&status=completed&per_page=1" --jq '.workflow_runs[0].id // empty')
+          echo "run-id=${run_id}" >> "$GITHUB_OUTPUT"
+      # No previous run or artifact, or one that cannot be read, starts the sweep over.
+      - if: steps.previous.outputs.run-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: sdk-automations-cursor.json
-          key: sdk-automations-cursor-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: sdk-automations-cursor-
+          name: sdk-automations-cursor
+          run-id: ${{ steps.previous.outputs.run-id }}
+          github-token: ${{ github.token }}
       # The major tag moves with each release (v0 while the Action is pre-1.0); pin the
       # release SHA where you can.
       - uses: hiero-hackers/sdk-automations@v0 # zizmor: ignore[unpinned-uses] the documented default; installing.md says how to pin
@@ -57,7 +71,9 @@ jobs:
           arm-writes: "false"
           sweep-cursor: sdk-automations-cursor.json
       - if: ${{ !cancelled() && github.event_name == 'schedule' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: sdk-automations-cursor
           path: sdk-automations-cursor.json
-          key: sdk-automations-cursor-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7

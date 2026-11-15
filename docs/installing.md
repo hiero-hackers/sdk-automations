@@ -20,8 +20,9 @@ A workflow in an open pull request does not run for your repository; merge it fi
 ## What the permissions grant
 
 The workflow's `permissions` block gives the run `contents: read`, `issues: write` and
-`pull-requests: write`, and nothing else. That is the ceiling: whatever the configuration says, the
-run cannot write anywhere those three do not reach. Do not widen it.
+`pull-requests: write`, plus `actions: read` to find the sweep's cursor, and nothing else. That is
+the ceiling: whatever the configuration says, the run cannot write anywhere those do not reach. Do
+not widen it.
 
 ## Pinning
 
@@ -53,14 +54,16 @@ release after it reads it.
 ## The sweep's place in a long list
 
 One run's token reaches only so many items, so in a large repository the hourly sweep can stop
-before the end of its list. The example's two cache steps carry where it stopped, in
-`sdk-automations-cursor.json`, to the next scheduled run, which continues from there; the run that
-reaches the end starts the next pass from the first item again. Without them, or once GitHub has
-evicted the entry after a week unused, every sweep starts from the first item, and items numbered
-past what one run reaches are never swept. Each run saves a small entry and only the newest is read,
-so older ones age out on their own. The steps run on the schedule alone, so no pull request's run
-can write the entry. An entry the run cannot read is reported as a warning and the sweep starts
-over; a cursor the run cannot write fails the run.
+before the end of its list. The example carries where it stopped, in `sdk-automations-cursor.json`,
+to the next scheduled run, which continues from there; the run that reaches the end starts the next
+pass from the first item again. Each scheduled run uploads the file as an artifact, kept a week, and
+the next one downloads it from the latest scheduled run of the same workflow, which is why the
+example grants `actions: read`. Only that run can upload its own artifacts. A cache would not do:
+any run on the default branch, of any workflow in the repository, can write a cache entry, and
+restoring one can overwrite files the job runs next. Without the steps, or with no previous artifact,
+every sweep starts from the first item, and items numbered past what one run reaches are never swept.
+A cursor the run cannot read is reported as a warning and the sweep starts over; a cursor the run
+cannot write fails the run.
 
 ## Going active with a backlog
 
