@@ -1,6 +1,6 @@
 # The pilot image: every dependency is installed, because the shell runs through tsx, a devDependency.
 # Pinned by digest; Dependabot's docker entry moves it.
-FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9
+FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 # Corepack's cache lives outside root's home, so the node user finds pnpm offline.
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable
