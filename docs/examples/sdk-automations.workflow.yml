@@ -7,8 +7,10 @@ name: sdk-automations
 on:
   issues:
     types: [opened, labeled, unlabeled, closed, reopened, assigned, unassigned]
+  # zizmor: ignore[dangerous-triggers] nothing here checks out or runs the commenter's code
   issue_comment:
     types: [created]
+  # zizmor: ignore[dangerous-triggers] no checkout: the Action reads the configuration through the API
   pull_request_target:
     types:
       [
@@ -26,6 +28,7 @@ on:
     - cron: "17 * * * *"
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
@@ -40,8 +43,37 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # The sweep's place in a list longer than one run can read, carried as an artifact of the
+      # previous scheduled run of this workflow. Only that run can upload its own artifacts; a
+      # cache would not do, since any default-branch run in the repository can write a cache entry.
+      - id: previous
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          workflow="${WORKFLOW_REF%@*}"
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow##*/}/runs?event=schedule&status=completed&per_page=1" --jq '.workflow_runs[0].id // empty')
+          echo "run-id=${run_id}" >> "$GITHUB_OUTPUT"
+      # No previous run or artifact, or one that cannot be read, starts the sweep over.
+      - if: steps.previous.outputs.run-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-automations-cursor
+          run-id: ${{ steps.previous.outputs.run-id }}
+          github-token: ${{ github.token }}
       # The major tag moves with each release (v0 while the Action is pre-1.0); pin the
       # release SHA where you can.
-      - uses: hiero-hackers/sdk-automations@v0
+      - uses: hiero-hackers/sdk-automations@v0 # zizmor: ignore[unpinned-uses] the documented default; installing.md says how to pin
         with:
           arm-writes: "false"
+          sweep-cursor: sdk-automations-cursor.json
+      - if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-automations-cursor
+          path: sdk-automations-cursor.json
+          if-no-files-found: ignore
+          retention-days: 7

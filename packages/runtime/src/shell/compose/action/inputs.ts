@@ -41,6 +41,8 @@ export interface ActionRun {
     /** One GUID per run attempt, so a re-run is a new delivery and a redelivery is not. */
     readonly deliveryId: DeliveryGuid;
     readonly runUrl: string | null;
+    /** The file the workflow's cache carries the sweep's cursor in; `null` starts every sweep over (D248). */
+    readonly sweepCursor: string | null;
 }
 
 export type ParsedRun =
@@ -120,6 +122,7 @@ export function parseActionEnvironment(env: Environment): ParsedRun {
     const apiOrigin = apiUrl === undefined ? null : apiOriginOf(apiUrl);
     if (apiUrl !== undefined && apiOrigin === null) errors.push(ACTION_REFUSAL.apiUrl);
     const slug = botLogin.replace(/\[bot\]$/, "");
+    const sweepCursor = env["INPUT_SWEEP-CURSOR"] ?? "";
     if (errors.length > 0 || repository === null) return { ok: false, errors };
     const server = env["GITHUB_SERVER_URL"];
     return {
@@ -137,6 +140,7 @@ export function parseActionEnvironment(env: Environment): ParsedRun {
                 server === undefined
                     ? null
                     : `${server}/${repository.owner}/${repository.repo}/actions/runs/${runId}`,
+            sweepCursor: sweepCursor === "" ? null : sweepCursor,
         },
     };
 }

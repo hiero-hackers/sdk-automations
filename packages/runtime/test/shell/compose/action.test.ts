@@ -218,6 +218,19 @@ describe("the runner's environment, at its edges", () => {
         expect(parsed.run.runUrl).toBeNull();
         expect(parsed.run.deliveryId).toBe(deliveryIdOf("42", "1"));
     });
+
+    it("keeps no sweep cursor unless the workflow names a file for it", () => {
+        const cursorOf = (spelled: string | undefined) => {
+            const parsed = parseActionEnvironment({
+                ...ENVIRONMENT,
+                "INPUT_SWEEP-CURSOR": spelled,
+            });
+            return parsed.ok ? parsed.run.sweepCursor : undefined;
+        };
+        expect(cursorOf(undefined)).toBeNull();
+        expect(cursorOf("")).toBeNull();
+        expect(cursorOf("sweep-cursor.json")).toBe("sweep-cursor.json");
+    });
 });
 
 describe("the item a payload names", () => {

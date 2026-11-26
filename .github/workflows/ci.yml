@@ -258,7 +258,7 @@ jobs:
       # `stryker.config.json` files on purpose: a local run stays full by
       # default, which is what the parity measurement (4m05s full on core
       # against 9s incremental with nothing changed) compares against.
-      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run --incremental${{ github.event_name == 'push' && ' --force' || steps.mode.outputs.flags }}
+      - run: pnpm --filter @hiero-hackers/automation-${{ matrix.package }} exec stryker run --incremental${{ github.event_name == 'push' && ' --force' || steps.mode.outputs.flags }} # zizmor: ignore[template-injection] the flags come from this job's own checkout, which Stryker runs anyway
       - if: matrix.package == 'runtime'
         run: node --experimental-strip-types packages/dev/checks/test/store-mutation-threshold.ts packages/runtime/reports/stryker-report.json src/store/ 96
       # The other half of the restore above, and the reason the seed stays
@@ -271,6 +271,41 @@ jobs:
         with:
           path: packages/${{ matrix.package }}/reports/stryker-incremental.json
           key: mutation-${{ matrix.package }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+
+  # The workflows here and the one a repository copies, audited for the injection, trigger and
+  # pinning mistakes the hygiene checks in `test:repo` do not parse for. Nothing is installed from
+  # the workspace: zizmor comes from a hash-locked wheel, actionlint from a checksummed release.
+  workflow-lint:
+    name: workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Annotations rather than a SARIF upload, so the job needs no write; any finding fails it.
+      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          version: 1.32.0
+          inputs: .github/workflows docs/examples/sdk-automations.workflow.yml
+          advanced-security: false
+          annotations: true
+      # The runner image ships shellcheck, which actionlint runs over every `run:` script.
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          ARCHIVE="${RUNNER_TEMP}/actionlint.tar.gz"
+          curl -fsSL -o "${ARCHIVE}" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${ARCHIVE}" | sha256sum -c -
+          tar -xzf "${ARCHIVE}" -C "${RUNNER_TEMP}" actionlint
+          "${RUNNER_TEMP}/actionlint" .github/workflows/*.yml docs/examples/sdk-automations.workflow.yml
 
   smoke:
     name: action smoke

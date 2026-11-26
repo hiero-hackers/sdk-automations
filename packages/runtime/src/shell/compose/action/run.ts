@@ -1,7 +1,8 @@
 /**
  * The one-shot composition: one GitHub Actions run decides one event or one sweep, then exits.
- * The run is the durable record, so the store lives in memory and is gone at exit; every seam
- * is the hosted shell's, built once for the one repository the runner names.
+ * The run is the durable record, so the store lives in memory and is gone at exit, all but the
+ * sweep's cursor, which the caller carries (D248); every seam is the hosted shell's, built once
+ * for the one repository the runner names.
  */
 
 import { CAPABILITIES } from "@hiero-hackers/automation-capabilities";
@@ -16,7 +17,7 @@ import {
 import { Store } from "../../../store/index.js";
 import { createApplier, recordedWarningsIn } from "../../apply/apply.js";
 import { createItemDecider, type DecideItem } from "../../decide/item.js";
-import { declareSweep } from "../../decide/schedule.js";
+import { declareSweep, sweepScheduleId } from "../../decide/schedule.js";
 import { hydrateWarnings } from "../../decide/warnings.js";
 import type { EffectOutcome } from "../../effects.js";
 import { createDeliveries } from "../../inbound/deliveries.js";
@@ -52,6 +53,8 @@ export interface RunActionOptions {
     readonly clock?: () => Date;
     readonly log?: Log;
     readonly capabilities?: readonly EngineCapability[];
+    /** Where the previous scheduled run left the sweep's cursor (D248). */
+    readonly resumeAfter?: number | null;
 }
 
 /** The runner token outlives any job; a job is six hours at most. */
@@ -209,6 +212,7 @@ export async function runAction(run: ActionRun, options: RunActionOptions): Prom
     }
     configAbsent = config.revision === ABSENT_CONFIG_REVISION;
     declareSweep({ store, repository: run.repository, config, capabilities, now: clock() });
+    store.ledger.resumeScheduleAfter(sweepScheduleId(run.repository), options.resumeAfter ?? null);
     const sweep = createSweep({
         store,
         capabilities,

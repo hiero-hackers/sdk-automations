@@ -165,6 +165,30 @@ describe("the sweep's worklist", () => {
     });
 });
 
+describe("a cursor carried into a pending schedule", () => {
+    it("is the cursor the next claim hands out", () => {
+        const store = new Store(path);
+        store.ledger.schedule("sweep:o/r", AT, "sweep");
+        expect(store.ledger.resumeScheduleAfter("sweep:o/r", 12)).toBe(true);
+        expect(store.ledger.claimDue(AT)[0]?.resumeAfter).toBe(12);
+        store.close();
+    });
+
+    it("leaves a running schedule's cursor to its firing", () => {
+        const store = new Store(path);
+        store.ledger.schedule("sweep:o/r", AT, "sweep");
+        store.ledger.claimDue(AT);
+        expect(store.ledger.resumeScheduleAfter("sweep:o/r", 12)).toBe(false);
+        store.close();
+    });
+
+    it("names no schedule that was never declared", () => {
+        const store = new Store(path);
+        expect(store.ledger.resumeScheduleAfter("sweep:o/r", 12)).toBe(false);
+        store.close();
+    });
+});
+
 describe("the order due rows are claimed in", () => {
     /** The shared allowance goes to the rows that waited longest (D192). */
     it("fires the oldest started first, and a row that never fired before any", () => {
