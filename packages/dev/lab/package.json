@@ -11,6 +11,7 @@
         "test": "tsc --noEmit && vitest run",
         "test:watch": "vitest",
         "capture": "tsx src/capture.ts",
+        "history": "tsx src/history.ts",
         "lab:probe": "tsx src/probes/run.ts",
         "lab:rehearse": "tsx src/rehearsal/run.ts",
         "lab:action": "tsx src/action/run.ts"

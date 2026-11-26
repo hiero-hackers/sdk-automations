@@ -22,6 +22,7 @@ export function scriptedGitHub(script: GitHubScript) {
             path: new URL(String(input)).pathname,
             ifNoneMatch: new Headers(init.headers).get("if-none-match"),
             body: typeof init.body === "string" ? init.body : "",
+            query: new URL(String(input)).search,
         });
         return Promise.resolve(
             new Response(reply.body, { status: reply.status, headers: reply.headers }),

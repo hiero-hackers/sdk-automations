@@ -411,7 +411,9 @@ export async function readChangesRequestedAt(
     const standing = new Map<string, Date | null>();
     for (const entry of read.value) {
         const state = field(entry, "state");
-        const login = field(field(entry, "user"), "login");
+        // A deleted reviewer's review carries no account; GitHub's stand-in for one is `ghost`.
+        const user = field(entry, "user");
+        const login = user === null ? "ghost" : field(user, "login");
         if (typeof state !== "string" || typeof login !== "string") {
             return unreadable(`#${String(number)} reviews: a review was unreadable`);
         }
