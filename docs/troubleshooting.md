@@ -13,7 +13,8 @@ on every commit. The plain-language explanations still require review.*
 ## Reading a run
 
 An Action run writes a job summary that lists each item's decisions and effects with the codes
-below. A run that exits non-zero names the event that failed. The hourly sweep is a floor on
+below. A row coded `capabilityExempted` is a capability leaving an item alone under an exemption
+your file chose; the summary gathers those into one table at its end. A run that exits non-zero names the event that failed. The hourly sweep is a floor on
 latency, not a promise: GitHub's schedule can lag or skip an hour, so a deadline that depends on
 the sweep can arrive late.
 

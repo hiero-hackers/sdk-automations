@@ -3,7 +3,7 @@
  * capability's settings. The platform, not a ladder, holds the grace.
  */
 
-import { HOUR_MS, isConflicted, isPaused } from "@hiero-hackers/automation-core/author";
+import { HOUR_MS, isPaused } from "@hiero-hackers/automation-core/author";
 import type { InactivitySettings } from "./context.js";
 import type { InactivityFacts } from "./declaration.js";
 
@@ -53,8 +53,7 @@ export function exemptLogin(login: string, settings: InactivitySettings): boolea
     return settings.exemptMaintainers.includes(login.toLowerCase());
 }
 
-/** The two stops both ladders share, in order: paused, then conflicted. */
-export function stillOnTheLadder(facts: InactivityFacts, settings: InactivitySettings): boolean {
-    if (settings.exemptBlocked && isPaused(facts)) return false;
-    return !isConflicted(facts);
+/** Whether the repository's `exemptBlocked` holds this item back: it carries the blocked meaning. */
+export function exemptAsBlocked(facts: InactivityFacts, settings: InactivitySettings): boolean {
+    return settings.exemptBlocked && isPaused(facts);
 }

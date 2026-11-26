@@ -146,7 +146,8 @@ async function onAssign(facts: Facts, view: View, platform: Platform, login: str
 
 /** A release: only the commenter's own assignment, never anyone else's (P3). */
 async function onUnassign(facts: Facts, view: View, platform: Platform, login: string) {
-    if (!view.settings.unassign.enabled) return [];
+    const { autoAssign, unassign } = view.settings;
+    if (!unassign.enabled) return [];
     if (await platform.ask("isAutomationActor", { login })) return [];
 
     const holders = await platform.ask("assigneesOf", { item: facts.item });
@@ -160,7 +161,10 @@ async function onUnassign(facts: Facts, view: View, platform: Platform, login: s
     return [
         platform.intent({
             operation: "unassign",
-            desired: { login, notice: { topic: login, body: released(login, othersRemain) } },
+            desired: {
+                login,
+                notice: { topic: login, body: released(login, othersRemain, autoAssign.enabled) },
+            },
             cause: RELEASE,
             explain: "Unassigned the commenter at their request, and confirmed it to them.",
         }),

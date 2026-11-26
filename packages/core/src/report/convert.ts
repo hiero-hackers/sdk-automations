@@ -65,6 +65,11 @@ export function explanationFinding(explanation: StructuredExplanation, subject: 
     return finding("info", "capabilityExplained", explanation.summary, subject, explanation.detail);
 }
 
+/** A capability holding back an act under a rule the repository chose: nothing happened, as intended. */
+export function exemptionFinding(exemption: StructuredExplanation, subject: Subject): Finding {
+    return finding("notice", "capabilityExempted", exemption.summary, subject, exemption.detail);
+}
+
 /** Configuration errors as findings, each carrying its code and the dotted path (D75). */
 export function configFindings(result: ConfigResult): readonly Finding[] {
     if (result.ok) {

@@ -559,10 +559,11 @@ describe("exemptBlocked: false with blocked mapped", () => {
 
     /**
      * The control: with the exemption on, the capability declines before an
-     * intent exists, so the refusal has nothing to refuse and says nothing.
-     * The two together are what makes the row above the SAFETY rule firing.
+     * intent exists, so the refusal has nothing to refuse; only the exemption
+     * is recorded (D252). The two together are what makes the row above the
+     * SAFETY rule firing.
      */
-    it("says nothing at all when the exemption is left on", async () => {
+    it("records only its own exemption when the exemption is left on", async () => {
         const decision = await decideOn(
             configFor({
                 exemptBlocked: true,
@@ -572,7 +573,9 @@ describe("exemptBlocked: false with blocked mapped", () => {
         );
 
         expect(decision.approved).toEqual([]);
-        expect(decision.report.findings).toEqual([]);
+        expect(decision.report.findings.map((finding) => finding.code)).toEqual([
+            "capabilityExempted",
+        ]);
     });
 });
 

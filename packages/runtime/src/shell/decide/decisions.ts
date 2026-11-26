@@ -36,9 +36,13 @@ type CapabilitySubject = Extract<Subject, { readonly kind: "capability" }>;
 /** The code a skip's row carries: core files the skip as an explanation on the capability (D186). */
 export const SKIPPED = "capabilitySkipped";
 
+/** The code an exemption's row carries, which the job summary gathers into one table (D252). */
+export const EXEMPTED = "capabilityExempted";
+
 /** The codes filed on the capability that its item's rows carry; a producer's unread group stays silent. */
 const ON_THE_CAPABILITY: Readonly<Record<string, string>> = {
     capabilityExplained: SKIPPED,
+    capabilityExempted: EXEMPTED,
     capabilityFailed: "capabilityFailed",
     resolverFailed: "resolverFailed",
     undeclaredResolver: "undeclaredResolver",

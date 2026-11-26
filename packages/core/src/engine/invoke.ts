@@ -97,6 +97,7 @@ export function isSkipSignal(thrown: unknown): thrown is SkipSignal {
  */
 export class EngineHandle {
     readonly explanations: StructuredExplanation[] = [];
+    readonly exemptions: StructuredExplanation[] = [];
     readonly violations: string[] = [];
     /** Declared resolvers whose source threw, as `name: detail`. */
     readonly failures: string[] = [];
@@ -165,6 +166,10 @@ export class EngineHandle {
 
     explain(explanation: StructuredExplanation): void {
         this.explanations.push(explanation);
+    }
+
+    exempt(summary: string, ...detail: readonly string[]): void {
+        this.exemptions.push({ capability: this.declaration.name, summary, detail });
     }
 }
 

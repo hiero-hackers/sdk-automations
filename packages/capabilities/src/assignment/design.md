@@ -5,7 +5,8 @@ Not built: phases 2–4
 ## What the output looks like
 
 Every comment is one managed notice per person per issue: kind `notice`, topic the commenter's
-login. A claim, a refusal and a release to the same person rewrite that one comment in place. The
+login. Each names the rule that decided it and the way forward — how to step away, or what makes
+the issue claimable again (D253). A claim, a refusal and a release to the same person rewrite that one comment in place. The
 examples are `messages.ts`'s own sentences, for a commenter `alice`.
 
 Claim accepted, with the `unassign` block on:
@@ -20,12 +21,14 @@ Claim accepted, with the `unassign` block off:
 Already claimed — each holder is named through `inert()`, a zero-width space after the `@`, so the
 refusal pings nobody but the commenter:
 
-> Hi @alice — this issue is already assigned to @​bob, so it cannot be claimed.
+> Hi @alice — this issue is already assigned to @​bob, so it cannot be claimed. It can be claimed
+> again once it is released.
 
 Refused — the issue carries a `notClaimableWhen` meaning (two or more read `blocked` and
 `awaitingTriage`):
 
-> Hi @alice — this issue cannot be claimed while it is marked `blocked`.
+> Hi @alice — this issue cannot be claimed while it is marked `blocked`. It can be claimed once
+> that changes.
 
 Refused at the gate — either refusal, when the issue carries `awaitingTriage`, ends with the next
 step, because a refusal with no way forward is the one a contributor stops reading at:
@@ -37,7 +40,7 @@ Refused — the issue carries none of the `claimableOnlyWhen` meanings (two or m
 `inProgress`):
 
 > Hi @alice — only an issue marked `ready` can be claimed in this repository, and this one is not
-> yet.
+> yet. It can be claimed once it is.
 
 Refused — at the cap, with the `unassign` block on:
 
@@ -46,12 +49,14 @@ Refused — at the cap, with the `unassign` block on:
 
 Refused — at the cap, with the `unassign` block off:
 
-> Hi @alice — you already have 2 open assignments, and this repository's limit is 2.
+> Hi @alice — you already have 2 open assignments, and this repository's limit is 2. Once one of
+> them is closed, you can claim this issue.
 
-Released, nobody else assigned:
+Released, nobody else assigned, with the `autoAssign` block on (off, the sentence ends at "pick
+up"):
 
 > @alice claimed this issue and has since been unassigned at their request. The issue is open for
-> anyone to pick up.
+> anyone to pick up — comment this repository's assign command to claim it again.
 
 Released, someone else still assigned:
 
@@ -243,6 +248,8 @@ Each built row names the test that proves it, as file › title; `·` separates 
 | Released by inactivity, then `/assign` again | a fresh claim — only who holds the issue now is read, and assignment decides alongside inactivity exactly as alone | `capability.test.ts` › `/assign` on an open, claimable issue · `engine-matrix.test.ts` › each capability's decision is identical no matter which others are enabled |
 | `autoAssign` or `unassign` off | its command does nothing and asks nothing | `capability.test.ts` › does nothing, and asks nothing, while autoAssign is off · does nothing, and asks nothing, while unassign is off |
 | An enabled block's command word unmapped | every comment is an operator skip naming the dotted path, one issuing no command too, whichever word is missing; a block that is off demands nothing | `capability.test.ts` › skips with the dotted path when an enabled block's word is unmapped · skips every comment while a word is unmapped, one that issues nothing too · catches an unmapped assign word as well as an unmapped unassign one · demands no word of a block that is switched off |
+| At the cap with the `unassign` block off | the refusal says a closed assignment frees a claim | `capability.test.ts` › tells a capped commenter with no release command what frees a claim |
+| A release, `autoAssign` on or off | the claim-again step only where a claim can follow | `capability.test.ts` › offers the claim back after a release only where claims are on |
 | A login spelt in another case | the same person — holders are compared case-insensitively | `capability.test.ts` › reads a login the same whatever its case |
 | A claim without `issues:write` | the assign refused `permissionMissing` (rule 2); nothing is approved, so nothing is written | `engine-matrix.test.ts` › refuses the claim permissionMissing without issues:write, and approves nothing |
 | A claim under `mode: dry-run` | the assign, notice and all, recorded as `wouldApply`; nothing is approved, so nothing is written | `engine-matrix.test.ts` › records a dry-run claim as wouldApply, and writes nothing |
