@@ -531,6 +531,19 @@ export async function readPullRequestActivity(
     return { ok: true, value: newest };
 }
 
+/** `login`'s newest `/working` on an issue: the one act that resets an assignment's clock. */
+export async function readWorkingBy(
+    context: RepositoryReads,
+    number: number,
+    working: string | undefined,
+    login: string | null,
+): Promise<Read<Date | null>> {
+    if (working === undefined) return { ok: true, value: null };
+    if (login === null) return unreadable(`#${String(number)} activity: no login was named`);
+    const worked = await readLastWorkingAt(context, number, working);
+    return worked.ok ? { ok: true, value: worked.value.get(login) ?? null } : worked;
+}
+
 /** The three reads the `review` group is one value of. */
 type ReviewFacts = Exclude<PullRequestFacts["review"], Unread>;
 

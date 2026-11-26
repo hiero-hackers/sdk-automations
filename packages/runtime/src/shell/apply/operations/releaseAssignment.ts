@@ -5,7 +5,7 @@ import { text } from "./row.js";
 
 export const releaseAssignment: OperationHandler<"releaseAssignment"> = {
     verbs: ["releaseAssignment"],
-    traits: { recordsWarning: false, activityRead: false },
+    traits: { recordsWarning: false, activityRead: true },
 
     /** Two calls, because a release is graced: the release, then its notice (grace.md §3). */
     plan: (effect) =>

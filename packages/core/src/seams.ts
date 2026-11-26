@@ -70,9 +70,10 @@ export interface ReadBack {
     item(item: ItemRef): Promise<ReadBackOutcome<ItemFacts>>;
     /** Whether a change request is outstanding: the reviews and commits lists, not the item's body. */
     changesRequested(item: ItemRef): Promise<ReadBackOutcome<boolean>>;
-    pullRequestActivity(
+    activity(
         item: ItemRef,
         working: string | undefined,
+        login: string | null,
     ): Promise<ReadBackOutcome<Date | null>>;
     /** The logins on the item now; one read, because a released login cannot come back stale. */
     assignees(item: ItemRef): Promise<ReadBackOutcome<readonly string[]>>;

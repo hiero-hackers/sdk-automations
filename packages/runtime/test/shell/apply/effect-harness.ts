@@ -451,6 +451,8 @@ export interface FakeGitHub {
     readonly reader: ReadBack;
     /** Every write attempted, in order, as `verb argument`. */
     readonly calls: string[];
+    /** Whose activity each apply-time read asked for, in order. */
+    readonly activityReads: (string | null)[];
     readonly faults: Faults;
 }
 
@@ -483,6 +485,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
         activityAt: initial.activityAt ?? null,
     };
     const calls: string[] = [];
+    const activityReads: (string | null)[] = [];
     const faults: Faults = {
         crashOn: null,
         scripted: [],
@@ -695,12 +698,14 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
                     ? { ok: false, detail: "GitHub refused the read" }
                     : { ok: true, value: world.changesRequested },
             ),
-        pullRequestActivity: () =>
-            Promise.resolve(
+        activity: (_item, _working, login) => {
+            activityReads.push(login);
+            return Promise.resolve(
                 faults.activityReadFails
                     ? { ok: false, detail: "GitHub refused the read" }
                     : { ok: true, value: world.activityAt },
-            ),
+            );
+        },
         assignees: () =>
             Promise.resolve(
                 faults.assigneeReadFails
@@ -716,7 +721,7 @@ export function fakeGitHub(initial: Partial<FakeWorld> = {}): FakeGitHub {
             ),
     };
 
-    return { world, writer, reader, calls, faults };
+    return { world, writer, reader, calls, activityReads, faults };
 }
 
 /** Every write of one verb, in order — what a duplicate would show up in. */

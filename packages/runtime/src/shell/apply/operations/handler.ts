@@ -87,7 +87,7 @@ export function planWithNotice(effect: Effect, act: Call, notice: string | null)
 export interface OperationTraits {
     /** A landed call of this operation is the warning a graced act promised (grace.md §3). */
     readonly recordsWarning: boolean;
-    /** The fresh gate reads the pull request's activity before a graced act of this operation. */
+    /** The fresh gate reads the affected person's activity before a graced act of this operation. */
     readonly activityRead: boolean;
 }
 

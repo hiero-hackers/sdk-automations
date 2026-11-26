@@ -2298,6 +2298,38 @@ describe("a graced act at the apply-time re-gate", () => {
         expect(outcome).toMatchObject({ outcome: "refused", code: "activityCancelled" });
         expect(github.calls).toEqual([]);
     });
+
+    it("refuses when the person said /working after the decision read the item", async () => {
+        recordWarning();
+        const github = fakeGitHub({ assignees: ["alice"], activityAt: later(3) });
+
+        const { outcome } = await applyAt(later(8), releaseEffect(), github);
+
+        expect(outcome).toMatchObject({ outcome: "refused", code: "activityCancelled" });
+        expect(github.activityReads).toEqual(["alice"]);
+        expect(github.calls).toEqual([]);
+    });
+
+    it("still releases when the person's last /working came before the warning", async () => {
+        recordWarning();
+        const github = fakeGitHub({ assignees: ["alice"], activityAt: later(-1) });
+
+        const { outcome } = await applyAt(later(8), releaseEffect(), github);
+
+        expect(outcome).toMatchObject({ outcome: "applied", code: null });
+        expect(github.calls[0]).toBe("releaseAssignment alice");
+    });
+
+    it("asks again when the person's current activity cannot be read", async () => {
+        recordWarning();
+        const github = fakeGitHub({ assignees: ["alice"] });
+        github.faults.activityReadFails = true;
+
+        const { outcome } = await applyAt(later(8), releaseEffect(), github);
+
+        expect(outcome).toMatchObject({ outcome: "retryLater", code: "itemUnreadable" });
+        expect(github.calls).toEqual([]);
+    });
 });
 
 /**
