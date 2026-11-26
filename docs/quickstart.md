@@ -69,6 +69,7 @@ time, give a block its own lower `mode` and let the rest inherit the file's:
 
 ```yaml
 mode: active
+since: 2026-11-04            # optional: act only on what happens from this UTC day on
 capabilities:
   triageQueue:
     enabled: true            # inherits active

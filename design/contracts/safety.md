@@ -89,6 +89,7 @@ Not refusals. The decision was reached and the effect was written down instead o
 | Code | Raised when |
 |---|---|
 | `observation` | The request's class is `observation`. |
+| `beforeSince` | The occasion predates the file's `since`: the effect is recorded, not applied. Never judged against the item's `updated_at`. |
 | `modeRecordsOnly` | The capability's mode is `observe` or `dry-run`: its block's own `mode`, or the file's where the block states none. |
 <!-- /generated -->
 

@@ -15,12 +15,13 @@ New here? Start with the [Quickstart](quickstart.md). Want a file to copy?
 
 ## The file at a glance
 
-5 top-level keys and two shared wrapper levels. The tree below is the entire shared shape; what a
+6 top-level keys and two shared wrapper levels. The tree below is the entire shared shape; what a
 capability writes inside its own block is deliberately capability-owned and may be deeper:
 
 ```yaml
 schemaVersion: 2              # ── top level. Optional; omit it, the only value is 2
 mode: dry-run                 # ── top level. Optional, default: observe
+since: 2026-11-04             # ── top level. Optional, default: no bound. A UTC date, inherited by every block
 
 capabilities:                 # ── top level. Optional, default: nothing enabled
   triageQueue:                     #    └─ one block per capability, keyed by its name
@@ -104,6 +105,22 @@ effect an earlier rule refused is never rehearsed, and nothing is prepared: no c
 minted for a write that will not happen.
 
 `mode:` with no value after it is an error, not a default — the App will not pick a mode for you.
+
+### `since`
+
+| | |
+|---|---|
+| Type | string, a calendar date written `YYYY-MM-DD` (UTC) |
+| Required | no |
+| Default | none — the automations act on everything |
+
+The day the automations start caring about. An intent whose occasion falls before the start of that
+day is recorded as `beforeSince`, not acted on, and the job summary counts those per capability
+("14 older items left alone"). It is judged against the intent's occasion, never the item's
+`updated_at`, which moves for every label, comment and bot write. An item held back is not held
+back for good: a later occasion (a push, a `/working`, a reassignment) brings it into coverage on
+the next run. Every block inherits it. A date that does not exist (`2026-02-30`) or carries a time of
+day is `sinceInvalid`.
 
 ### `capabilities`
 
@@ -384,6 +401,7 @@ The exact codes the App reports, and what to fix.
 | `notAMapping` | Something is a list or a bare value where `key: value` pairs belong |
 | `unknownKey` | A key the schema does not have — usually a typo. Includes a setting name the capability never declared |
 | `schemaVersionUnsupported` | A stated `schemaVersion` is not the unquoted number `2` — omit the key |
+| `sinceInvalid` | `since` is not a real calendar date written `YYYY-MM-DD` (a day that does not exist, a time of day, a bare year, or a number) |
 | `modeInvalid` | `mode` is not one of the four modes, or a block's `mode` is not `observe`, `dry-run` or `active` (check case and quoting; switch a capability off with `enabled: false`) |
 | `capabilityNameInvalid` | Capability names are camelCase, like `prDashboard` |
 | `capabilityEnabledNotBoolean` | `enabled` must be literally `true` or `false` — not `"true"`, not `1` |

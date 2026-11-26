@@ -55,8 +55,13 @@ function runOf(overrides: Partial<ActionRun> = {}): ActionRun {
 async function decided(
     run: ActionRun,
     mode: string,
+    since?: string,
 ): Promise<{ store: ReturnType<typeof runStore>; outcome: RunOutcome }> {
-    scriptedGitHub({ now: () => START, config: () => configFor("triageQueue", mode) });
+    const config = configFor("triageQueue", mode);
+    scriptedGitHub({
+        now: () => START,
+        config: () => (since === undefined ? config : `since: ${since}\n${config}`),
+    });
     const store = runStore();
     const outcome = await runAction(run, {
         payload: capture("issues.opened.json").bytes(),
@@ -81,6 +86,19 @@ describe("the job summary", () => {
         expect(text).not.toContain("Items decided with no rows");
         expect(annotations(outcome)).toEqual([]);
         store.close();
+    });
+
+    it("counts the items since left alone, per capability, and says nothing without since", async () => {
+        const run = runOf();
+        const held = await decided(run, "dry-run", "2099-01-01");
+        const text = renderSummary(held.store, run, held.outcome);
+        expect(text).toMatch(/- `triageQueue`: 1 older item left alone/);
+        expect(text).toContain("beforeSince");
+        held.store.close();
+
+        const open = await decided(run, "dry-run");
+        expect(renderSummary(open.store, run, open.outcome)).not.toContain("left alone");
+        open.store.close();
     });
 
     it("says active was decided as dry-run when writes were not armed", async () => {

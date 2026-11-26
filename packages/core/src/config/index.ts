@@ -30,6 +30,7 @@ export {
 export type { ConfigError, ConfigErrorCode, ConfigResult } from "./results.js";
 export { parseConfig, NO_CONFIG } from "./parse.js";
 export { anyCapabilityActive, loweredTo, effectiveMode, type EffectiveMode } from "./mode.js";
+export { sinceStart } from "./sections.js";
 export { parseConfigDocument } from "./document.js";
 export { commandInComment } from "./commands.js";
 export { labelKey, meaningOfLabel, meaningsOfLabels, skillsOfLabels } from "./labels.js";

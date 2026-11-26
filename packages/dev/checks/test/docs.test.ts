@@ -224,6 +224,7 @@ describe("docs/configuration.md", () => {
             unknownKey: true,
             schemaVersionUnsupported: true,
             modeInvalid: true,
+            sinceInvalid: true,
             capabilityNameInvalid: true,
             capabilityEnabledNotBoolean: true,
             capabilityModeAboveFile: true,
@@ -464,6 +465,7 @@ describe("docs/troubleshooting.md", () => {
             graceRunning: true,
             activityCancelled: true,
             observation: true,
+            beforeSince: true,
             modeRecordsOnly: true,
         };
         expect([...onPurpose, ...needsYou, ...defects].sort()).toEqual(

@@ -7,6 +7,7 @@
 # mapping; the capability's own spec reads the keys and reports what it cannot.
 
 mode: active
+since: 2026-11-04 # optional: items whose occasion predates this UTC day are recorded, not acted on
 
 capabilities:
   triageQueue:

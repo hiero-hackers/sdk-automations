@@ -99,6 +99,7 @@ export interface RepositoryConfig {
     /** Optional in a document; absent is 2. A future format states its own. */
     readonly schemaVersion: 2;
     readonly mode: RepositoryMode;
+    readonly since?: string;
     readonly capabilities: Readonly<Record<string, CapabilityConfig>>;
     readonly mappings: Mappings;
     readonly principals: Readonly<Record<string, string>>;
@@ -108,6 +109,7 @@ export interface RepositoryConfig {
 export const TOP_LEVEL_KEYS = [
     "schemaVersion",
     "mode",
+    "since",
     "capabilities",
     "mappings",
     "principals",

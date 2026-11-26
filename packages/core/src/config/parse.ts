@@ -16,6 +16,7 @@ import {
     readMappings,
     readMode,
     readPrincipals,
+    readSince,
 } from "./sections.js";
 
 /**
@@ -76,6 +77,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
     }
 
     const mode = readMode(raw);
+    const since = readSince(raw);
     const mappings = readMappings(raw);
     const principals = readPrincipals(raw);
     const capabilities = readCapabilities(
@@ -97,12 +99,13 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
             ? checkRequiredMappings(capabilities.value, mappings.value, options.knownCapabilities)
             : [];
 
-    if (!mode.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
+    if (!mode.ok || !since.ok || !capabilities.ok || !mappings.ok || !principals.ok) {
         return {
             ok: false,
             errors: [
                 ...structural,
                 ...(mode.ok ? [] : mode.errors),
+                ...(since.ok ? [] : since.errors),
                 ...(capabilities.ok ? [] : capabilities.errors),
                 ...(mappings.ok ? [] : mappings.errors),
                 ...(principals.ok ? [] : principals.errors),
@@ -120,6 +123,7 @@ export function parseConfig(raw: unknown, options: ParseConfigOptions): ConfigRe
             revision: options.revision,
             schemaVersion: 2,
             mode: mode.value,
+            ...(since.value === undefined ? {} : { since: since.value }),
             capabilities: cleanRecord(capabilities.value),
             mappings: mappings.value,
             principals: cleanRecord(principals.value),
