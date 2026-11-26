@@ -272,6 +272,10 @@ export function createReadBack({
         }
         try {
             await sleep(ABSENCE_CONFIRMATION_GAP_MS);
+            // A timer keeps the monotonic clock, so the wall clock can read its second a millisecond short;
+            // the top-up is capped so a clock set back cannot stall the sweep.
+            const short = firstAt + ABSENCE_CONFIRMATION_GAP_MS - clock().getTime();
+            if (short > 0) await sleep(Math.min(short, ABSENCE_CONFIRMATION_GAP_MS));
         } catch {
             return "unknown";
         }
