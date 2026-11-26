@@ -375,6 +375,53 @@ describe("reading a pull request's review decision", () => {
     });
 });
 
+describe("reading what an issue's assignee did last", () => {
+    const COMMENTS = `${ISSUE}/comments?per_page=100&page=1`;
+
+    const said = (login: string, body: string, at: string): Record<string, unknown> => ({
+        user: { login },
+        body,
+        created_at: at,
+    });
+
+    it("answers the named login's newest `/working`, and nobody else's", async () => {
+        const { readBack, scripted } = harness([
+            listed(
+                JSON.stringify([
+                    said("alice", "/working", "2026-10-20T09:00:00Z"),
+                    said("alice", "/working still", "2026-10-22T09:00:00Z"),
+                    said("bob", "/working", "2026-10-23T09:00:00Z"),
+                ]),
+            ),
+        ]);
+
+        expect(await readBack.activity(ITEM, "/working", "alice")).toEqual({
+            ok: true,
+            value: new Date("2026-10-22T09:00:00Z"),
+        });
+        expect(scripted.calls.map((call) => call.url)).toEqual([COMMENTS]);
+    });
+
+    it("answers nothing, without a call, when the repository maps no `/working`", async () => {
+        const { readBack, scripted } = harness([]);
+
+        expect(await readBack.activity(ITEM, undefined, "alice")).toEqual({
+            ok: true,
+            value: null,
+        });
+        expect(scripted.calls).toEqual([]);
+    });
+
+    it("names GitHub's refusal rather than reporting the person idle", async () => {
+        const { readBack } = harness([failure(403, "Forbidden")]);
+
+        const outcome = await readBack.activity(ITEM, "/working", "alice");
+
+        expect(outcome.ok).toBe(false);
+        expect(outcome.ok ? "" : outcome.detail).toContain("#132 comments");
+    });
+});
+
 /** The release's whole read-back: one unpaged read of the item (6.9, 6.10). */
 describe("reading an item's assignees", () => {
     const assigned = (...logins: readonly string[]): ResponseStep =>

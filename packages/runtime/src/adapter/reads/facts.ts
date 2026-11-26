@@ -55,6 +55,7 @@ export {
     readPullRequestActivity,
     readReapableSince,
     readReview,
+    readWorkingBy,
     SWEEP_READS,
     type ClosedIssues,
     type ItemWalk,

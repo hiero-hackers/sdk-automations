@@ -242,9 +242,10 @@ export function createGates(options: GateOptions): Gates {
             const request = writeRequestFor(intent);
             const activity =
                 intent.grace !== null && traitsOf(intent.operation).activityRead
-                    ? await reader.pullRequestActivity(
+                    ? await reader.activity(
                           intent.item,
                           pass.config.mappings.commands.working,
+                          "login" in intent.desired ? intent.desired.login : null,
                       )
                     : { ok: true as const, value: null };
             if (!activity.ok) {
@@ -253,7 +254,7 @@ export function createGates(options: GateOptions): Gates {
                     result: {
                         outcome: "retryLater",
                         code: "itemUnreadable",
-                        detail: `the pull request's activity could not be read at apply time: ${activity.detail}`,
+                        detail: `the item's activity could not be read at apply time: ${activity.detail}`,
                     },
                 };
             }

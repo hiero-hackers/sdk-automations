@@ -28,6 +28,7 @@ import {
     readChangesRequestedAt,
     readLastCommitAt,
     readPullRequestActivity,
+    readWorkingBy,
 } from "../reads/facts.js";
 import { readAssigneesOf } from "../reads/resolvers.js";
 import { field, jsonArrayOf, jsonRecordOf } from "../client/untrusted.js";
@@ -325,10 +326,10 @@ export function createReadBack({
         labels,
         item: readItem,
         changesRequested: changesRequestedOn,
-        pullRequestActivity: (item, working) =>
+        activity: (item, working, login) =>
             item.kind === "pullRequest"
                 ? readPullRequestActivity(reads, item.number, working)
-                : Promise.resolve({ ok: true, value: null }),
+                : readWorkingBy(reads, item.number, working, login),
         // The resolvers' reader, not a second one: assignees arrive whole on the item (6.9).
 
         assignees: (item) => readAssigneesOf(reads, item.number),
