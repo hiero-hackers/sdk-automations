@@ -21,6 +21,7 @@ export {
     type Read,
     type SweepRead,
 } from "./reads/facts.js";
+export { readItem } from "./reads/items.js";
 export {
     causeFingerprintOf,
     installationGrants,

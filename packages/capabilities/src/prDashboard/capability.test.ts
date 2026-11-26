@@ -444,13 +444,22 @@ describe("prDashboard", () => {
 
     /** The spec IS the schema, so the names a maintainer writes are pinned. */
     it("declares the checks a repository may switch on, each parked until enabled", () => {
-        expect(Object.keys(prDashboard.declaration.settings)).toEqual(["checks", "applyLabels"]);
+        expect(Object.keys(prDashboard.declaration.settings)).toEqual([
+            "checks",
+            "signals",
+            "applyLabels",
+        ]);
         expect(view({}).settings).toEqual({
             checks: {
                 dcoSignoff: { enabled: false },
                 gpgSignature: { enabled: false },
                 mergeConflicts: { enabled: false },
                 linkedIssues: { enabled: false },
+            },
+            signals: {
+                blankDescription: { enabled: false },
+                firstContribution: { enabled: false },
+                diffSize: { enabled: false },
             },
             applyLabels: [],
         });
@@ -713,6 +722,127 @@ describe("prDashboard", () => {
         );
         expect(result.ok ? [] : result.errors.map((e) => `${e.code} @ ${e.path}`)).toEqual([
             "unknownKey @ capabilities.prDashboard.checks.assignedIssues",
+        ]);
+    });
+});
+
+describe("prDashboard's reviewer signals", () => {
+    const ALL_SIGNALS = { blankDescription: on, firstContribution: on, diffSize: on };
+    const PROFILE = {
+        blankDescription: true,
+        firstContribution: true,
+        additions: 1200,
+        deletions: 40,
+        changedFiles: 38,
+    };
+    const signalled = (
+        signals: Readonly<Record<string, unknown>>,
+        applyLabels: readonly string[] = [],
+        checks: Readonly<Record<string, unknown>> = LINKS,
+    ) =>
+        projectCapabilityView(
+            prDashboard.declaration,
+            configEnabling(
+                ["prDashboard"],
+                [prDashboard.declaration],
+                { prDashboard: { checks, signals, applyLabels } },
+                MAPPED,
+            ),
+        );
+    const linked = (profile: unknown) =>
+        answers({ linkedIssues: [ISSUE_11], pullRequestProfile: profile });
+
+    it("lists each enabled signal under the closing line, as facts with no mark", async () => {
+        const { body } = await evaluate(signalled(ALL_SIGNALS), linked(PROFILE));
+        expect(body).toBe(
+            [
+                "Hey @opener 👋 Thanks for the PR!",
+                "✅ **Issue link** — Linked to #11.",
+                "✅ Every check passes.",
+                [
+                    "**For reviewers** — what GitHub states about this pull request. No check depends on it.",
+                    "- **Description** — Blank, HTML comments aside.",
+                    "- **Author** — First contribution to this repository, by GitHub's count.",
+                    "- **Size** — +1200 −40 across 38 files. That is above this repository's 500-line mark.",
+                ].join("\n"),
+            ].join("\n\n"),
+        );
+    });
+
+    it("states a size within the repository's mark without calling it out", async () => {
+        const { body } = await evaluate(
+            signalled({ diffSize: { enabled: true, lines: 2000 } }),
+            linked(PROFILE),
+        );
+        expect(body).toContain("- **Size** — +1200 −40 across 38 files.");
+        expect(body).not.toContain("mark");
+    });
+
+    it("says a written description and a returning author plainly", async () => {
+        const { body } = await evaluate(
+            signalled(ALL_SIGNALS),
+            linked({ ...PROFILE, blankDescription: false, firstContribution: false }),
+        );
+        expect(body).toContain("- **Description** — Written.");
+        expect(body).toContain("- **Author** — Has contributed to this repository before.");
+    });
+
+    /** GitHub's `NONE` association answers neither way, so the note says neither. */
+    it("renders an association GitHub left open as unknown, not as first or returning", async () => {
+        const { body } = await evaluate(
+            signalled({ firstContribution: on }),
+            linked({ ...PROFILE, firstContribution: null }),
+        );
+        expect(body).toContain(
+            "- **Author** — GitHub does not say whether the author has contributed here before.",
+        );
+    });
+
+    it("renders every signal unknown when the profile cannot be read, and still judges the checks", async () => {
+        const { body, handle } = await evaluate(signalled(ALL_SIGNALS), linked(undefined));
+        expect(body).toContain("✅ Every check passes.");
+        expect(body).toContain("- **Description** — Could not be read this time.");
+        expect(body).toContain("- **Size** — Could not be read this time.");
+        expect(handle.explanations).toEqual([
+            {
+                capability: "prDashboard",
+                summary: "The reviewer signals are unknown: a resolver could not answer.",
+                detail: [
+                    "resolver reason: rateLimited",
+                    "secondary rate limit on this installation",
+                ],
+            },
+        ]);
+    });
+
+    it("never moves the verdict: passing checks still ask for needsReview", async () => {
+        const { label } = await evaluate(signalled(ALL_SIGNALS, BOTH), linked(PROFILE));
+        expect(label).toEqual({ meaning: "needsReview", cause: "checksPassed" });
+    });
+
+    it("lists each signal on the operator surface beside the rows", async () => {
+        const { intents } = await evaluate(
+            signalled(ALL_SIGNALS),
+            linked({ ...PROFILE, firstContribution: null }),
+        );
+        expect(intents[0]?.explanation.detail).toEqual([
+            "linkedIssues: pass",
+            "blankDescription: true",
+            "firstContribution: unknown",
+            "diffSize: 1240 lines, 38 files",
+        ]);
+    });
+
+    it("skips with the reason, asking nothing, when signals are enabled but no check is", async () => {
+        const asked: { query: string; input: unknown }[] = [];
+        const { intents, handle } = await evaluate(
+            signalled(ALL_SIGNALS, [], {}),
+            answers({}, asked),
+        );
+        expect(intents).toEqual([]);
+        expect(asked).toEqual([]);
+        expect(handle.explanations.map(({ summary }) => summary)).toEqual([
+            "Skipped: signals are enabled, but no check is.",
         ]);
     });
 });

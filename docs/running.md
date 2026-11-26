@@ -191,6 +191,20 @@ where an operator reads what a window has spent.
 Both only read, and exit 1 when no store answered. Every code either prints is in
 [troubleshooting.md](troubleshooting.md).
 
+## Rehearse a configuration on one item
+
+```bash
+GITHUB_TOKEN=… pnpm config:simulate sdk-automations.yml https://github.com/owner/repo/pull/12
+```
+
+Prints what each capability would decide about that issue or pull request under that file, and
+why, as the table an Action run writes to its job summary. It reads the item as GitHub holds it
+now and hands it to the Action's own run as that item's `opened` event, unarmed: `active` is
+decided as `dry-run`, so no write path exists and nothing is sent. A read-only token is enough.
+The file is the one given, not the default branch's. A capability woken only by another event
+(`assignment` answers comments) or only by the schedule (`inactivity`) decides nothing here. It
+exits 1 when the item could not be read or the run failed.
+
 ## Stop it
 
 `SIGINT` or `SIGTERM`, in the order that loses nothing: the socket closes, the tick stops, the pass

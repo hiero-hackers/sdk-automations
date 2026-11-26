@@ -251,6 +251,103 @@
                             },
                             "description": "The quality checks this repository runs — each one off until it is enabled."
                         },
+                        "signals": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "blankDescription": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": true,
+                                                    "description": "Run this block."
+                                                }
+                                            },
+                                            "required": [
+                                                "enabled"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": false,
+                                                    "description": "Leave this block parked and unread.",
+                                                    "default": false
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "description": "Tell reviewers whether the description is blank, HTML comments aside."
+                                },
+                                "firstContribution": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": true,
+                                                    "description": "Run this block."
+                                                }
+                                            },
+                                            "required": [
+                                                "enabled"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": false,
+                                                    "description": "Leave this block parked and unread.",
+                                                    "default": false
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "description": "Tell reviewers whether GitHub counts this as the author's first contribution here."
+                                },
+                                "diffSize": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": true,
+                                                    "description": "Run this block."
+                                                },
+                                                "lines": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "description": "Lines added plus removed above which the size is called out.",
+                                                    "default": 500
+                                                }
+                                            },
+                                            "required": [
+                                                "enabled"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "enabled": {
+                                                    "const": false,
+                                                    "description": "Leave this block parked and unread.",
+                                                    "default": false
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "description": "Tell reviewers how many lines and files the pull request changes."
+                                }
+                            },
+                            "description": "Facts for reviewers under the checks — never a check, never the verdict, each one off until it is enabled."
+                        },
                         "applyLabels": {
                             "type": "array",
                             "items": {

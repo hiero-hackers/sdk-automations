@@ -24,6 +24,7 @@ export default defineConfig({
                 "src/shell/observe/explain-cli.ts",
                 "src/shell/observe/status-cli.ts",
                 "src/shell/observe/backup-cli.ts",
+                "src/shell/compose/action/simulate-cli.ts",
             ],
             // The strictest of the three floors the former packages carried,
             // and still just below the measured 99.31/99.68/98.82/99.31 —

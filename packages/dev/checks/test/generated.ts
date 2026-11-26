@@ -175,6 +175,7 @@ const RESOLVER_SIGNATURES: { readonly [Q in ResolverName]: { input: string; outp
     assigneesOf: { input: "item", output: "string[]" },
     openAssignments: { input: "login", output: "{ item, meanings }[]" },
     configAtHead: { input: "item", output: "ConfigAtHead" },
+    pullRequestProfile: { input: "item", output: "PullRequestProfile" },
 };
 
 /** The desired-outcome fields of each operation — `IntentCatalogue`'s keys. */

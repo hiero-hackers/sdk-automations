@@ -246,6 +246,27 @@ export const SHAPE_RECORDS: readonly ShapeRecord[] = [
         },
     },
     {
+        name: "pullRequestProfile",
+        row: "Read PR",
+        request: { method: "GET", path: "/repos/{o}/{r}/pulls/{n}" },
+        fixture: "PR_READY",
+        shape: {
+            status: 200,
+            permission: "pull_requests:read",
+            headers: ["etag"],
+            pagination: "none",
+            conditional: "etag-only",
+            fields: [
+                "number",
+                "body",
+                "author_association",
+                "additions",
+                "deletions",
+                "changed_files",
+            ],
+        },
+    },
+    {
         name: "openAssignments",
         row: "List issues (paged)",
         request: {

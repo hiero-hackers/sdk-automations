@@ -36,7 +36,7 @@ const DECLARATIONS = ALL.map((c) => c.declaration);
  * `declarations` block below.
  */
 describe("declared shape", () => {
-    it("prDashboard declares an event and a schedule trigger, five resolvers, a comment and a label", () => {
+    it("prDashboard declares an event and a schedule trigger, six resolvers, a comment and a label", () => {
         expect(prDashboard.declaration).toEqual({
             name: "prDashboard",
             triggers: [
@@ -54,6 +54,7 @@ describe("declared shape", () => {
                 "commitAttestations",
                 "mergeability",
                 "assigneesOf",
+                "pullRequestProfile",
             ],
             intents: ["postManagedComment", "applyMappedLabel"],
         });
@@ -204,6 +205,11 @@ describe("configuration isolation (contract.md §2)", () => {
                 gpgSignature: { enabled: false },
                 mergeConflicts: { enabled: false },
                 linkedIssues: { enabled: false },
+            },
+            signals: {
+                blankDescription: { enabled: false },
+                firstContribution: { enabled: false },
+                diffSize: { enabled: false },
             },
             applyLabels: [],
         });

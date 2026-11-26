@@ -167,6 +167,7 @@ export const RESOLVER_NAMES = [
     "assigneesOf",
     "openAssignments",
     "configAtHead",
+    "pullRequestProfile",
 ] as const;
 
 export type ResolverName = (typeof RESOLVER_NAMES)[number];
@@ -180,6 +181,19 @@ export interface CommitAttestation {
     readonly verified: boolean;
     /** More than one parent — GitHub's own merge commit, exempt from DCO. */
     readonly merge: boolean;
+}
+
+/**
+ * What GitHub states about a pull request beside its code, for reviewers to weigh.
+ * `firstContribution` is `null` where GitHub's author association does not say either way.
+ */
+export interface PullRequestProfile {
+    /** The description holds nothing once HTML comments, which templates prompt with, are removed. */
+    readonly blankDescription: boolean;
+    readonly firstContribution: boolean | null;
+    readonly additions: number;
+    readonly deletions: number;
+    readonly changedFiles: number;
 }
 
 /** What a pull request does to `sdk-automations.yml`: the PARSED result, never the text. */
@@ -224,6 +238,11 @@ export interface ResolverCatalogue extends Record<ResolverName, unknown> {
     readonly configAtHead: {
         readonly input: { readonly item: ItemRef };
         readonly output: ConfigAtHead;
+    };
+    /** The pull request's description, author association and diff size, read once. */
+    readonly pullRequestProfile: {
+        readonly input: { readonly item: ItemRef };
+        readonly output: PullRequestProfile;
     };
 }
 type _ResolverCatalogueNamesAreExact = AssertNever<Exclude<keyof ResolverCatalogue, ResolverName>>;
