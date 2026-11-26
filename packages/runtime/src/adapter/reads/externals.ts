@@ -194,6 +194,19 @@ function takeCreationEntry(
     return true;
 }
 
+/** The causes GitHub answers with code owners' review requests, recorded under the actor's name. */
+const REQUESTING_CAUSES: ReadonlySet<string> = new Set(["opened", "ready_for_review"]);
+
+/** A review request by the cause's actor within the creation lag is GitHub's act, not theirs (D247). */
+function isOwnersRequest(entry: unknown, at: Date, cause: CauseFingerprint): boolean {
+    if (!REQUESTING_CAUSES.has(cause.action) || field(entry, "event") !== "review_requested") {
+        return false;
+    }
+    if (field(field(entry, "actor"), "login") !== cause.actorLogin) return false;
+    const lag = secondOf(at) - secondOf(cause.observedAt);
+    return lag >= 0 && lag <= CREATION_LAG_SECONDS;
+}
+
 const shows = (labels: readonly string[], action: string, name: string): boolean =>
     labels.includes(name) === (action === "labeled");
 
@@ -228,11 +241,14 @@ function newestIn(
     // Stryker disable next-line ArrayDeclaration: a seeded junk entry matches no timeline entry.
     const pending = [...(cause?.createdWith ?? [])];
     const takenLabels = new Set<string>();
+    // The cause is consumed once seen; the requests it provoked may follow it.
+    const provoking = cause;
     let newest: Date | null = null;
     for (const entry of events) {
         const at = humanChangeAt(entry, landed);
         if (at === "unparsable") return "unknown";
         if (at === null) continue;
+        if (provoking !== undefined && isOwnersRequest(entry, at, provoking)) continue;
         if (cause !== undefined && takeCreationEntry(entry, at, cause, pending)) continue;
         if (cause !== undefined && takeShownLabel(entry, at, cause, takenLabels)) continue;
         if (
@@ -340,7 +356,7 @@ async function readOrdering(
         : unknown(`the timeline is longer than ${String(TIMELINE_READ_CAP)} reads may cover`);
 }
 
-/** An author's opening, with the labels and assignees it was created with. */
+/** An author's opening, with any labels and assignees it was created with. */
 function openingOf(item: unknown, login: string, itemNumber: number): CauseFingerprint | undefined {
     const createdAt = field(item, "created_at");
     if (field(field(item, "user"), "login") !== login || typeof createdAt !== "string")
@@ -354,16 +370,14 @@ function openingOf(item: unknown, login: string, itemNumber: number): CauseFinge
         ...labels.map((target) => ({ action: "labeled" as const, target })),
         ...assignees.map((target) => ({ action: "assigned" as const, target })),
     ];
-    return createdWith.length === 0
-        ? undefined
-        : {
-              actorLogin: login,
-              observedAt,
-              itemNumber,
-              action: "opened",
-              target: null,
-              createdWith,
-          };
+    return {
+        actorLogin: login,
+        observedAt,
+        itemNumber,
+        action: "opened",
+        target: null,
+        ...(createdWith.length === 0 ? {} : { createdWith }),
+    };
 }
 
 /** A new comment, which the timeline records as `commented` by its author at its own instant. */

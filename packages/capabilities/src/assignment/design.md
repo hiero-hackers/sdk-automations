@@ -27,6 +27,12 @@ Refused — the issue carries a `notClaimableWhen` meaning (two or more read `bl
 
 > Hi @alice — this issue cannot be claimed while it is marked `blocked`.
 
+Refused at the gate — either refusal, when the issue carries `awaitingTriage`, ends with the next
+step, because a refusal with no way forward is the one a contributor stops reading at:
+
+> Hi @alice — this issue cannot be claimed while it is marked `awaitingTriage`. It is in the triage
+> queue; once the team marks it ready, it can be claimed.
+
 Refused — the issue carries none of the `claimableOnlyWhen` meanings (two or more read `ready` or
 `inProgress`):
 
@@ -213,6 +219,7 @@ Each built row names the test that proves it, as file › title; `·` separates 
 | Issue carrying both `ready` and `blocked` | not claimable — deny wins; the assign, which carries its notice, claims `blocked` absent | `capability.test.ts` › Issue carrying both `ready` and `blocked` |
 | Issue carrying a `notClaimableWhen` meaning and none of `claimableOnlyWhen` | the deny notice, never the not-yet one — deny is asked first | `capability.test.ts` › denies before it asks for a required meaning |
 | Issue carrying two `notClaimableWhen` meanings | both named — `blocked` and `awaitingTriage` | `capability.test.ts` › names two denying meanings as `a` and `b` |
+| Refused while the issue carries `awaitingTriage` | the notice ends with the next step, on either refusal; no other refusal carries it | `capability.test.ts` › tells a commenter refused at the gate what comes next, on either refusal |
 | Every refusal, with `notClaimableWhen` set | claims nothing absent; only the assign claims the deny set | `capability.test.ts` › claims nothing absent on any refusal, and the deny set on a claim |
 | Second `/assign` by the same person | an operator skip, no second comment — they already hold it | `capability.test.ts` › Second `/assign` by the same person |
 | A second contributor's `/assign` after the first claim landed | the already-claimed notice, the holder named and not pinged | `capability.test.ts` › A second contributor's `/assign` after the first claim landed |
