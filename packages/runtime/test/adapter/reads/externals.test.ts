@@ -846,8 +846,17 @@ describe("the creation-time entries of an opened item", () => {
         expect(causeFingerprintOf({ ...rest, pull_request: issue })).toEqual(OPENED_CAUSE);
     });
 
+    it("reads an opening with nothing attached, so its review requests can still be excluded", () => {
+        const { createdWith: _attached, ...bare } = OPENED_CAUSE;
+        expect(
+            causeFingerprintOf({
+                ...OPENED,
+                issue: { ...OPENED.issue, labels: [], assignees: [] },
+            }),
+        ).toEqual(bare);
+    });
+
     it.each([
-        ["nothing attached", { ...OPENED.issue, labels: [], assignees: [] }],
         ["another opener", { ...OPENED.issue, user: { login: "someone-else" } }],
         ["a missing created_at", { ...OPENED.issue, created_at: undefined }],
         ["an unreadable created_at", { ...OPENED.issue, created_at: "soon" }],
@@ -968,6 +977,69 @@ describe("the creation-time entries of an opened item", () => {
 
         expect(await newestAfter("author")).toBeNull();
         expect(await newestAfter("maintainer")).toEqual(new Date("2026-09-19T18:46:20Z"));
+    });
+});
+
+/**
+ * Code owners' review requests: GitHub records each under the author's name a second or two
+ * after an opening or a ready-for-review (analytics#641: opened 20:12:54, requests 20:12:55–56),
+ * where the Action's run finds them as human changes after the observation (D247).
+ */
+describe("code owners' review requests after an opening", () => {
+    const CREATED = "2026-11-05T20:12:54Z";
+    const after = (seconds: number): string =>
+        new Date(new Date(CREATED).getTime() + seconds * 1000).toISOString();
+    const opened = (action: string): CauseFingerprint => ({
+        actorLogin: "author",
+        observedAt: new Date(CREATED),
+        itemNumber: 7,
+        action,
+        target: null,
+    });
+    const request = (login: string, seconds: number) =>
+        entry("review_requested", login, after(seconds));
+
+    it.each(["opened", "ready_for_review"])(
+        "excludes the author's requests within the creation lag of %s",
+        async (action) => {
+            const { lookup } = source(
+                [page([request("author", 1), request("author", 1), request("author", 2)])],
+                opened(action),
+            );
+            expect(await lookup(ITEM)).toBeNull();
+        },
+    );
+
+    it("excludes them after the ready-for-review entry that provoked them", async () => {
+        const { lookup } = source(
+            [page([entry("ready_for_review", "author", CREATED), request("author", 1)])],
+            opened("ready_for_review"),
+        );
+        expect(await lookup(ITEM)).toBeNull();
+    });
+
+    it.each([
+        ["one dated before the item", request("author", -1), "opened"],
+        ["one dated past the window", request("author", 11), "opened"],
+        ["another actor's", request("maintainer", 1), "opened"],
+        ["one after a label change", request("author", 1), "labeled"],
+        ["one after a reopening", request("author", 1), "reopened"],
+    ])("counts %s", async (_name, other, action) => {
+        const { lookup } = source([page([other])], opened(action));
+        expect(await lookup(ITEM)).toEqual(new Date(other["created_at"] as string));
+    });
+
+    it("counts a request on another item", async () => {
+        const { lookup } = source([page([request("author", 1)])], opened("opened"));
+        expect(await lookup({ kind: "issue", number: 8 })).toEqual(new Date(after(1)));
+    });
+
+    it("still counts the author's later edit", async () => {
+        const { lookup } = source(
+            [page([request("author", 1), entry("labeled", "author", after(30))])],
+            opened("opened"),
+        );
+        expect(await lookup(ITEM)).toEqual(new Date(after(30)));
     });
 });
 
